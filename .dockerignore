@@ -1,0 +1,13 @@
+.git
+.DS_Store
+.local
+.sealos
+docs
+helloagents
+plan
+reference
+deploy
+web/node_modules
+web/dist
+backend/tmp
+**/*.log

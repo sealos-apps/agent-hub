@@ -1,0 +1,19 @@
+apiVersion: app.sealos.io/v1
+kind: App
+metadata:
+  name: agenthub
+  namespace: app-system
+spec:
+  data:
+    desc: Agent Hub Workspace
+    url: "{{ .agentHubUrl }}"
+  icon: "{{ .iconUrl }}"
+  i18n:
+    zh:
+      name: Agent Hub
+    zh-Hans:
+      name: Agent Hub
+  menuData:
+  name: Agent Hub
+  type: iframe
+  displayType: normal

@@ -1,0 +1,189 @@
+id: hermes-agent
+name: Hermes Agent
+shortName: Hermes
+description: Hermes Agent 服务，支持 API 接入、终端、文件、SSH 与 IDE 连接。
+image: nousresearch/hermes-agent:latest
+port: 8642
+defaultArgs:
+  - gateway
+  - run
+backendSupported: true
+workingDir: /opt/hermes
+manifestDir: manifests
+user: hermes
+presentation:
+  logoKey: hermes-agent
+  brandColor: "#2563eb"
+  docsLabel: 对话 + 终端
+workspaces:
+  - key: overview
+    label: 概览
+  - key: chat
+    label: 对话
+  - key: files
+    label: 文件
+  - key: settings
+    label: 设置
+access:
+  - key: api
+    label: API
+    path: /v1
+    auth: apiKey
+  - key: terminal
+    label: 终端
+  - key: files
+    label: 文件
+    rootPath: /opt/hermes
+  - key: ssh
+    label: SSH
+  - key: ide
+    label: IDE
+    modes:
+      - cursor
+      - vscode
+      - zed
+      - gateway
+actions:
+  - key: open-chat
+    label: 对话
+  - key: open-terminal
+    label: 终端
+  - key: open-files
+    label: 文件
+  - key: open-settings
+    label: 设置
+  - key: run
+    label: 启动
+  - key: pause
+    label: 暂停
+  - key: delete
+    label: 删除
+settings:
+  runtime:
+    - key: cpu
+      label: CPU
+      type: quantity
+      required: true
+      binding:
+        kind: runtime
+        key: cpu
+    - key: memory
+      label: 内存
+      type: quantity
+      required: true
+      binding:
+        kind: runtime
+        key: memory
+    - key: storage
+      label: 存储
+      type: quantity
+      required: true
+      binding:
+        kind: runtime
+        key: storage
+  agent:
+    - key: provider
+      label: Provider
+      type: select
+      required: true
+      readOnly: true
+      binding:
+        kind: agent
+        key: modelProvider
+      rebootstrap: true
+      options:
+        - value: custom:aiproxy-chat
+          label: AI-Proxy · Chat Completions
+        - value: custom:aiproxy-responses
+          label: AI-Proxy · Responses API
+        - value: custom:aiproxy-anthropic
+          label: AI-Proxy · Anthropic Messages
+    - key: model
+      label: 模型
+      type: select
+      required: true
+      binding:
+        kind: agent
+        key: model
+      rebootstrap: true
+    - key: baseURL
+      label: Base URL
+      type: url
+      required: true
+      binding:
+        kind: agent
+        key: modelBaseURL
+      rebootstrap: true
+    - key: keySource
+      label: 密钥来源
+      type: text
+      readOnly: true
+      binding:
+        kind: derived
+        key: keySource
+regionModelPresets:
+  us:
+    - value: gpt-5.4
+      label: GPT-5.4
+      helper: OpenAI
+      provider: custom:aiproxy-responses
+      apiMode: codex_responses
+    - value: gpt-5.4-mini
+      label: GPT-5.4 Mini
+      helper: OpenAI
+      provider: custom:aiproxy-responses
+      apiMode: codex_responses
+    - value: gpt-5-mini
+      label: GPT-5 Mini
+      helper: OpenAI
+      provider: custom:aiproxy-responses
+      apiMode: codex_responses
+    - value: claude-sonnet-4.6
+      label: Claude Sonnet 4.6
+      helper: Anthropic
+      provider: custom:aiproxy-anthropic
+      apiMode: anthropic_messages
+    - value: claude-sonnet-4.5
+      label: Claude Sonnet 4.5
+      helper: Anthropic
+      provider: custom:aiproxy-anthropic
+      apiMode: anthropic_messages
+    - value: glm-4.6
+      label: GLM-4.6
+      helper: GLM
+      provider: custom:aiproxy-chat
+      apiMode: chat_completions
+    - value: MiniMax-M2.5
+      label: MiniMax M2.5
+      helper: MiniMax
+      provider: custom:aiproxy-chat
+      apiMode: chat_completions
+    - value: qwen3-coder-plus
+      label: Qwen3 Coder Plus
+      helper: Qwen
+      provider: custom:aiproxy-chat
+      apiMode: chat_completions
+  cn:
+    - value: glm-4.6
+      label: GLM-4.6
+      helper: GLM
+      provider: custom:aiproxy-chat
+      apiMode: chat_completions
+    - value: MiniMax-M2.5
+      label: MiniMax M2.5
+      helper: MiniMax
+      provider: custom:aiproxy-chat
+      apiMode: chat_completions
+    - value: qwen3-coder-plus
+      label: Qwen3 Coder Plus
+      helper: Qwen
+      provider: custom:aiproxy-chat
+      apiMode: chat_completions
+bootstrap:
+  script: bootstrap.sh
+  shell: bash
+  timeoutSeconds: 180
+healthcheck:
+  script: healthcheck.sh
+  shell: bash
+  timeoutSeconds: 60

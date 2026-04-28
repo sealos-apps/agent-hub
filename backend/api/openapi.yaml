@@ -1,0 +1,54 @@
+openapi: 3.0.3
+info:
+  title: Agent Hub Backend API
+  version: 0.1.0
+  description: |
+    Backend API draft for managing hermes-agent instances backed by Sealos Devbox.
+servers:
+  - url: http://localhost:8999
+paths:
+  /healthz:
+    get:
+      summary: Liveness check
+      responses:
+        '200':
+          description: ok
+  /readyz:
+    get:
+      summary: Readiness check
+      responses:
+        '200':
+          description: ready
+  /api/v1/agents:
+    get:
+      summary: List agents
+    post:
+      summary: Create an agent
+  /api/v1/agents/{agent-name}:
+    get:
+      summary: Get agent detail
+      parameters:
+        - in: path
+          name: agent-name
+          required: true
+          schema:
+            type: string
+    patch:
+      summary: Update agent
+    delete:
+      summary: Delete agent
+  /api/v1/agents/{agent-name}/run:
+    post:
+      summary: Run agent
+  /api/v1/agents/{agent-name}/pause:
+    post:
+      summary: Pause agent
+  /api/v1/agents/{agent-name}/key:
+    get:
+      summary: Reveal current API server key
+  /api/v1/agents/{agent-name}/key/rotate:
+    post:
+      summary: Rotate API server key
+  /api/v1/agents/{agent-name}/ws:
+    get:
+      summary: WebSocket endpoint for logs, terminal and file operations

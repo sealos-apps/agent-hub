@@ -1,0 +1,19 @@
+apiVersion: app.sealos.io/v1
+kind: App
+metadata:
+  name: agenthub-terminal
+  namespace: app-system
+spec:
+  data:
+    desc: Agent Hub Terminal Window
+    url: "{{ .agentHubUrl }}"
+  icon: "{{ .iconUrl }}"
+  i18n:
+    zh:
+      name: Agent Hub 终端
+    zh-Hans:
+      name: Agent Hub 终端
+  menuData:
+  name: Agent Hub Terminal
+  type: iframe
+  displayType: hidden

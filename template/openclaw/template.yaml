@@ -1,0 +1,69 @@
+id: openclaw
+name: OpenClaw
+shortName: OpenClaw
+description: 面向浏览器自动化场景的 Agent，提供 Web UI、终端、文件与设置入口。
+image: ghcr.io/openclawai/openclaw:latest
+port: 3000
+defaultArgs:
+  - gateway
+  - serve
+backendSupported: false
+createDisabledReason: 当前后端尚未接入 OpenClaw 的统一部署与设置链路，只保留能力目录与 UI 架构。
+workingDir: /app
+user: openclaw
+presentation:
+  logoKey: openclaw
+  brandColor: "#0f766e"
+  docsLabel: Web UI + 终端
+workspaces:
+  - key: overview
+    label: 概览
+  - key: web-ui
+    label: Web UI
+  - key: files
+    label: 文件
+  - key: settings
+    label: 设置
+access:
+  - key: web-ui
+    label: Web UI
+    path: /
+  - key: terminal
+    label: 终端
+  - key: files
+    label: 文件
+    rootPath: /app
+actions:
+  - key: open-terminal
+    label: 终端
+  - key: open-files
+    label: 文件
+  - key: open-settings
+    label: 设置
+settings:
+  runtime:
+    - key: cpu
+      label: CPU
+      type: quantity
+      required: true
+      binding:
+        kind: runtime
+        key: cpu
+    - key: memory
+      label: 内存
+      type: quantity
+      required: true
+      binding:
+        kind: runtime
+        key: memory
+    - key: storage
+      label: 存储
+      type: quantity
+      required: true
+      binding:
+        kind: runtime
+        key: storage
+  agent: []
+regionModelPresets:
+  us: []
+  cn: []

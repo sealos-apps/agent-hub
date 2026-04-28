@@ -1,0 +1,83 @@
+apiVersion: devbox.sealos.io/v1alpha2
+kind: Devbox
+metadata:
+  name: {{ quote .Agent.Name }}
+  namespace: {{ quote .Agent.Namespace }}
+  labels:
+{{- range $key, $value := .DevboxLabels }}
+    {{ $key }}: {{ quote $value }}
+{{- end }}
+  annotations:
+{{- range $key, $value := .DevboxAnnotations }}
+    {{ $key }}: {{ quote $value }}
+{{- end }}
+spec:
+  image: {{ quote .Image }}
+  state: "Running"
+  runtimeClassName: "devbox-runtime"
+  storageLimit: {{ quote .Agent.Storage }}
+  network:
+    type: "SSHGate"
+    extraPorts:
+      - containerPort: 8642
+  resource:
+    cpu: {{ quote .Agent.CPU }}
+    memory: {{ quote .Agent.Memory }}
+  config:
+    labels:
+{{- range $key, $value := .SelectorLabels }}
+      {{ $key }}: {{ quote $value }}
+{{- end }}
+    user: "hermes"
+    workingDir: "/opt/hermes"
+    appPorts:
+      - name: {{ quote .Agent.Name }}
+        port: 8642
+        protocol: "TCP"
+        targetPort: 8642
+    env:
+      - name: "HERMES_HOME"
+        value: "/opt/data"
+      - name: "API_SERVER_KEY"
+        value: {{ quote .Agent.APIServerKey }}
+      - name: "API_SERVER_ENABLED"
+        value: "true"
+      - name: "API_SERVER_HOST"
+        value: "0.0.0.0"
+      - name: "API_SERVER_PORT"
+        value: "8642"
+      - name: "HERMES_INFERENCE_PROVIDER"
+        value: {{ quote .Agent.ModelProvider }}
+      - name: "OPENAI_BASE_URL"
+{{- if or (eq .Agent.ModelProvider "custom:aiproxy-chat") (eq .Agent.ModelProvider "custom:aiproxy-responses") (eq .Agent.ModelProvider "custom:aiproxy-anthropic") }}
+        value: ""
+{{- else }}
+        value: {{ quote .Agent.ModelBaseURL }}
+{{- end }}
+      - name: "OPENAI_API_KEY"
+{{- if or (eq .Agent.ModelProvider "custom:aiproxy-chat") (eq .Agent.ModelProvider "custom:aiproxy-responses") (eq .Agent.ModelProvider "custom:aiproxy-anthropic") }}
+        value: ""
+{{- else }}
+        value: {{ quote .Agent.ModelAPIKey }}
+{{- end }}
+      - name: "AIPROXY_API_KEY"
+{{- if or (eq .Agent.ModelProvider "custom:aiproxy-chat") (eq .Agent.ModelProvider "custom:aiproxy-responses") (eq .Agent.ModelProvider "custom:aiproxy-anthropic") }}
+        value: {{ quote .Agent.ModelAPIKey }}
+{{- else }}
+        value: ""
+{{- end }}
+      - name: "AGENT_MODEL_PROVIDER"
+        value: {{ quote .Agent.ModelProvider }}
+      - name: "AGENT_MODEL_BASEURL"
+        value: {{ quote .Agent.ModelBaseURL }}
+      - name: "AGENT_MODEL_APIKEY"
+        value: {{ quote .Agent.ModelAPIKey }}
+      - name: "AGENT_MODEL"
+        value: {{ quote .Agent.Model }}
+      - name: "AGENT_TEMPLATE_ID"
+        value: {{ quote .Agent.TemplateID }}
+      - name: "AGENT_WORKDIR"
+        value: {{ quote .Agent.WorkingDir }}
+    args:
+      - gateway
+      - run

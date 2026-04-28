@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ quote .Agent.Name }}
+  namespace: {{ quote .Agent.Namespace }}
+  labels:
+{{- range $key, $value := .IngressLabels }}
+    {{ $key }}: {{ quote $value }}
+{{- end }}
+  annotations:
+{{- range $key, $value := .IngressAnnotations }}
+    {{ $key }}: {{ quote $value }}
+{{- end }}
+spec:
+  ingressClassName: "nginx"
+  rules:
+    - host: {{ quote .IngressDomain }}
+      http:
+        paths:
+          - path: "/"
+            pathType: "Prefix"
+            backend:
+              service:
+                name: {{ quote .Agent.Name }}
+                port:
+                  number: 8642
+  tls:
+    - hosts:
+        - {{ quote .IngressDomain }}
+      secretName: "wildcard-cert"

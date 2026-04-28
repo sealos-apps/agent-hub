@@ -1,0 +1,20 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/app ./cmd/app"
+bin = "./tmp/app"
+full_bin = "./tmp/app"
+include_ext = ["go", "yaml", "yml", "toml"]
+exclude_dir = ["tmp", "testdata", "vendor"]
+exclude_regex = ["_test\\.go"]
+delay = 300
+stop_on_error = true
+send_interrupt = true
+kill_delay = 500
+
+[log]
+time = true
+
+[screen]
+clear_on_rebuild = true
