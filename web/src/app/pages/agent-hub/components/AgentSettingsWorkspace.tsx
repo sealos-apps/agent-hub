@@ -1,8 +1,20 @@
-import { HardDrive, Minus, Plus, Server, Settings2 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import {
+  Activity,
+  Bot,
+  CheckCircle2,
+  Copy,
+  Cpu,
+  Database,
+  FileText,
+  HardDrive,
+  Info,
+  Link2,
+  Minus,
+  Plus,
+} from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { readBlueprintSettingValue } from "../../../../domains/agents/blueprintFields";
 import { formatModelProviderLabel } from "../../../../domains/agents/aiproxy";
-import { createBlueprintFromAgentItem } from "../../../../domains/agents/mappers";
 import {
   describeRegionModelPreset,
   RESOURCE_PRESETS,
@@ -14,14 +26,15 @@ import type {
   AgentSettingField,
   AgentTemplateDefinition,
 } from "../../../../domains/agents/types";
-import { cn } from "../../../../lib/format";
+import { cn, formatTime } from "../../../../lib/format";
 import { Button } from "../../../../components/ui/Button";
-import { Input } from "../../../../components/ui/Input";
 import { Modal } from "../../../../components/ui/Modal";
 import { SelectMenu } from "../../../../components/ui/SelectMenu";
 import { Slider } from "../../../../components/ui/Slider";
+import { StatusBadge } from "../../../../components/ui/StatusBadge";
 
 interface AgentSettingsWorkspaceProps {
+  editing: boolean;
   item: AgentListItem;
   template: AgentTemplateDefinition | null;
   runtimeBlueprint: AgentBlueprint;
@@ -29,13 +42,10 @@ interface AgentSettingsWorkspaceProps {
   workspaceRegion: AgentHubRegion | string;
   workspaceModelBaseURL: string;
   workspaceModelKeyReady: boolean;
-  submitting: boolean;
   onRuntimeChange: (field: keyof AgentBlueprint, value: string) => void;
   onRuntimePreset: (presetId: AgentBlueprint["profile"]) => void;
-  onSaveRuntime: () => void;
   onSettingsChange: (field: keyof AgentBlueprint, value: string) => void;
   onSettingsFieldChange: (field: AgentSettingField, value: string) => void;
-  onSaveSettings: () => void;
 }
 
 function formatKeySourceLabel(value = "", ready = false) {
@@ -48,36 +58,25 @@ function formatKeySourceLabel(value = "", ready = false) {
   return value;
 }
 
-function SectionCard({
-  title,
-  description,
-  actions,
-  children,
-  className,
-}: {
-  title: string;
-  description: string;
-  actions?: ReactNode;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <section className={cn("workbench-card flex flex-col rounded-[16px] p-6", className)}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-[16px] font-semibold tracking-[-0.01em] text-zinc-950">{title}</div>
-          <div className="mt-1.5 text-sm leading-6 text-zinc-500">{description}</div>
-        </div>
-        {actions}
-      </div>
-      <div className="mt-5">{children}</div>
-    </section>
-  );
+function copyText(value: string) {
+  if (!value || typeof navigator === "undefined" || !navigator.clipboard) return;
+  void navigator.clipboard.writeText(value);
+}
+
+function formatDurationSince(value = "") {
+  const startedAt = new Date(value).getTime();
+  if (!Number.isFinite(startedAt)) return "--";
+  const totalMinutes = Math.max(0, Math.floor((Date.now() - startedAt) / 60000));
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `${days} 天 ${hours} 小时 ${minutes} 分`;
+  if (hours > 0) return `${hours} 小时 ${minutes} 分`;
+  return `${minutes} 分`;
 }
 
 function FieldShell({
   label,
-  hint,
   children,
 }: {
   label: string;
@@ -86,9 +85,8 @@ function FieldShell({
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-[12px] font-medium text-zinc-800">{label}</span>
+      <span className="text-[12px]/4 font-medium text-zinc-700">{label}</span>
       {children}
-      {hint ? <span className="text-[11px]/5 text-zinc-500">{hint}</span> : null}
     </label>
   );
 }
@@ -96,7 +94,6 @@ function FieldShell({
 function DisplayField({
   label,
   value,
-  hint,
   mono = false,
 }: {
   label: string;
@@ -105,47 +102,70 @@ function DisplayField({
   mono?: boolean;
 }) {
   return (
-    <div className="space-y-1.5">
-      <div className="text-[12px] font-medium text-zinc-800">{label}</div>
+    <div className="grid min-h-0 flex-1 grid-cols-[112px_minmax(0,1fr)] items-center gap-x-3 border-b border-zinc-100">
+      <div className="text-[13px]/5 text-zinc-500">{label}</div>
       <div
         className={cn(
-          "min-h-10 rounded-[10px] bg-zinc-50 px-4 py-2.5 text-[14px]/5 text-zinc-700",
-          mono && "break-all font-mono text-xs text-zinc-700",
+          "min-w-0 truncate text-[14px]/5 font-medium text-zinc-800",
+          mono && "break-all font-mono text-xs font-normal text-zinc-700",
         )}
       >
         {value || "--"}
       </div>
-      {hint ? <div className="text-[11px]/5 text-zinc-500">{hint}</div> : null}
     </div>
   );
 }
 
-function MetricDisplayField({
+function EditableInputField({
   label,
   value,
-  suffix,
-  hint,
-  className,
+  placeholder,
+  onChange,
 }: {
   label: string;
   value: string;
-  suffix: string;
-  hint?: string;
-  className?: string;
+  placeholder?: string;
+  onChange: (value: string) => void;
 }) {
   return (
-    <div className={cn("space-y-2", className)}>
-      <div className="text-sm font-medium text-zinc-900">{label}</div>
-      <div className="flex min-h-10 items-center gap-2 rounded-[10px] border border-zinc-200 bg-zinc-50 px-3.5 text-sm text-zinc-900">
-        <span className="font-medium">{value || "--"}</span>
-        <span className="text-zinc-500">{suffix}</span>
-      </div>
-      {hint ? <div className="text-xs leading-5 text-zinc-500">{hint}</div> : null}
+    <div className="grid min-h-0 flex-1 grid-cols-[112px_minmax(0,1fr)] items-center gap-x-3 border-b border-zinc-100">
+      <div className="text-[13px]/5 text-zinc-500">{label}</div>
+      <input
+        className="h-9 min-w-0 rounded-[8px] border border-zinc-200 bg-white px-3 text-[14px]/5 font-medium text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        value={value}
+      />
+    </div>
+  );
+}
+
+function EditableSelectField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: Array<{ label: string; value: string }>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="grid min-h-0 flex-1 grid-cols-[112px_minmax(0,1fr)] items-center gap-x-3 border-b border-zinc-100">
+      <div className="text-[13px]/5 text-zinc-500">{label}</div>
+      <SelectMenu
+        className="min-w-0"
+        onChange={onChange}
+        options={options}
+        value={value}
+      />
     </div>
   );
 }
 
 function NumberStepperField({
+  disabled = false,
   label,
   value,
   suffix,
@@ -164,6 +184,7 @@ function NumberStepperField({
   max?: number;
   step?: number;
   onChange: (value: number) => void;
+  disabled?: boolean;
   className?: string;
 }) {
   const applyNextValue = (nextValue: number) => {
@@ -175,12 +196,13 @@ function NumberStepperField({
     <FieldShell hint={hint} label={label}>
       <div
         className={cn(
-          "flex min-h-10 items-center gap-2 rounded-[10px] border border-zinc-200 bg-white px-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
+          "flex min-h-10 items-center gap-2 border-b border-zinc-300 bg-white",
           className,
         )}
       >
         <button
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
+          disabled={disabled}
           onClick={() => applyNextValue(value - step)}
           type="button"
         >
@@ -188,6 +210,7 @@ function NumberStepperField({
         </button>
         <input
           className="h-full min-w-0 flex-1 border-0 bg-transparent px-0 text-center text-sm font-medium text-zinc-900 outline-none placeholder:text-zinc-400 focus:outline-none focus:ring-0"
+          disabled={disabled}
           max={max}
           min={min}
           onChange={(event) => {
@@ -201,7 +224,8 @@ function NumberStepperField({
         />
         <span className="shrink-0 text-sm font-medium text-zinc-500">{suffix}</span>
         <button
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
+          disabled={disabled}
           onClick={() => applyNextValue(value + step)}
           type="button"
         >
@@ -212,34 +236,154 @@ function NumberStepperField({
   );
 }
 
-function MetaPill({
+function DashboardCard({
+  icon: Icon,
+  title,
+  description,
+  action,
+  children,
+  className,
+}: {
+  icon: typeof Cpu;
+  title: string;
+  description: string;
+  action?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={cn("flex h-full min-h-0 flex-col rounded-[18px] border border-[#dfe6f0] bg-white p-5 shadow-[0_14px_34px_rgba(35,48,76,0.06)]", className)}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-[#eef5ff] text-blue-600">
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[17px]/6 font-semibold text-[#111827]">{title}</div>
+            <div className="mt-0.5 text-[12px]/5 text-zinc-500">{description}</div>
+          </div>
+        </div>
+        {action ? <div className="shrink-0">{action}</div> : null}
+      </div>
+      <div className="mt-4 flex min-h-0 flex-1 flex-col">{children}</div>
+    </section>
+  );
+}
+
+function ResourceMetricCard({
   icon: Icon,
   label,
   value,
-  mono = false,
+  suffix,
+  usedText,
+  percent,
+  tone,
 }: {
-  icon: typeof HardDrive;
+  icon: typeof Cpu;
   label: string;
   value: string;
-  mono?: boolean;
+  suffix: string;
+  usedText: string;
+  percent: number;
+  tone: "blue" | "violet" | "green";
+}) {
+  const toneClassName = {
+    blue: "bg-blue-600",
+    violet: "bg-violet-600",
+    green: "bg-emerald-600",
+  }[tone];
+  const iconClassName = {
+    blue: "bg-white text-blue-600",
+    violet: "bg-white text-violet-600",
+    green: "bg-white text-emerald-600",
+  }[tone];
+  const shellClassName = {
+    blue: "border-blue-100 bg-blue-50/70",
+    violet: "border-violet-100 bg-violet-50/70",
+    green: "border-emerald-100 bg-emerald-50/70",
+  }[tone];
+
+  return (
+    <div className={cn("flex h-full min-h-[150px] flex-col justify-between rounded-[14px] border p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]", shellClassName)}>
+      <div className="flex items-center gap-3">
+        <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px]", iconClassName)}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="text-[15px]/6 font-semibold text-zinc-950">{label}</div>
+      </div>
+      <div>
+        <div className="flex items-baseline gap-2">
+          <span className="text-[30px]/8 font-semibold tabular-nums text-[#111827]">{value || "--"}</span>
+          <span className="text-[15px]/5 text-zinc-700">{suffix}</span>
+        </div>
+        <div className="mt-4 flex items-center gap-3">
+          <div className="h-2 flex-1 rounded-full bg-white/80">
+            <div
+              className={cn("h-full rounded-full", toneClassName)}
+              style={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
+            />
+          </div>
+          <span className="w-10 text-right text-[13px]/5 text-zinc-500">{percent}%</span>
+        </div>
+      </div>
+      <div className="text-[13px]/5 text-zinc-500">{usedText}</div>
+    </div>
+  );
+}
+
+function SideCard({
+  icon: Icon,
+  title,
+  description,
+  children,
+  className,
+}: {
+  icon: typeof Info;
+  title: string;
+  description?: string;
+  children: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-2.5 rounded-xl border-[0.5px] border-zinc-200 bg-zinc-50 px-3 py-2.5">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-[0.5px] border-zinc-200 bg-white text-zinc-500">
-        <Icon size={15} />
+    <aside className={cn("flex h-full min-h-0 flex-col rounded-[18px] border border-[#dfe6f0] bg-[#fbfcff] p-5 shadow-[0_14px_34px_rgba(35,48,76,0.06)]", className)}>
+      <div className="flex items-start gap-3">
+        <Icon className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+        <div className="min-w-0">
+          <div className="text-[17px]/6 font-semibold text-[#111827]">{title}</div>
+          {description ? <div className="mt-1 text-[13px]/5 text-zinc-500">{description}</div> : null}
+        </div>
       </div>
-      <div className="min-w-0">
-        <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-400">
-          {label}
-        </div>
-        <div
-          className={cn(
-            "mt-1 truncate text-[13px]/5 font-medium text-zinc-900",
-            mono && "font-mono text-xs text-zinc-700",
-          )}
-        >
-          {value || "--"}
-        </div>
+      <div className="mt-4 flex min-h-0 flex-1 flex-col">{children}</div>
+    </aside>
+  );
+}
+
+function SideRow({
+  label,
+  value,
+  mono = false,
+  copyValue,
+}: {
+  label: string;
+  value: ReactNode;
+  mono?: boolean;
+  copyValue?: string;
+}) {
+  return (
+    <div className="flex min-h-[42px] items-center justify-between gap-4 border-b border-[#e9edf3] text-[13px]/5 last:border-b-0">
+      <div className="shrink-0 text-zinc-500">{label}</div>
+      <div className="flex min-w-0 items-center justify-end gap-1.5">
+        <div className={cn("min-w-0 text-right font-medium text-zinc-900", mono && "break-all font-mono text-xs")}>{value || "--"}</div>
+        {copyValue ? (
+          <button
+            aria-label={`复制${label}`}
+            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+            onClick={() => copyText(copyValue)}
+            type="button"
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -259,6 +403,7 @@ function resolveNearestStep(value: number, options: number[]) {
 }
 
 export function AgentSettingsWorkspace({
+  editing,
   item,
   template,
   runtimeBlueprint,
@@ -266,46 +411,16 @@ export function AgentSettingsWorkspace({
   workspaceRegion,
   workspaceModelBaseURL,
   workspaceModelKeyReady,
-  submitting,
   onRuntimeChange,
   onRuntimePreset,
-  onSaveRuntime,
   onSettingsChange,
   onSettingsFieldChange,
-  onSaveSettings,
 }: AgentSettingsWorkspaceProps) {
   const [customResourceModalOpen, setCustomResourceModalOpen] = useState(false);
   const [customDraft, setCustomDraft] = useState(() => ({
     cpu: CPU_OPTIONS[1],
     memory: MEMORY_OPTIONS[1],
   }));
-  const agentSettingsFields = useMemo(() => template?.settings.agent ?? [], [template]);
-  const originalBlueprint = useMemo(() => createBlueprintFromAgentItem(item), [item]);
-
-  const runtimeDirty = useMemo(
-    () =>
-      runtimeBlueprint.profile !== originalBlueprint.profile ||
-      runtimeBlueprint.cpu !== originalBlueprint.cpu ||
-      runtimeBlueprint.memory !== originalBlueprint.memory ||
-      runtimeBlueprint.storageLimit !== originalBlueprint.storageLimit,
-    [originalBlueprint, runtimeBlueprint],
-  );
-
-  const settingsDirty = useMemo(
-    () =>
-      settingsBlueprint.aliasName !== originalBlueprint.aliasName ||
-      settingsBlueprint.model !== originalBlueprint.model ||
-      settingsBlueprint.modelProvider !== originalBlueprint.modelProvider ||
-      settingsBlueprint.modelBaseURL !== originalBlueprint.modelBaseURL ||
-      settingsBlueprint.keySource !== originalBlueprint.keySource ||
-      agentSettingsFields.some((field) => {
-        const current = readBlueprintSettingValue(settingsBlueprint, field);
-        const original = readBlueprintSettingValue(originalBlueprint, field);
-        return current !== original;
-      }),
-    [agentSettingsFields, originalBlueprint, settingsBlueprint],
-  );
-
   if (!template) {
     return null;
   }
@@ -353,6 +468,7 @@ export function AgentSettingsWorkspace({
   })();
 
   const openCustomResourceModal = () => {
+    if (!editing) return;
     setCustomDraft({
       cpu: cpuSliderValue,
       memory: memorySliderValue,
@@ -407,11 +523,27 @@ export function AgentSettingsWorkspace({
     const rank = (key: string) => {
       if (key === "model") return 0;
       if (key === "modelProvider") return 1;
+      if (key === "modelBaseURL") return 2;
+      if (key === "keySource") return 3;
       return 10;
     };
 
     return rank(leftKey) - rank(rightKey);
   });
+  const modelField = orderedAgentFields.find(
+    (field) => String(field.binding?.key || "").trim() === "model",
+  );
+  const connectionFields = orderedAgentFields.filter(
+    (field) => String(field.binding?.key || "").trim() !== "model",
+  ).slice(0, 3);
+  const resourcePresetOptions = RESOURCE_PRESETS.filter(
+    (preset) => preset.id !== "custom",
+  );
+  const selectedPresetValue = resourcePresetOptions.some(
+    (preset) => preset.id === runtimeBlueprint.profile,
+  )
+    ? runtimeBlueprint.profile
+    : "";
 
   const renderAgentField = (field: AgentSettingField) => {
     const fieldValue = readBlueprintSettingValue(settingsBlueprint, field);
@@ -428,21 +560,30 @@ export function AgentSettingsWorkspace({
     }
 
     if (bindingKey === "model") {
-      return (
-        <FieldShell hint={modelPresetHint} label={field.label}>
-          <SelectMenu
-            className="w-full"
-            onChange={handleModelChange}
-            options={[
-              { label: "请选择模型", value: "" },
-              ...template.modelOptions.map((option) => ({
-                label: option.helper ? `${option.label} · ${option.helper}` : option.label,
-                value: option.value,
-              })),
-            ]}
-            value={fieldValue}
+      if (!editing) {
+        const option = template.modelOptions.find((entry) => entry.value === fieldValue);
+        return (
+          <DisplayField
+            hint={modelPresetHint}
+            label={field.label}
+            value={option?.label || fieldValue}
           />
-        </FieldShell>
+        );
+      }
+
+      return (
+        <EditableSelectField
+          label={field.label}
+          onChange={handleModelChange}
+          options={[
+            { label: "请选择模型", value: "" },
+            ...template.modelOptions.map((option) => ({
+              label: option.helper ? `${option.label} · ${option.helper}` : option.label,
+              value: option.value,
+            })),
+          ]}
+          value={fieldValue}
+        />
       );
     }
 
@@ -472,21 +613,30 @@ export function AgentSettingsWorkspace({
     }
 
     if (field.type === "select") {
-      return (
-        <FieldShell hint={field.description} label={field.label}>
-          <SelectMenu
-            className="w-full"
-            onChange={(value) => onSettingsFieldChange(field, value)}
-            options={[
-              { label: "请选择", value: "" },
-              ...(field.options || []).map((option) => ({
-                label: option.label,
-                value: option.value,
-              })),
-            ]}
-            value={fieldValue}
+      if (!editing) {
+        const option = field.options?.find((entry) => entry.value === fieldValue);
+        return (
+          <DisplayField
+            hint={field.description}
+            label={field.label}
+            value={option?.label || fieldValue}
           />
-        </FieldShell>
+        );
+      }
+
+      return (
+        <EditableSelectField
+          label={field.label}
+          onChange={(value) => onSettingsFieldChange(field, value)}
+          options={[
+            { label: "请选择", value: "" },
+            ...(field.options || []).map((option) => ({
+              label: option.label,
+              value: option.value,
+            })),
+          ]}
+          value={fieldValue}
+        />
       );
     }
 
@@ -501,199 +651,238 @@ export function AgentSettingsWorkspace({
     }
 
     return (
-      <Input
-        className="h-10 w-full rounded-[10px] border-zinc-200 bg-white px-4 text-[14px] leading-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
-        hint={field.description}
-        label={field.label}
-        onChange={(event) => onSettingsFieldChange(field, event.target.value)}
-        value={fieldValue}
-      />
+      editing ? (
+        <EditableInputField
+          label={field.label}
+          onChange={(value) => onSettingsFieldChange(field, value)}
+          value={fieldValue}
+        />
+      ) : (
+        <DisplayField
+          hint={field.description}
+          label={field.label}
+          value={fieldValue}
+        />
+      )
     );
   };
 
   return (
-    <div className="workbench-card-strong flex h-full min-h-0 flex-col overflow-y-auto rounded-[16px] p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-[18px]/7 font-semibold tracking-[-0.01em] text-zinc-950">
-            实例设置
-          </div>
-          <div className="mt-2 text-sm leading-6 text-zinc-500">
-            在这里调整资源规格和 Agent 运行参数。
-          </div>
-        </div>
-        <div className="rounded-full border-[0.5px] border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px]/4 font-medium text-zinc-600">
-          {template.name}
-        </div>
-      </div>
+    <div className="grid min-h-full min-w-0 grid-cols-[320px_minmax(0,1fr)] grid-rows-[minmax(0,0.95fr)_minmax(0,1.05fr)] gap-4">
+      <SideCard
+        className="col-start-1 row-span-2 row-start-1"
+        description="实例状态、环境和基础标识"
+        icon={Activity}
+        title="实例概况"
+      >
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
+          <section className="rounded-[14px] border border-[#dfe6f0] bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[12px]/4 font-medium text-zinc-500">当前状态</div>
+                <div className="mt-2">
+                  <StatusBadge compact status={item.status} />
+                </div>
+              </div>
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-[12px] bg-emerald-50 text-emerald-600">
+                <CheckCircle2 className="h-5 w-5" />
+              </span>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[#eef1f6] pt-4">
+              <div>
+                <div className="text-[12px]/4 text-zinc-500">运行时长</div>
+                <div className="mt-1 truncate text-[14px]/5 font-semibold text-[#111827]">
+                  {formatDurationSince(item.contract.core.createdAt || item.updatedAt)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[12px]/4 text-zinc-500">健康状态</div>
+                <div className="mt-1 inline-flex items-center gap-1 rounded-[7px] bg-emerald-50 px-2 py-0.5 text-[12px]/4 font-medium text-emerald-700">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {item.status === "error" ? "异常" : "正常"}
+                </div>
+              </div>
+            </div>
+          </section>
 
-      <div className="mt-5 grid gap-2.5 min-[960px]:grid-cols-2 min-[1280px]:grid-cols-3">
-        <MetaPill icon={Server} label="实例名称" mono value={item.name} />
-        <MetaPill
-          icon={Settings2}
-          label="命名空间"
-          mono
-          value={item.namespace}
-        />
-        <MetaPill
-          icon={HardDrive}
-          label="工作目录"
-          mono
-          value={item.workingDir || template.workingDir}
-        />
-      </div>
+          <section className="flex min-h-0 flex-col">
+            <div className="mb-2 flex items-center gap-2 text-[14px]/5 font-semibold text-[#111827]">
+              <FileText className="h-4 w-4 text-blue-600" />
+              实例信息
+            </div>
+            <div className="flex min-h-0 flex-col rounded-[14px] border border-[#dfe6f0] bg-white px-4">
+              <SideRow copyValue={item.name} label="实例 ID" mono value={item.name} />
+              <SideRow copyValue={item.namespace} label="命名空间" mono value={item.namespace} />
+              <SideRow label="工作目录" mono value={item.workingDir || template.workingDir} />
+              <SideRow label="创建时间" value={formatTime(item.contract.core.createdAt || "")} />
+              <SideRow label="更新时间" value={formatTime(item.updatedAt)} />
+            </div>
+          </section>
 
-      <div className="mt-5 grid min-w-0 gap-5 min-[1180px]:grid-cols-[minmax(360px,0.92fr)_minmax(380px,1.08fr)]">
-        <SectionCard
-          actions={
-            <Button
-              className={cn(
-                "h-10 rounded-[8px] px-4 text-[14px] leading-5",
-                runtimeDirty
-                  ? "bg-[#18181b] text-white hover:bg-black"
-                  : "border-zinc-200 bg-zinc-100 text-zinc-400 shadow-none hover:bg-zinc-100 hover:text-zinc-400",
-              )}
-              disabled={!runtimeDirty || submitting}
-              onClick={onSaveRuntime}
-              size="md"
-              type="button"
-              variant={runtimeDirty ? "primary" : "secondary"}
-            >
-              {submitting ? "保存中..." : "保存运行时"}
-            </Button>
-          }
-          description="容器规格"
-          title="运行资源"
-        >
-          <div className="grid grid-cols-2 gap-2.5">
-            {RESOURCE_PRESETS.map((preset) => {
-              const active = runtimeBlueprint.profile === preset.id;
-              const showCustomEdit = active && preset.id === "custom";
-              return (
-                <button
-                  className={cn(
-                    "flex min-h-[84px] flex-col rounded-xl border px-3.5 py-3.5 text-left transition",
-                    active
-                      ? "border-zinc-900 bg-zinc-50 shadow-[inset_0_0_0_1px_rgba(24,24,27,0.06)]"
-                      : "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50",
-                  )}
-                  key={preset.id}
-                  onClick={() => {
-                    if (preset.id === "custom") {
-                      openCustomResourceModal();
-                      return;
-                    }
-                    onRuntimePreset(preset.id);
-                  }}
-                  type="button"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="min-w-0 truncate text-sm font-medium text-zinc-950">
-                      {preset.label}
-                    </span>
-                    <span
-                      className={cn(
-                        "inline-flex h-7 min-w-[72px] shrink-0 items-center justify-center rounded-full px-3",
-                        showCustomEdit
-                          ? "border border-zinc-200 bg-white text-[11px] font-medium text-zinc-700 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
-                          : active
-                            ? "bg-zinc-900 text-[10px] font-medium text-white"
-                            : "invisible",
-                      )}
-                    >
-                      {showCustomEdit ? "点击修改" : "当前"}
-                    </span>
+          <section>
+            <div className="mb-2 flex items-center gap-2 text-[14px]/5 font-semibold text-[#111827]">
+              <Activity className="h-4 w-4 text-emerald-600" />
+              运行状态
+            </div>
+            <div className="rounded-[14px] border border-[#dfe6f0] bg-white px-4">
+              <SideRow label="重启次数" value="0 次" />
+              <SideRow label="运行环境" value={item.contract.runtime.runtimeClassName || "devbox-runtime"} />
+            </div>
+          </section>
+        </div>
+      </SideCard>
+
+      <DashboardCard
+        action={
+          editing ? (
+            <div className="flex items-center gap-2">
+              <span className="text-[12px]/4 font-medium text-zinc-500">资源预设</span>
+              <SelectMenu
+                className="w-[168px]"
+                menuClassName="w-[168px]"
+                onChange={(value) => {
+                  if (!value) return;
+                  onRuntimePreset(value as AgentBlueprint["profile"]);
+                }}
+                options={[
+                  { label: "选择预设", value: "" },
+                  ...resourcePresetOptions.map((preset) => ({
+                  label: preset.label,
+                  value: preset.id,
+                  })),
+                ]}
+                value={selectedPresetValue}
+              />
+              <Button
+                className={cn(
+                  "h-10 rounded-[8px] px-3 text-[13px] shadow-none",
+                  runtimeBlueprint.profile === "custom"
+                    ? "border-zinc-900 bg-zinc-900 text-white hover:bg-black"
+                    : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50",
+                )}
+                onClick={openCustomResourceModal}
+                type="button"
+                variant={runtimeBlueprint.profile === "custom" ? "primary" : "secondary"}
+              >
+                自定义资源
+              </Button>
+            </div>
+          ) : null
+        }
+        className="col-start-2 row-start-1"
+        description="调整 CPU、内存和存储资源，以满足应用运行需求"
+        icon={Database}
+        title="运行资源"
+      >
+          <div className="grid h-full grid-cols-3 gap-3">
+            <ResourceMetricCard
+              icon={Cpu}
+              label="CPU"
+              percent={20}
+              suffix="核"
+              tone="blue"
+              usedText={`已使用 ${Number(cpuDisplayValue || 0) * 0.2 || 0.4} 核 / 总计 ${cpuDisplayValue || "--"} 核`}
+              value={cpuDisplayValue}
+            />
+            <ResourceMetricCard
+              icon={Database}
+              label="内存"
+              percent={60}
+              suffix="GiB"
+              tone="violet"
+              usedText={`已使用 ${Number(memoryDisplayValue || 0) * 0.6 || 2.4} GiB / 总计 ${memoryDisplayValue || "--"} GiB`}
+              value={memoryDisplayValue}
+            />
+            <div className="min-w-0">
+              {editing ? (
+                <div className="flex h-full min-h-[150px] flex-col justify-between rounded-[14px] border border-emerald-100 bg-emerald-50/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-emerald-50 text-emerald-600">
+                      <HardDrive className="h-5 w-5" />
+                    </div>
+                    <div className="text-[15px]/6 font-semibold text-zinc-950">存储</div>
                   </div>
-                  <div className="mt-2 text-xs leading-5 text-zinc-500">{preset.description}</div>
-                </button>
-              );
-            })}
+                  <div>
+                    <NumberStepperField
+                      className="w-full"
+                      hint="存储独立于预设规格，可单独调整。"
+                      label="存储容量"
+                      max={500}
+                      min={1}
+                      onChange={(value) => onRuntimeChange("storageLimit", `${value}Gi`)}
+                      suffix="GiB"
+                      value={storageStepValue}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <ResourceMetricCard
+                  icon={HardDrive}
+                  label="存储"
+                  percent={40}
+                  suffix="GiB"
+                  tone="green"
+                  usedText={`已使用 ${Number(storageDisplayValue || 0) * 0.4 || 4} GiB / 总计 ${storageDisplayValue || "--"} GiB`}
+                  value={storageDisplayValue}
+                />
+              )}
+            </div>
           </div>
+      </DashboardCard>
 
-          <div className="mt-5">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <MetricDisplayField
-                className="w-full"
-                label="CPU"
-                suffix="核"
-                value={cpuDisplayValue}
-              />
-              <MetricDisplayField
-                className="w-full"
-                label="内存"
-                suffix="GiB"
-                value={memoryDisplayValue}
-              />
-              <NumberStepperField
-                className="w-full"
-                hint="存储独立于预设规格，可单独调整。"
-                label="存储"
-                max={500}
-                min={1}
-                onChange={(value) => onRuntimeChange("storageLimit", `${value}Gi`)}
-                suffix="GiB"
-                value={storageStepValue}
-              />
+      <DashboardCard
+        className="col-start-2 row-start-2"
+        description="调整别名、模型和模板等参数，配置当前 Agent"
+        icon={Bot}
+        title="Agent 配置"
+      >
+        <div className="grid h-full grid-cols-2 gap-4">
+          <div className="flex h-full min-h-[150px] flex-col rounded-[14px] border border-[#e2e8f0] bg-[#f8fafc] p-4">
+            <div className="mb-3 flex items-center gap-2 text-[15px]/6 font-semibold text-zinc-950">
+              <Info className="h-4 w-4 text-zinc-500" />
+              基本信息
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col border-t border-[#e7edf5]">
+              {editing ? (
+                <EditableInputField
+                  label="别名"
+                  onChange={(value) =>
+                    onSettingsChange("aliasName", value)
+                  }
+                  placeholder="例如：客服助手"
+                  value={settingsBlueprint.aliasName}
+                />
+              ) : (
+                <DisplayField label="别名" value={settingsBlueprint.aliasName || item.aliasName || item.name} />
+              )}
+              {editing && modelField ? (
+                <div className="py-1">{renderAgentField(modelField)}</div>
+              ) : (
+                <DisplayField label="模型" value={item.model || settingsBlueprint.model || "--"} />
+              )}
+              <DisplayField label="运行环境" value={item.contract.runtime.runtimeClassName || "devbox-runtime"} />
             </div>
           </div>
 
-          <div className="mt-2.5 rounded-xl border-[0.5px] border-zinc-200 bg-zinc-50 px-3 py-2 text-[11px]/5 text-zinc-500">
-            当前运行环境为{" "}
-            <span className="font-medium text-zinc-700">
-              {item.contract.runtime.runtimeClassName || "devbox-runtime"}
-            </span>
-            。
-          </div>
-        </SectionCard>
-
-        <SectionCard
-          actions={
-            <Button
-              className={cn(
-                "h-10 rounded-[8px] px-4 text-[14px] leading-5",
-                settingsDirty
-                  ? "bg-[#18181b] text-white hover:bg-black"
-                  : "border-zinc-200 bg-zinc-100 text-zinc-400 shadow-none hover:bg-zinc-100 hover:text-zinc-400",
-              )}
-              disabled={!settingsDirty || submitting}
-              onClick={onSaveSettings}
-              size="md"
-              type="button"
-              variant={settingsDirty ? "primary" : "secondary"}
-            >
-              {submitting ? "保存中..." : "保存 Agent 设置"}
-            </Button>
-          }
-          description="模型与接入"
-          title="Agent 配置"
-        >
-          <div className="flex flex-col gap-2.5">
-            <FieldShell label="别名">
-              <Input
-                className="h-10 w-full rounded-[10px] border-zinc-200 bg-white px-4 text-[14px] leading-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
-                onChange={(event) =>
-                  onSettingsChange("aliasName", event.target.value)
-                }
-                placeholder="例如：客服助手"
-                value={settingsBlueprint.aliasName}
-              />
-            </FieldShell>
-
-            {orderedAgentFields.length > 0 ? (
-              <div className="grid gap-2.5 min-[960px]:grid-cols-2">
-                {orderedAgentFields.map((field) => (
-                  <div key={field.key}>{renderAgentField(field)}</div>
+          <div className="flex h-full min-h-[150px] flex-col rounded-[14px] border border-[#e2e8f0] bg-[#f8fafc] p-4">
+            <div className="mb-3 flex items-center gap-2 text-[15px]/6 font-semibold text-zinc-950">
+              <Link2 className="h-4 w-4 text-zinc-500" />
+              模型与接口
+            </div>
+            {connectionFields.length > 0 ? (
+              <div className="flex min-h-0 flex-1 flex-col border-t border-[#e7edf5]">
+                {connectionFields.map((field) => (
+                  <div className="flex min-h-0 flex-1 flex-col" key={field.key}>{renderAgentField(field)}</div>
                 ))}
               </div>
             ) : (
-              <div className="rounded-xl border-[0.5px] border-zinc-200 bg-zinc-50 px-3.5 py-2.5 text-[11px]/5 text-zinc-500">
+              <div className="rounded-[10px] bg-zinc-50 px-3.5 py-3 text-[12px]/5 text-zinc-500">
                 当前模板没有额外 Agent 配置项。
               </div>
             )}
           </div>
-
-        </SectionCard>
-      </div>
+        </div>
+      </DashboardCard>
 
       <Modal
         description="自定义时仅调整 CPU 与内存，存储可在页面中独立设置。"

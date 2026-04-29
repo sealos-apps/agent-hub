@@ -39,11 +39,11 @@ describe('AgentActionsCell', () => {
     fireEvent.pointerDown(screen.getByTitle('更多操作'))
     const menu = await screen.findByRole('menu')
 
-    expect(within(menu).getByRole('menuitem', { name: '对话' })).toBeInTheDocument()
-    expect(within(menu).getByRole('menuitem', { name: '终端' })).toBeInTheDocument()
-    expect(within(menu).getByRole('menuitem', { name: '文件' })).toBeInTheDocument()
     expect(within(menu).getByRole('menuitem', { name: '配置' })).toBeInTheDocument()
     expect(within(menu).getByRole('menuitem', { name: '删除' })).toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: '对话' })).not.toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: '终端' })).not.toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: '文件' })).not.toBeInTheDocument()
     expect(within(menu).queryByRole('menuitem', { name: 'Web UI' })).not.toBeInTheDocument()
   })
 
@@ -82,9 +82,9 @@ describe('AgentActionsCell', () => {
     const menu = await screen.findByRole('menu')
 
     expect(within(menu).getByRole('menuitem', { name: 'Web UI' })).toBeInTheDocument()
-    expect(within(menu).getByRole('menuitem', { name: '终端' })).toBeInTheDocument()
-    expect(within(menu).getByRole('menuitem', { name: '文件' })).toBeInTheDocument()
     expect(within(menu).getByRole('menuitem', { name: '配置' })).toBeInTheDocument()
     expect(within(menu).queryByRole('menuitem', { name: '对话' })).not.toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: '终端' })).not.toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: '文件' })).not.toBeInTheDocument()
   })
 })

@@ -579,7 +579,7 @@ export function AgentsListPage() {
 
   const navigateToAgentTab = (
     item: AgentListItem,
-    tab: 'chat' | 'files' | 'settings',
+    tab: 'chat' | 'files',
   ) => {
     navigate(`/agents/${item.name}?tab=${tab}`, {
       state: buildAgentDetailRouteState(item, 'list'),
@@ -620,7 +620,11 @@ export function AgentsListPage() {
               onStatusFilterChange={setStatusFilter}
               onChat={(item) => navigateToAgentTab(item, 'chat')}
               onDelete={setDeleteTarget}
-              onEdit={(item) => navigateToAgentTab(item, 'settings')}
+              onEdit={(item) => {
+                navigate(`/agents/${item.name}`, {
+                  state: buildAgentDetailRouteState(item, 'list'),
+                })
+              }}
               onFiles={(item) => navigateToAgentTab(item, 'files')}
               onOpenDetail={(item) => {
                 navigate(`/agents/${item.name}`, {

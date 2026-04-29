@@ -3,7 +3,7 @@ import { AgentDetailOverview } from './AgentDetailOverview'
 import { createAgentItemFixture, createTemplateFixture } from '../../../../test/agentFixtures'
 
 describe('AgentDetailOverview', () => {
-  it('shows Hermes access planes and hides entries the template does not declare', () => {
+  it('shows Hermes overview without the old connection module', () => {
     const item = createAgentItemFixture({
       template: createTemplateFixture({ name: 'Hermes Agent', docsLabel: '对话 + 终端' }),
       access: [
@@ -19,15 +19,19 @@ describe('AgentDetailOverview', () => {
       ],
     })
 
-    render(<AgentDetailOverview clusterContext={null} item={item} />)
+    render(<AgentDetailOverview item={item} />)
 
-    expect(screen.getByText('API')).toBeInTheDocument()
-    expect(screen.getByText('SSH')).toBeInTheDocument()
-    expect(screen.getByText('IDE')).toBeInTheDocument()
+    expect(screen.getByText('实例概览')).toBeInTheDocument()
+    expect(screen.getByText('模型环境')).toBeInTheDocument()
+    expect(screen.getByText('最近同步')).toBeInTheDocument()
+    expect(screen.queryByText('运行状态')).not.toBeInTheDocument()
+    expect(screen.queryByText('连接方式')).not.toBeInTheDocument()
+    expect(screen.queryByText('SSH')).not.toBeInTheDocument()
+    expect(screen.queryByText('IDE')).not.toBeInTheDocument()
     expect(screen.queryByText('Web UI')).not.toBeInTheDocument()
   })
 
-  it('keeps OpenClaw detail entrance set limited to the declared web ui plane', () => {
+  it('keeps OpenClaw connection entries hidden in overview', () => {
     const item = createAgentItemFixture({
       templateId: 'openclaw',
       template: createTemplateFixture({
@@ -47,9 +51,11 @@ describe('AgentDetailOverview', () => {
       ],
     })
 
-    render(<AgentDetailOverview clusterContext={null} item={item} />)
+    render(<AgentDetailOverview item={item} />)
 
-    expect(screen.getByText('Web UI')).toBeInTheDocument()
+    expect(screen.getByText('实例概览')).toBeInTheDocument()
+    expect(screen.queryByText('连接方式')).not.toBeInTheDocument()
+    expect(screen.queryByText('Web UI')).not.toBeInTheDocument()
     expect(screen.queryByText('API')).not.toBeInTheDocument()
     expect(screen.queryByText('SSH')).not.toBeInTheDocument()
     expect(screen.queryByText('IDE')).not.toBeInTheDocument()

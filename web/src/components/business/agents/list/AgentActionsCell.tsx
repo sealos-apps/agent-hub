@@ -45,11 +45,6 @@ export function AgentActionsCell({
   onDelete,
   onWebUI,
 }: AgentActionsCellProps) {
-  const terminalButtonClassName =
-    'h-9 min-w-[72px] shrink-0 rounded-[8px] border-zinc-200 bg-white px-3 text-[13px] font-semibold text-zinc-700 shadow-none hover:bg-zinc-50'
-  const detailButtonClassName =
-    'h-9 min-w-[72px] shrink-0 rounded-[8px] border-transparent px-3 text-[13px] font-semibold shadow-[0_1px_2px_rgba(24,24,27,0.1)]'
-
   const chatAction = getActionItem(item, 'open-chat')
   const terminalAction = getActionItem(item, 'open-terminal')
   const filesAction = getActionItem(item, 'open-files')
@@ -142,61 +137,63 @@ export function AgentActionsCell({
     .filter((menuItem): menuItem is NonNullable<typeof menuItem> => Boolean(menuItem))
     .filter((menuItem) => !hiddenMenuActionKeys.has(menuItem.key))
 
+  const renderDropdownContent = () => (
+    <DropdownMenuContent className="w-[196px]" sideOffset={8}>
+      {menuItems.map((menuItem, index) => {
+        const Icon = menuItem.icon
+
+        return (
+          <div key={menuItem.key}>
+            {index > 0 && menuItem.destructive ? <DropdownMenuSeparator /> : null}
+            <DropdownMenuItem
+              destructive={menuItem.destructive}
+              disabled={menuItem.disabled}
+              onClick={menuItem.onClick}
+              title={menuItem.title}
+            >
+              <Icon size={15} />
+              <span>{menuItem.label}</span>
+            </DropdownMenuItem>
+          </div>
+        )
+      })}
+    </DropdownMenuContent>
+  )
+
   return (
-    <div className="relative inline-flex min-w-[188px] flex-nowrap items-center justify-start gap-2 whitespace-nowrap">
-      <Button
-        className={terminalButtonClassName}
+    <div className="relative inline-flex min-w-[232px] flex-nowrap items-center justify-start gap-2 whitespace-nowrap">
+      <button
+        className="inline-flex h-10 w-[104px] shrink-0 items-center justify-center gap-2 rounded-[8px] bg-zinc-950 px-3 text-[14px]/5 font-semibold text-white shadow-[0_1px_2px_rgba(24,24,27,0.18)] transition hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50"
         disabled={!canTerminal}
         onClick={() => onTerminal(item)}
-        size="sm"
         title={terminalAction?.reason || item.terminalDisabledReason || '当前状态不可进入控制台'}
         type="button"
-        variant="secondary"
       >
-        <Terminal size={15} />
-        控制台
-      </Button>
+        <Terminal className="h-5 w-5 shrink-0 text-white" strokeWidth={2} />
+        <span>控制台</span>
+      </button>
       <Button
-        className={detailButtonClassName}
+        className="h-10 min-w-[72px] shrink-0 rounded-[8px] border-0 bg-zinc-100 px-4 py-2 text-[14px]/5 font-semibold text-zinc-900 shadow-none hover:bg-zinc-200/60"
         onClick={() => onOpenDetail(item)}
         size="sm"
         type="button"
-        variant="primary"
+        variant="secondary"
       >
         详情
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            className="h-9 w-9 shrink-0 rounded-[10px] border-zinc-200 bg-white px-0 text-zinc-600 shadow-[0_1px_2px_rgba(24,24,27,0.05)] outline-none ring-0 hover:bg-zinc-50 hover:text-zinc-900 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
+            className="h-10 w-10 shrink-0 rounded-[8px] border-0 bg-transparent px-0 text-zinc-600 shadow-none outline-none ring-0 hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
             size="sm"
             title="更多操作"
             type="button"
             variant="secondary"
           >
-            <Ellipsis size={17} />
+            <Ellipsis className="h-5 w-5" strokeWidth={2} />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-[196px]" sideOffset={8}>
-          {menuItems.map((menuItem, index) => {
-            const Icon = menuItem.icon
-
-            return (
-              <div key={menuItem.key}>
-                {index > 0 && menuItem.destructive ? <DropdownMenuSeparator /> : null}
-                <DropdownMenuItem
-                  destructive={menuItem.destructive}
-                  disabled={menuItem.disabled}
-                  onClick={menuItem.onClick}
-                  title={menuItem.title}
-                >
-                  <Icon size={15} />
-                  <span>{menuItem.label}</span>
-                </DropdownMenuItem>
-              </div>
-            )
-          })}
-        </DropdownMenuContent>
+        {renderDropdownContent()}
       </DropdownMenu>
     </div>
   )

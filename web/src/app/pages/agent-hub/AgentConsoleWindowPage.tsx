@@ -71,6 +71,31 @@ type ExplorerErrorMap = Record<string, string>
 
 const fileSystemRootPath = explorerFileSystemRootPath
 const mockWorkspaceRoot = '/workspace'
+const CONSOLE_SCALE_BREAKPOINT = 1180
+const CONSOLE_SCALE_CANVAS_WIDTH = 1120
+const CONSOLE_SCALE_CANVAS_HEIGHT = 720
+const CONSOLE_SCALE_PADDING = 24
+
+type ConsoleScaleState = {
+  enabled: boolean
+  scale: number
+  canvasHeight: number
+}
+
+const resolveConsoleScaleState = (): ConsoleScaleState => {
+  if (typeof window === 'undefined') {
+    return { enabled: false, scale: 1, canvasHeight: CONSOLE_SCALE_CANVAS_HEIGHT }
+  }
+
+  const availableWidth = Math.max(320, window.innerWidth - CONSOLE_SCALE_PADDING)
+  const scale = Number(Math.min(1, availableWidth / CONSOLE_SCALE_CANVAS_WIDTH).toFixed(4))
+
+  return {
+    enabled: window.innerWidth < CONSOLE_SCALE_BREAKPOINT || scale < 0.995,
+    scale,
+    canvasHeight: CONSOLE_SCALE_CANVAS_HEIGHT,
+  }
+}
 
 const mockExplorerChildren: ExplorerChildrenMap = {
   '/workspace': [
@@ -353,6 +378,7 @@ export function AgentConsoleWindowPage() {
   const [explorerExpanded, setExplorerExpanded] = useState<ExplorerFlagMap>(mockExplorerExpanded)
   const [explorerLoading, setExplorerLoading] = useState<ExplorerFlagMap>({})
   const [explorerErrors, setExplorerErrors] = useState<ExplorerErrorMap>({})
+  const [consoleScale, setConsoleScale] = useState<ConsoleScaleState>(() => resolveConsoleScaleState())
 
   const tabSeedRef = useRef(0)
   const didAutoOpenTerminalRef = useRef(false)
@@ -378,6 +404,21 @@ export function AgentConsoleWindowPage() {
 
   const pageTabs = useMemo(() => tabs.filter((tab) => tab.id !== initialConsoleTabId), [tabs])
   const visibleTabs = pageTabs.length ? pageTabs : tabs
+
+  useEffect(() => {
+    const syncScale = () => {
+      setConsoleScale(resolveConsoleScaleState())
+    }
+
+    syncScale()
+    window.addEventListener('resize', syncScale)
+    window.addEventListener('orientationchange', syncScale)
+
+    return () => {
+      window.removeEventListener('resize', syncScale)
+      window.removeEventListener('orientationchange', syncScale)
+    }
+  }, [])
   const activeTab = useMemo(() => {
     if (pageTabs.length && activeTabId === initialConsoleTabId) return pageTabs[0]
     return tabs.find((tab) => tab.id === activeTabId) || pageTabs[0] || tabs[0]
@@ -879,7 +920,41 @@ export function AgentConsoleWindowPage() {
         </button>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white px-4 py-5 sm:px-6 lg:px-12 lg:py-6">
+      <div
+        className={
+          consoleScale.enabled
+            ? 'min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-white p-3'
+            : 'flex min-h-0 flex-1 flex-col overflow-hidden bg-white px-4 py-5 sm:px-6 lg:px-12 lg:py-6'
+        }
+      >
+        <div
+          className={consoleScale.enabled ? 'relative' : 'contents'}
+          style={
+            consoleScale.enabled
+              ? {
+                width: CONSOLE_SCALE_CANVAS_WIDTH * consoleScale.scale,
+                height: consoleScale.canvasHeight * consoleScale.scale,
+              }
+              : undefined
+          }
+        >
+        <div
+          className={
+            consoleScale.enabled
+              ? 'absolute left-0 top-0 flex min-w-0 flex-col'
+              : 'flex min-h-0 flex-1 flex-col'
+          }
+          style={
+            consoleScale.enabled
+              ? {
+                width: CONSOLE_SCALE_CANVAS_WIDTH,
+                height: consoleScale.canvasHeight,
+                transform: `scale(${consoleScale.scale})`,
+                transformOrigin: 'top left',
+              }
+              : undefined
+          }
+        >
         {message ? (
           <div className="mb-4 flex items-center justify-between gap-3 rounded-[8px] border border-amber-200 bg-amber-50 px-4 py-2 text-[13px] text-amber-800">
             <span className="min-w-0 flex-1">{message}</span>
@@ -894,7 +969,7 @@ export function AgentConsoleWindowPage() {
           </div>
         ) : null}
 
-        <div className="grid min-h-0 flex-1 gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)] gap-5">
           <aside className="flex min-h-0 flex-col overflow-hidden rounded-[12px] border border-zinc-200 bg-white">
             <div className="border-b border-zinc-100 px-4 py-4">
               <div className="flex items-center justify-between gap-2">
@@ -1054,6 +1129,8 @@ export function AgentConsoleWindowPage() {
               {activeTab?.type === 'file' ? <FileTabPane tab={activeTab} /> : null}
             </div>
           </section>
+        </div>
+        </div>
         </div>
       </div>
     </main>

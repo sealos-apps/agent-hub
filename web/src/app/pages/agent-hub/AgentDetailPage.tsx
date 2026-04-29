@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   useLocation,
   useNavigate,
@@ -9,18 +9,28 @@ import { DeleteAgentModal } from "../../../components/business/agents/DeleteAgen
 import { AgentChatWorkspace } from "../../../components/business/chat/AgentChatWorkspace";
 import { AgentFilesWorkspace } from "../../../components/business/files/AgentFilesWorkspace";
 import { AgentWebUIWorkspace } from "../../../components/business/web-ui/AgentWebUIWorkspace";
-import { writeBlueprintSettingValue } from "../../../domains/agents/blueprintFields";
+import { Button } from "../../../components/ui/Button";
+import { Modal } from "../../../components/ui/Modal";
+import { SelectMenu } from "../../../components/ui/SelectMenu";
+import {
+  readBlueprintSettingValue,
+  writeBlueprintSettingValue,
+} from "../../../domains/agents/blueprintFields";
 import { createBlueprintFromAgentItem } from "../../../domains/agents/mappers";
-import { createEmptyBlueprint } from "../../../domains/agents/templates";
+import {
+  createEmptyBlueprint,
+  RESOURCE_PRESETS,
+} from "../../../domains/agents/templates";
 import type {
   AgentBlueprint,
   AgentFileItem,
   AgentListItem,
+  AgentSettingField,
+  AgentTemplateDefinition,
   ChatSessionState,
   FilesSessionState,
 } from "../../../domains/agents/types";
 import { AgentDetailHeader } from "./components/AgentDetailHeader";
-import { AgentDetailOverview } from "./components/AgentDetailOverview";
 import { AgentSettingsWorkspace } from "./components/AgentSettingsWorkspace";
 import {
   AgentDetailSidebar,
@@ -36,11 +46,255 @@ import { useAgentFiles } from "./hooks/useAgentFiles";
 import { applyBlueprintPreset, updateBlueprintField } from "./lib/blueprint";
 import type { AgentDetailRouteState } from "./lib/navigation";
 import { openAgentConsoleDesktopWindow } from "./lib/consoleWindow";
+import { cn } from "../../../lib/format";
 
 const MOCK_AGENT_ID_PREFIX = "mock-agent-";
+const DETAIL_SCALE_BREAKPOINT = 1180;
+const DETAIL_SCALE_CANVAS_WIDTH = 1024;
+const DETAIL_SCALE_MAX_CANVAS_HEIGHT = 840;
+const DETAIL_SCALE_PADDING = 24;
+
+type DetailScaleState = {
+  enabled: boolean;
+  scale: number;
+  canvasHeight: number;
+};
 
 function isMockAgentItem(item: AgentListItem | null | undefined) {
   return Boolean(item?.id?.startsWith(MOCK_AGENT_ID_PREFIX));
+}
+
+function resolveDetailScaleState(): DetailScaleState {
+  if (typeof window === "undefined") {
+    return { enabled: false, scale: 1, canvasHeight: 0 };
+  }
+
+  const availableWidth = Math.max(320, window.innerWidth - DETAIL_SCALE_PADDING);
+  const widthScale = Math.min(1, availableWidth / DETAIL_SCALE_CANVAS_WIDTH);
+  const scale = Number(widthScale.toFixed(4));
+  const canvasHeight = DETAIL_SCALE_MAX_CANVAS_HEIGHT;
+
+  return {
+    enabled: window.innerWidth < DETAIL_SCALE_BREAKPOINT || scale < 0.995,
+    scale,
+    canvasHeight,
+  };
+}
+
+function parseStorageGi(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return 10;
+  if (normalized.endsWith("gi")) {
+    const numeric = Number(normalized.slice(0, -2));
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : 10;
+  }
+  if (normalized.endsWith("mi")) {
+    const numeric = Number(normalized.slice(0, -2));
+    return Number.isFinite(numeric) && numeric > 0 ? Math.max(1, Math.round(numeric / 1024)) : 10;
+  }
+  const numeric = Number(normalized);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 10;
+}
+
+function formatCpuLabel(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "--";
+  if (normalized.endsWith("m")) {
+    const numeric = Number(normalized.slice(0, -1));
+    return Number.isFinite(numeric) ? `${numeric / 1000} 核` : value;
+  }
+  return `${value} 核`;
+}
+
+function formatMemoryLabel(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "--";
+  if (normalized.endsWith("mi")) {
+    const numeric = Number(normalized.slice(0, -2));
+    return Number.isFinite(numeric) ? `${numeric / 1024} GiB` : value;
+  }
+  if (normalized.endsWith("gi")) {
+    return `${normalized.slice(0, -2)} GiB`;
+  }
+  return value;
+}
+
+function ConfigField({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="grid min-h-12 grid-cols-[108px_minmax(0,1fr)] items-center gap-4 border-b border-zinc-100 py-3 last:border-b-0">
+      <span className="text-[13px]/5 text-zinc-500">{label}</span>
+      <div className="min-w-0">{children}</div>
+    </label>
+  );
+}
+
+function AgentConfigEditModal({
+  open,
+  item,
+  template,
+  runtimeBlueprint,
+  settingsBlueprint,
+  submitting,
+  onClose,
+  onRuntimePreset,
+  onRuntimeChange,
+  onSettingsChange,
+  onSettingsFieldChange,
+  onSave,
+}: {
+  open: boolean;
+  item: AgentListItem;
+  template: AgentTemplateDefinition | null;
+  runtimeBlueprint: AgentBlueprint;
+  settingsBlueprint: AgentBlueprint;
+  submitting: boolean;
+  onClose: () => void;
+  onRuntimePreset: (presetId: AgentBlueprint["profile"]) => void;
+  onRuntimeChange: (field: keyof AgentBlueprint, value: string) => void;
+  onSettingsChange: (field: keyof AgentBlueprint, value: string) => void;
+  onSettingsFieldChange: (field: AgentSettingField, value: string) => void;
+  onSave: () => void;
+}) {
+  if (!template) return null;
+
+  const modelField =
+    template.settings.agent.find((field) => field.binding.key === "model") ||
+    null;
+  const modelProviderField =
+    template.settings.agent.find((field) => field.binding.key === "modelProvider") ||
+    null;
+  const modelValue = modelField
+    ? readBlueprintSettingValue(settingsBlueprint, modelField)
+    : settingsBlueprint.model;
+  const storageValue = parseStorageGi(runtimeBlueprint.storageLimit);
+  const fixedPresets = RESOURCE_PRESETS.filter((preset) => preset.id !== "custom");
+  const presetValue = fixedPresets.some((preset) => preset.id === runtimeBlueprint.profile)
+    ? runtimeBlueprint.profile
+    : "";
+
+  const handleModelChange = (value: string) => {
+    const option = template.modelOptions.find((entry) => entry.value === value) || null;
+    if (modelField) {
+      onSettingsFieldChange(modelField, value);
+    } else {
+      onSettingsChange("model", value);
+    }
+
+    if (modelProviderField) {
+      onSettingsFieldChange(modelProviderField, option?.provider || "");
+    } else {
+      onSettingsChange("modelProvider", option?.provider || "");
+    }
+  };
+
+  return (
+    <Modal
+      description="集中调整资源规格与 Agent 基础配置，保存后应用到当前实例。"
+      footer={
+        <>
+          <Button disabled={submitting} onClick={onClose} type="button" variant="secondary">
+            取消
+          </Button>
+          <Button disabled={submitting} onClick={onSave} type="button">
+            {submitting ? "保存中..." : "保存配置"}
+          </Button>
+        </>
+      }
+      onClose={onClose}
+      open={open}
+      title="修改配置"
+      widthClassName="max-w-2xl"
+    >
+      <div className="rounded-[14px] border border-zinc-200 bg-white px-4">
+        <ConfigField label="预设配置">
+          <SelectMenu
+            className="w-full"
+            onChange={(value) => {
+              if (!value) return;
+              onRuntimePreset(value as AgentBlueprint["profile"]);
+            }}
+            options={[
+              { label: "选择预设", value: "" },
+              ...fixedPresets.map((preset) => ({
+                label: `${preset.label} · CPU：${formatCpuLabel(preset.cpu)} / 内存：${formatMemoryLabel(preset.memory)}`,
+                value: preset.id,
+              })),
+            ]}
+            portal
+            showSelectedState={false}
+            value={presetValue}
+          />
+        </ConfigField>
+
+        <ConfigField label="存储容量">
+          <div className="flex items-center gap-2">
+            <button
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] border border-zinc-200 bg-white text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-900"
+              onClick={() => onRuntimeChange("storageLimit", `${Math.max(1, storageValue - 1)}Gi`)}
+              type="button"
+            >
+              -
+            </button>
+            <input
+              className="h-9 min-w-0 flex-1 rounded-[8px] border border-zinc-200 bg-white px-3 text-center text-[14px]/5 font-medium text-zinc-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+              min={1}
+              onChange={(event) => {
+                const numeric = Number(event.target.value);
+                if (!Number.isFinite(numeric)) return;
+                onRuntimeChange("storageLimit", `${Math.max(1, numeric)}Gi`);
+              }}
+              type="number"
+              value={storageValue}
+            />
+            <span className="w-10 text-sm text-zinc-500">GiB</span>
+            <button
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] border border-zinc-200 bg-white text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-900"
+              onClick={() => onRuntimeChange("storageLimit", `${storageValue + 1}Gi`)}
+              type="button"
+            >
+              +
+            </button>
+          </div>
+        </ConfigField>
+
+        <ConfigField label="别名">
+          <input
+            className="h-10 w-full rounded-[8px] border border-zinc-200 bg-white px-3 text-[14px]/5 font-medium text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+            onChange={(event) => onSettingsChange("aliasName", event.target.value)}
+            placeholder="例如：客服助手"
+            value={settingsBlueprint.aliasName}
+          />
+        </ConfigField>
+
+        <ConfigField label="模型">
+          <SelectMenu
+            className="w-full"
+            menuClassName="max-h-[188px] overflow-y-auto"
+            onChange={handleModelChange}
+            options={template.modelOptions.map((option) => ({
+                label: option.helper ? `${option.label} · ${option.helper}` : option.label,
+                value: option.value,
+              }))}
+            portal
+            showSelectedState={false}
+            value={modelValue}
+          />
+        </ConfigField>
+
+        <ConfigField label="运行环境">
+          <div className="text-[14px]/5 font-medium text-zinc-900">
+            {item.contract.runtime.runtimeClassName || "devbox-runtime"}
+          </div>
+        </ConfigField>
+      </div>
+    </Modal>
+  );
 }
 
 export function AgentDetailPage() {
@@ -61,6 +315,10 @@ export function AgentDetailPage() {
     useState<AgentBlueprint>(() => createEmptyBlueprint());
   const [settingsEditBlueprint, setSettingsEditBlueprint] =
     useState<AgentBlueprint>(() => createEmptyBlueprint());
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [detailScale, setDetailScale] = useState<DetailScaleState>(() =>
+    resolveDetailScaleState(),
+  );
   const navigationState = location.state as AgentDetailRouteState | null;
 
   const { chatSession, openChat, sendChatMessage, setChatDraft } = useAgentChat(
@@ -137,6 +395,21 @@ export function AgentDetailPage() {
     setMockChatDraft("");
     setMockChatMessages(initialMockChatMessages);
   }, [initialMockChatMessages, isMockItem]);
+
+  useEffect(() => {
+    const syncScale = () => {
+      setDetailScale(resolveDetailScaleState());
+    };
+
+    syncScale();
+    window.addEventListener("resize", syncScale);
+    window.addEventListener("orientationchange", syncScale);
+
+    return () => {
+      window.removeEventListener("resize", syncScale);
+      window.removeEventListener("orientationchange", syncScale);
+    };
+  }, []);
 
   const mockChatSession = useMemo<ChatSessionState | null>(() => {
     if (!item || !isMockItem) return null;
@@ -305,6 +578,50 @@ export function AgentDetailPage() {
     }
   }, [closeFiles, currentTab, filesSession, item, openFiles]);
 
+  useEffect(() => {
+    setConfigModalOpen(false);
+    setRuntimeEditingItem(null);
+    setSettingsEditingItem(null);
+    setRuntimeEditBlueprint(createEmptyBlueprint());
+    setSettingsEditBlueprint(createEmptyBlueprint());
+  }, [item?.name]);
+
+  const activeRuntimeBlueprint = useMemo(() => {
+    if (!item) return createEmptyBlueprint();
+    return runtimeEditingItem?.name === item.name
+      ? runtimeEditBlueprint
+      : createBlueprintFromAgentItem(item);
+  }, [item, runtimeEditBlueprint, runtimeEditingItem?.name]);
+
+  const activeSettingsBlueprint = useMemo(() => {
+    if (!item) return createEmptyBlueprint();
+    return settingsEditingItem?.name === item.name
+      ? settingsEditBlueprint
+      : createBlueprintFromAgentItem(item);
+  }, [item, settingsEditBlueprint, settingsEditingItem?.name]);
+
+  const originalBlueprint = useMemo(
+    () => (item ? createBlueprintFromAgentItem(item) : createEmptyBlueprint()),
+    [item],
+  );
+
+  const runtimeDirty = Boolean(item) && (
+    activeRuntimeBlueprint.profile !== originalBlueprint.profile ||
+    activeRuntimeBlueprint.cpu !== originalBlueprint.cpu ||
+    activeRuntimeBlueprint.memory !== originalBlueprint.memory ||
+    activeRuntimeBlueprint.storageLimit !== originalBlueprint.storageLimit
+  );
+
+  const settingsDirty = Boolean(item) && (
+    activeSettingsBlueprint.aliasName !== originalBlueprint.aliasName ||
+    activeSettingsBlueprint.model !== originalBlueprint.model ||
+    activeSettingsBlueprint.modelProvider !== originalBlueprint.modelProvider ||
+    activeSettingsBlueprint.modelBaseURL !== originalBlueprint.modelBaseURL ||
+    activeSettingsBlueprint.keySource !== originalBlueprint.keySource ||
+    JSON.stringify(activeSettingsBlueprint.settingsValues) !==
+      JSON.stringify(originalBlueprint.settingsValues)
+  );
+
   const closeRuntimeEditFlow = () => {
     setRuntimeEditingItem(null);
     setRuntimeEditBlueprint(createEmptyBlueprint());
@@ -313,40 +630,6 @@ export function AgentDetailPage() {
   const closeSettingsEditFlow = () => {
     setSettingsEditingItem(null);
     setSettingsEditBlueprint(createEmptyBlueprint());
-  };
-
-  const handleSubmitRuntime = async (
-    targetItem: AgentListItem,
-    nextBlueprint: AgentBlueprint,
-  ) => {
-    try {
-      await controller.updateAgentRuntimeFromBlueprint(
-        targetItem,
-        nextBlueprint,
-      );
-      closeRuntimeEditFlow();
-    } catch (error) {
-      controller.setMessage(
-        error instanceof Error ? error.message : "更新失败",
-      );
-    }
-  };
-
-  const handleSubmitSettings = async (
-    targetItem: AgentListItem,
-    nextBlueprint: AgentBlueprint,
-  ) => {
-    try {
-      await controller.updateAgentSettingsFromBlueprint(
-        targetItem,
-        nextBlueprint,
-      );
-      closeSettingsEditFlow();
-    } catch (error) {
-      controller.setMessage(
-        error instanceof Error ? error.message : "更新失败",
-      );
-    }
   };
 
   const handleDelete = async () => {
@@ -400,26 +683,108 @@ export function AgentDetailPage() {
     }
   };
 
+  const openConfigModal = () => {
+    if (!item) return;
+    const blueprint = createBlueprintFromAgentItem(item);
+    setRuntimeEditingItem(item);
+    setSettingsEditingItem(item);
+    setRuntimeEditBlueprint(blueprint);
+    setSettingsEditBlueprint(blueprint);
+    setConfigModalOpen(true);
+  };
+
+  const closeConfigModal = () => {
+    closeRuntimeEditFlow();
+    closeSettingsEditFlow();
+    setConfigModalOpen(false);
+  };
+
+  const handleSaveConfig = async () => {
+    if (!item) return;
+
+    if (isMockAgentItem(item)) {
+      closeConfigModal();
+      return;
+    }
+
+    if (!runtimeDirty && !settingsDirty) {
+      closeConfigModal();
+      return;
+    }
+
+    try {
+      if (runtimeDirty) {
+        await controller.updateAgentRuntimeFromBlueprint(
+          item,
+          activeRuntimeBlueprint,
+        );
+      }
+      if (settingsDirty) {
+        await controller.updateAgentSettingsFromBlueprint(
+          item,
+          activeSettingsBlueprint,
+        );
+      }
+      closeConfigModal();
+    } catch (error) {
+      controller.setMessage(
+        error instanceof Error ? error.message : "保存失败",
+      );
+    }
+  };
+
   const renderTabContent = () => {
     if (!item) return null;
-    const runtimeBlueprint =
-      runtimeEditingItem?.name === item.name
-        ? runtimeEditBlueprint
-        : createBlueprintFromAgentItem(item);
-    const settingsBlueprint =
-      settingsEditingItem?.name === item.name
-        ? settingsEditBlueprint
-        : createBlueprintFromAgentItem(item);
+    const renderUnifiedOverview = () => (
+      <AgentSettingsWorkspace
+        editing={false}
+        item={item}
+        onRuntimeChange={(field, value) => {
+          setRuntimeEditingItem(item);
+          setRuntimeEditBlueprint((current) => {
+            const base =
+              current.appName === item.name ? current : activeRuntimeBlueprint;
+            return updateBlueprintField(base, field, value);
+          });
+        }}
+        onRuntimePreset={(presetId) => {
+          setRuntimeEditingItem(item);
+          setRuntimeEditBlueprint((current) => {
+            const base =
+              current.appName === item.name ? current : activeRuntimeBlueprint;
+            return applyBlueprintPreset(base, presetId);
+          });
+        }}
+        onSettingsChange={(field, value) => {
+          setSettingsEditingItem(item);
+          setSettingsEditBlueprint((current) => {
+            const base =
+              current.appName === item.name ? current : activeSettingsBlueprint;
+            return updateBlueprintField(base, field, value);
+          });
+        }}
+        onSettingsFieldChange={(field, value) => {
+          setSettingsEditingItem(item);
+          setSettingsEditBlueprint((current) => {
+            const base =
+              current.appName === item.name ? current : activeSettingsBlueprint;
+            return writeBlueprintSettingValue(base, field, value);
+          });
+        }}
+        runtimeBlueprint={activeRuntimeBlueprint}
+        settingsBlueprint={activeSettingsBlueprint}
+        template={controller.findTemplateById(item.templateId)}
+        workspaceModelBaseURL={controller.workspaceAIProxyModelBaseURL}
+        workspaceModelKeyReady={Boolean(
+          controller.workspaceAIProxyToken?.key,
+        )}
+        workspaceRegion={controller.workspaceRegion}
+      />
+    );
 
     switch (currentTab) {
       case "overview":
-        return (
-          <AgentDetailOverview
-            clusterContext={controller.clusterContext}
-            item={item}
-            onErrorMessage={controller.setMessage}
-          />
-        );
+        return renderUnifiedOverview();
       case "chat":
         return (
           <AgentChatWorkspace
@@ -552,58 +917,7 @@ export function AgentDetailPage() {
           />
         );
       case "settings":
-        return (
-          <AgentSettingsWorkspace
-            item={item}
-            onRuntimeChange={(field, value) => {
-              setRuntimeEditingItem(item);
-              setRuntimeEditBlueprint((current) => {
-                const base =
-                  current.appName === item.name ? current : runtimeBlueprint;
-                return updateBlueprintField(base, field, value);
-              });
-            }}
-            onRuntimePreset={(presetId) => {
-              setRuntimeEditingItem(item);
-              setRuntimeEditBlueprint((current) => {
-                const base =
-                  current.appName === item.name ? current : runtimeBlueprint;
-                return applyBlueprintPreset(base, presetId);
-              });
-            }}
-            onSaveRuntime={() =>
-              void handleSubmitRuntime(item, runtimeBlueprint)
-            }
-            onSaveSettings={() =>
-              void handleSubmitSettings(item, settingsBlueprint)
-            }
-            onSettingsChange={(field, value) => {
-              setSettingsEditingItem(item);
-              setSettingsEditBlueprint((current) => {
-                const base =
-                  current.appName === item.name ? current : settingsBlueprint;
-                return updateBlueprintField(base, field, value);
-              });
-            }}
-            onSettingsFieldChange={(field, value) => {
-              setSettingsEditingItem(item);
-              setSettingsEditBlueprint((current) => {
-                const base =
-                  current.appName === item.name ? current : settingsBlueprint;
-                return writeBlueprintSettingValue(base, field, value);
-              });
-            }}
-            runtimeBlueprint={runtimeBlueprint}
-            settingsBlueprint={settingsBlueprint}
-            submitting={controller.submitting}
-            template={controller.findTemplateById(item.templateId)}
-            workspaceModelBaseURL={controller.workspaceAIProxyModelBaseURL}
-            workspaceModelKeyReady={Boolean(
-              controller.workspaceAIProxyToken?.key,
-            )}
-            workspaceRegion={controller.workspaceRegion}
-          />
-        );
+        return renderUnifiedOverview();
       case "web-ui":
         return (
           <AgentWebUIWorkspace
@@ -655,46 +969,130 @@ export function AgentDetailPage() {
 
   return (
     <AgentWorkspaceShell>
-      <div className="flex h-full min-w-0 flex-col px-6 lg:px-12">
-        <AgentDetailHeader
-          item={item}
-          onDelete={() => {
-            if (isMockAgentItem(item)) {
-              return;
-            }
-            setDeleteTarget(item);
-          }}
-          onOpenConfig={() => setCurrentTab("settings")}
-          onOpenTerminalWindow={() => void handleOpenTerminalWindow()}
-          onToggleState={handleToggleState}
-        />
-
-        <main className="flex min-h-0 flex-1 flex-col gap-5 pb-8 lg:pb-10">
-          <AgentHubOverview
-            message={controller.message}
-            onClose={() => controller.setMessage("")}
+      <div
+        className={
+          detailScale.enabled
+            ? "h-full w-full overflow-x-hidden overflow-y-auto p-3"
+            : "h-full w-full overflow-hidden"
+        }
+      >
+        <div
+          className={detailScale.enabled ? "relative" : "contents"}
+          style={
+            detailScale.enabled
+              ? {
+                width: DETAIL_SCALE_CANVAS_WIDTH * detailScale.scale,
+                height: detailScale.canvasHeight * detailScale.scale,
+              }
+              : undefined
+          }
+        >
+        <div
+          className={cn(
+            "flex min-w-0 flex-col",
+            detailScale.enabled
+              ? "absolute left-0 top-0 max-w-none px-0"
+              : "mx-auto h-full w-full max-w-[1600px] px-5 lg:px-7 2xl:px-8",
+          )}
+          style={
+            detailScale.enabled
+              ? {
+                width: DETAIL_SCALE_CANVAS_WIDTH,
+                height: detailScale.canvasHeight,
+                transform: `scale(${detailScale.scale})`,
+                transformOrigin: "top left",
+              }
+              : undefined
+          }
+        >
+          <AgentDetailHeader
+            item={item}
+            onDelete={() => {
+              if (isMockAgentItem(item)) {
+                return;
+              }
+              setDeleteTarget(item);
+            }}
+            configActionDisabled={controller.submitting}
+            configEditing={false}
+            onOpenConfig={openConfigModal}
+            onOpenTerminalWindow={() => void handleOpenTerminalWindow()}
+            onToggleState={handleToggleState}
           />
 
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-hidden min-[860px]:flex-row">
-            <AgentDetailSidebar
-              currentTab={currentTab}
-              item={item}
-              onTabChange={setCurrentTab}
+          <main className="flex min-h-0 flex-1 flex-col gap-3 pb-5">
+            <AgentHubOverview
+              message={controller.message}
+              onClose={() => controller.setMessage("")}
             />
-            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
-              {renderTabContent()}
-            </div>
-          </div>
-        </main>
 
-        <DeleteAgentModal
-          item={deleteTarget}
-          onClose={() => setDeleteTarget(null)}
-          onConfirm={handleDelete}
-          open={Boolean(deleteTarget)}
-          submitting={controller.deleting}
-        />
+            <div className="flex min-h-0 min-w-0 flex-1 flex-row gap-4 overflow-hidden">
+              {currentTab === "overview" ? null : (
+                <AgentDetailSidebar
+                  currentTab={currentTab}
+                  item={item}
+                  onTabChange={setCurrentTab}
+                />
+              )}
+              <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+                {renderTabContent()}
+              </div>
+            </div>
+          </main>
+        </div>
+        </div>
       </div>
+
+      <DeleteAgentModal
+        item={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        open={Boolean(deleteTarget)}
+        submitting={controller.deleting}
+      />
+
+      <AgentConfigEditModal
+        item={item}
+        onClose={closeConfigModal}
+        onRuntimeChange={(field, value) => {
+          setRuntimeEditingItem(item);
+          setRuntimeEditBlueprint((current) => {
+            const base =
+              current.appName === item.name ? current : activeRuntimeBlueprint;
+            return updateBlueprintField(base, field, value);
+          });
+        }}
+        onRuntimePreset={(presetId) => {
+          setRuntimeEditingItem(item);
+          setRuntimeEditBlueprint((current) => {
+            const base =
+              current.appName === item.name ? current : activeRuntimeBlueprint;
+            return applyBlueprintPreset(base, presetId);
+          });
+        }}
+        onSave={() => void handleSaveConfig()}
+        onSettingsChange={(field, value) => {
+          setSettingsEditingItem(item);
+          setSettingsEditBlueprint((current) => {
+            const base =
+              current.appName === item.name ? current : activeSettingsBlueprint;
+            return updateBlueprintField(base, field, value);
+          });
+        }}
+        onSettingsFieldChange={(field, value) => {
+          setSettingsEditingItem(item);
+          setSettingsEditBlueprint((current) => {
+            const base =
+              current.appName === item.name ? current : activeSettingsBlueprint;
+            return writeBlueprintSettingValue(base, field, value);
+          });
+        }}
+        open={configModalOpen}
+        runtimeBlueprint={activeRuntimeBlueprint}
+        settingsBlueprint={activeSettingsBlueprint}
+        submitting={controller.submitting}
+        template={controller.findTemplateById(item.templateId)}
+      />
     </AgentWorkspaceShell>
   );
 }

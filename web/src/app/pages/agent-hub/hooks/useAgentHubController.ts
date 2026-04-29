@@ -55,6 +55,9 @@ import {
 
 const WORKSPACE_AIPROXY_TOKEN_NAME = "Agent-Hub";
 const WORKSPACE_TOKEN_RETRY_COOLDOWN_MS = 30_000;
+const ENABLE_MOCK_AGENTS =
+  import.meta.env.DEV &&
+  String(import.meta.env.VITE_ENABLE_MOCK_AGENTS || "").toLowerCase() === "true";
 
 type LoadedSnapshot = {
   clusterContext: ClusterContext;
@@ -293,7 +296,7 @@ export function useAgentHubController() {
           systemConfig: nextSystemConfig,
         };
       } catch (error) {
-        if (import.meta.env.DEV && !resolvedClusterContext?.kubeconfig) {
+        if (ENABLE_MOCK_AGENTS && !resolvedClusterContext?.kubeconfig) {
           const nextClusterContext = buildMockClusterContext();
           const nextClusterInfo = buildMockClusterInfo();
           const nextTemplates = buildMockTemplates();

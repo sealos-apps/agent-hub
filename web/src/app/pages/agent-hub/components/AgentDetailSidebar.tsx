@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import {
   Bot,
   FolderOpen,
@@ -13,7 +14,7 @@ import { cn } from '../../../../lib/format'
 
 export type AgentDetailTab = AgentWorkspaceItem['key']
 
-export const HIDDEN_AGENT_DETAIL_TABS = new Set<AgentDetailTab>(['chat', 'files'])
+export const HIDDEN_AGENT_DETAIL_TABS = new Set<AgentDetailTab>(['overview', 'chat', 'files', 'settings'])
 
 interface AgentDetailSidebarProps {
   item: AgentListItem
@@ -44,6 +45,10 @@ export function AgentDetailSidebar({
       enabled: workspace.enabled,
       reason: workspace.reason || '',
     }));
+
+  if (tabs.length === 0) {
+    return null
+  }
 
   return (
     <aside
