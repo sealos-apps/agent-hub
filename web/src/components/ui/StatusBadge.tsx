@@ -1,4 +1,4 @@
-import { getStatusText } from '../../domains/agents/templates'
+import { translateStatus, useI18n } from '../../i18n'
 import { cn } from '../../lib/format'
 import type { AgentRuntimeStatus } from '../../domains/agents/types'
 
@@ -22,6 +22,7 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status, compact = false }: StatusBadgeProps) {
+  const { t } = useI18n()
   return (
     <span
       className={cn(
@@ -32,7 +33,7 @@ export function StatusBadge({ status, compact = false }: StatusBadgeProps) {
       )}
     >
       <span className={cn('h-1.5 w-1.5 rounded-full', dotClassName[status])} />
-      {getStatusText(status)}
+      {translateStatus(status, t)}
     </span>
   )
 }

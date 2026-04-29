@@ -1,6 +1,7 @@
 import { Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import type { AgentListItem } from '../../../domains/agents/types'
+import { useI18n } from '../../../i18n'
 import { Button } from '../../ui/Button'
 import { Input } from '../../ui/Input'
 import { Modal } from '../../ui/Modal'
@@ -20,6 +21,7 @@ export function DeleteAgentModal({
   onClose,
   onConfirm,
 }: DeleteAgentModalProps) {
+  const { t } = useI18n()
   const displayName = item?.aliasName || item?.name || '--'
   const requiredName = item?.name || ''
   const [confirmDraft, setConfirmDraft] = useState({ agentName: '', value: '' })
@@ -42,34 +44,35 @@ export function DeleteAgentModal({
       footer={
         <>
           <Button onClick={handleClose} variant="secondary">
-            取消
+            {t('common.cancel')}
           </Button>
           <Button disabled={submitting || !confirmed} onClick={handleConfirm} variant="danger">
-            {submitting ? '删除中...' : '确认删除'}
+            {submitting ? t('agent.deleting') : t('agent.confirmDelete')}
           </Button>
         </>
       }
       onClose={handleClose}
       open={open}
-      title="删除 Agent"
+      title={t('agent.deleteModalTitle')}
       widthClassName="max-w-xl"
     >
       <div className="flex flex-col items-center justify-center py-4 text-center">
         <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-rose-50 text-rose-600">
           <Trash2 size={30} />
         </div>
-        <h3 className="text-lg font-semibold text-slate-950">确认删除这个 Agent 吗？</h3>
+        <h3 className="text-lg font-semibold text-slate-950">{t('agent.deleteModalHeading')}</h3>
         <p className="mt-2 whitespace-nowrap text-sm leading-6 text-slate-500">
-          将会联动删除实例 <span className="font-semibold text-slate-900">{displayName}</span>
-          {item?.name ? <span className="text-slate-400">（{item.name}）</span> : null}
-          {' '}及相关资源，操作不可撤销。
+          {t('agent.deleteModalDesc', {
+            displayName,
+            name: item?.name ? ` (${item.name})` : '',
+          })}
         </p>
         <div className="mt-5 w-full max-w-md text-left">
           <Input
             autoComplete="off"
-            error={confirmName && !confirmed ? '输入的 Agent 名称不一致' : undefined}
-            hint={requiredName ? `请输入 ${requiredName} 以确认删除。` : undefined}
-            label="输入 Agent 名称"
+            error={confirmName && !confirmed ? t('agent.deleteNameMismatch') : undefined}
+            hint={requiredName ? t('agent.deleteNameHint', { name: requiredName }) : undefined}
+            label={t('agent.deleteNameLabel')}
             onChange={(event) => setConfirmDraft({ agentName: requiredName, value: event.target.value })}
             placeholder={requiredName}
             value={confirmName}

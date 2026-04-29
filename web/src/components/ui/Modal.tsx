@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useI18n } from '../../i18n'
 
 interface ModalProps {
   open: boolean
@@ -20,6 +21,7 @@ export function Modal({
   footer,
   widthClassName = 'max-w-3xl',
 }: ModalProps) {
+  const { t } = useI18n()
   if (!open) return null
 
   return (
@@ -33,7 +35,7 @@ export function Modal({
             {description ? <p className="text-sm text-[var(--color-muted)]">{description}</p> : null}
           </div>
           <button
-            aria-label="关闭"
+            aria-label={t('common.close')}
             className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] text-[#5c6678] transition hover:bg-[#f3f6fb] hover:text-[#111827]"
             onClick={onClose}
             type="button"

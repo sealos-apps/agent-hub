@@ -5,6 +5,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { APP_LOGO_URL, APP_NAME } from '../../../../branding'
 import { Button } from '../../../../components/ui/Button'
 import { SearchField } from '../../../../components/ui/SearchField'
+import { LanguageSwitch, useI18n } from '../../../../i18n'
 import { cn } from '../../../../lib/format'
 
 interface AgentWorkspaceShellProps {
@@ -29,6 +30,7 @@ export function AgentWorkspaceShell({
   className,
   headerActions,
 }: AgentWorkspaceShellProps) {
+  const { t } = useI18n()
   const location = useLocation()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -40,43 +42,43 @@ export function AgentWorkspaceShell({
       case 'agents':
         return (
           <>
-            <b className="text-[#223047]">我的 Agent</b>
+            <b className="text-[#223047]">{t('nav.myAgents')}</b>
             <span>/</span>
-            <span>总览</span>
+            <span>{t('nav.overview')}</span>
           </>
         )
       case 'market':
         return (
           <>
-            <b className="text-[#223047]">Agent 市场</b>
+            <b className="text-[#223047]">{t('nav.market')}</b>
             <span>/</span>
-            <span>选择模板</span>
+            <span>{t('nav.selectTemplate')}</span>
           </>
         )
       case 'create':
         return (
           <>
-            <b className="text-[#223047]">Agent 市场</b>
+            <b className="text-[#223047]">{t('nav.market')}</b>
             <span>/</span>
-            <span>创建 Agent</span>
+            <span>{t('nav.createAgent')}</span>
           </>
         )
       default:
         return (
           <>
-            <b className="text-[#223047]">Agent 列表</b>
+            <b className="text-[#223047]">{t('nav.agentList')}</b>
             <span>/</span>
-            <span>Agent 详情</span>
+            <span>{t('nav.agentDetail')}</span>
           </>
         )
     }
-  }, [view])
+  }, [t, view])
 
   const showCreateStepper = false
   const showHeaderSearch = view === 'agents' || view === 'market'
   const headerSearchValue = showHeaderSearch ? String(searchParams.get('q') || '') : ''
   const [headerSearchDraft, setHeaderSearchDraft] = useState(headerSearchValue)
-  const headerSearchPlaceholder = view === 'market' ? '搜索模板、能力或标签' : '搜索别名或实例名'
+  const headerSearchPlaceholder = view === 'market' ? t('search.templates') : t('search.agents')
   const showBack = view !== 'agents'
   const showLeftBack = showBack && (view === 'market' || view === 'create' || view === 'detail')
   const showRightBack = showBack && !showLeftBack
@@ -120,15 +122,16 @@ export function AgentWorkspaceShell({
             size="md"
             variant="secondary"
           >
-            浏览模板
+            {t('nav.browseTemplates')}
           </Button>
+          <LanguageSwitch className="hidden min-[720px]:inline-flex" />
           <Button
             className="shadow-[0_10px_20px_rgba(37,99,255,0.18)] min-[720px]:h-9 min-[720px]:px-3 min-[720px]:text-[13px] min-[860px]:h-10 min-[860px]:px-4 min-[860px]:text-[14px]"
             onClick={() => navigate('/agents/templates')}
             size="md"
             variant="primary"
           >
-            ＋ 创建 Agent
+            ＋ {t('nav.createAgent')}
           </Button>
         </div>
       )
@@ -163,14 +166,14 @@ export function AgentWorkspaceShell({
           <div className={cn('flex min-w-0 items-center', isAgentsView ? 'shrink-0 gap-2.5' : 'gap-3')}>
             {showLeftBack ? (
               <Button
-                aria-label="返回"
+                aria-label={t('common.back')}
                 className="h-9 w-9 p-0"
                 leading={<ArrowLeft className="h-4 w-4" />}
                 onClick={() => navigate(backTarget)}
                 size="sm"
                 variant="ghost"
               >
-                <span className="sr-only">返回</span>
+                <span className="sr-only">{t('common.back')}</span>
               </Button>
             ) : null}
 
@@ -223,14 +226,14 @@ export function AgentWorkspaceShell({
 
               {showRightBack ? (
                 <Button
-                  aria-label="返回"
+                  aria-label={t('common.back')}
                   className="h-9 w-9 p-0"
                   leading={<ArrowLeft className="h-4 w-4" />}
                   onClick={() => navigate(backTarget)}
                   size="sm"
                   variant="ghost"
                 >
-                  <span className="sr-only">返回</span>
+                  <span className="sr-only">{t('common.back')}</span>
                 </Button>
               ) : null}
 
@@ -240,21 +243,21 @@ export function AgentWorkspaceShell({
                     <span className="grid h-6 w-6 place-items-center rounded-full border border-[var(--color-brand)] bg-[var(--color-brand)] text-white">
                       ✓
                     </span>
-                    选择模板
+                    {t('nav.selectTemplate')}
                   </span>
                   <span className="h-px w-16 bg-[#dce2eb]" />
                   <span className="flex items-center gap-1.5 text-[var(--color-brand)]">
                     <span className="grid h-6 w-6 place-items-center rounded-full border border-[var(--color-brand)] bg-[var(--color-brand)] text-white">
                       2
                     </span>
-                    配置资源
+                    {t('agent.resourceSpec')}
                   </span>
                   <span className="h-px w-16 bg-[#dce2eb]" />
                   <span className="flex items-center gap-1.5">
                     <span className="grid h-6 w-6 place-items-center rounded-full border border-[#cfd7e5] bg-white text-[#6b7280]">
                       3
                     </span>
-                    确认部署
+                    {t('common.confirmDeploy')}
                   </span>
                 </div>
               ) : null}

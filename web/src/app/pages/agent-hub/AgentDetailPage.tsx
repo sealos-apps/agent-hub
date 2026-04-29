@@ -47,16 +47,20 @@ import { applyBlueprintPreset, updateBlueprintField } from "./lib/blueprint";
 import type { AgentDetailRouteState } from "./lib/navigation";
 import { openAgentConsoleDesktopWindow } from "./lib/consoleWindow";
 import { cn } from "../../../lib/format";
+import { useI18n } from "../../../i18n";
 
 const MOCK_AGENT_ID_PREFIX = "mock-agent-";
 const DETAIL_SCALE_BREAKPOINT = 1180;
 const DETAIL_SCALE_CANVAS_WIDTH = 1024;
-const DETAIL_SCALE_MAX_CANVAS_HEIGHT = 840;
+const DETAIL_SCALE_CANVAS_HEIGHT = 900;
 const DETAIL_SCALE_PADDING = 24;
+const DETAIL_SCALE_SHELL_HEADER_HEIGHT = 58;
 
 type DetailScaleState = {
   enabled: boolean;
+  mode: "fixed" | "fluid" | "none";
   scale: number;
+  canvasWidth: number;
   canvasHeight: number;
 };
 
@@ -66,19 +70,38 @@ function isMockAgentItem(item: AgentListItem | null | undefined) {
 
 function resolveDetailScaleState(): DetailScaleState {
   if (typeof window === "undefined") {
-    return { enabled: false, scale: 1, canvasHeight: 0 };
+    return { enabled: false, mode: "none", scale: 1, canvasWidth: 0, canvasHeight: 0 };
   }
 
   const availableWidth = Math.max(320, window.innerWidth - DETAIL_SCALE_PADDING);
+  const availableHeight = Math.max(
+    360,
+    window.innerHeight - DETAIL_SCALE_SHELL_HEADER_HEIGHT - DETAIL_SCALE_PADDING,
+  );
   const widthScale = Math.min(1, availableWidth / DETAIL_SCALE_CANVAS_WIDTH);
-  const scale = Number(widthScale.toFixed(4));
-  const canvasHeight = DETAIL_SCALE_MAX_CANVAS_HEIGHT;
+  const heightScale = Math.min(1, availableHeight / DETAIL_SCALE_CANVAS_HEIGHT);
 
-  return {
-    enabled: window.innerWidth < DETAIL_SCALE_BREAKPOINT || scale < 0.995,
-    scale,
-    canvasHeight,
-  };
+  if (window.innerWidth < DETAIL_SCALE_BREAKPOINT || widthScale < 0.995) {
+    return {
+      enabled: true,
+      mode: "fixed",
+      scale: Number(Math.min(widthScale, heightScale).toFixed(4)),
+      canvasWidth: DETAIL_SCALE_CANVAS_WIDTH,
+      canvasHeight: DETAIL_SCALE_CANVAS_HEIGHT,
+    };
+  }
+
+  if (heightScale < 0.995) {
+    return {
+      enabled: true,
+      mode: "fluid",
+      scale: Number(heightScale.toFixed(4)),
+      canvasWidth: 0,
+      canvasHeight: DETAIL_SCALE_CANVAS_HEIGHT,
+    };
+  }
+
+  return { enabled: false, mode: "none", scale: 1, canvasWidth: 0, canvasHeight: 0 };
 }
 
 function parseStorageGi(value = "") {
@@ -96,14 +119,14 @@ function parseStorageGi(value = "") {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : 10;
 }
 
-function formatCpuLabel(value = "") {
+function formatCpuLabel(value = "", unit = "核") {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return "--";
   if (normalized.endsWith("m")) {
     const numeric = Number(normalized.slice(0, -1));
-    return Number.isFinite(numeric) ? `${numeric / 1000} 核` : value;
+    return Number.isFinite(numeric) ? `${numeric / 1000} ${unit}` : value;
   }
-  return `${value} 核`;
+  return `${value} ${unit}`;
 }
 
 function formatMemoryLabel(value = "") {
@@ -161,6 +184,7 @@ function AgentConfigEditModal({
   onSettingsFieldChange: (field: AgentSettingField, value: string) => void;
   onSave: () => void;
 }) {
+  const { t } = useI18n();
   if (!template) return null;
 
   const modelField =
@@ -195,24 +219,24 @@ function AgentConfigEditModal({
 
   return (
     <Modal
-      description="集中调整资源规格与 Agent 基础配置，保存后应用到当前实例。"
+      description={t('agent.configModalDesc')}
       footer={
         <>
           <Button disabled={submitting} onClick={onClose} type="button" variant="secondary">
-            取消
+            {t('common.cancel')}
           </Button>
           <Button disabled={submitting} onClick={onSave} type="button">
-            {submitting ? "保存中..." : "保存配置"}
+            {submitting ? t('common.saving') : t('common.saveConfig')}
           </Button>
         </>
       }
       onClose={onClose}
       open={open}
-      title="修改配置"
+      title={t('agent.configModalTitle')}
       widthClassName="max-w-2xl"
     >
       <div className="rounded-[14px] border border-zinc-200 bg-white px-4">
-        <ConfigField label="预设配置">
+        <ConfigField label={t('agent.presetConfig')}>
           <SelectMenu
             className="w-full"
             onChange={(value) => {
@@ -220,9 +244,17 @@ function AgentConfigEditModal({
               onRuntimePreset(value as AgentBlueprint["profile"]);
             }}
             options={[
-              { label: "选择预设", value: "" },
+              { label: t('agent.selectPreset'), value: "" },
               ...fixedPresets.map((preset) => ({
-                label: `${preset.label} · CPU：${formatCpuLabel(preset.cpu)} / 内存：${formatMemoryLabel(preset.memory)}`,
+                label: t('agent.presetConfigOption', {
+                  name: preset.id === "minimum"
+                    ? t('agent.presetMinimum')
+                    : preset.id === "recommended"
+                      ? t('agent.presetRecommended')
+                      : t('agent.presetLuxury'),
+                  cpu: formatCpuLabel(preset.cpu, t('agent.unitCore')),
+                  memory: formatMemoryLabel(preset.memory),
+                }),
                 value: preset.id,
               })),
             ]}
@@ -232,7 +264,7 @@ function AgentConfigEditModal({
           />
         </ConfigField>
 
-        <ConfigField label="存储容量">
+        <ConfigField label={t('agent.storageCapacity')}>
           <div className="flex items-center gap-2">
             <button
               className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] border border-zinc-200 bg-white text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-900"
@@ -263,16 +295,16 @@ function AgentConfigEditModal({
           </div>
         </ConfigField>
 
-        <ConfigField label="别名">
+        <ConfigField label={t('agent.alias')}>
           <input
             className="h-10 w-full rounded-[8px] border border-zinc-200 bg-white px-3 text-[14px]/5 font-medium text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
             onChange={(event) => onSettingsChange("aliasName", event.target.value)}
-            placeholder="例如：客服助手"
+            placeholder={t('agent.aliasPlaceholder')}
             value={settingsBlueprint.aliasName}
           />
         </ConfigField>
 
-        <ConfigField label="模型">
+        <ConfigField label={t('agent.model')}>
           <SelectMenu
             className="w-full"
             menuClassName="max-h-[188px] overflow-y-auto"
@@ -287,7 +319,7 @@ function AgentConfigEditModal({
           />
         </ConfigField>
 
-        <ConfigField label="运行环境">
+        <ConfigField label={t('agent.runtimeEnv')}>
           <div className="text-[14px]/5 font-medium text-zinc-900">
             {item.contract.runtime.runtimeClassName || "devbox-runtime"}
           </div>
@@ -298,6 +330,7 @@ function AgentConfigEditModal({
 }
 
 export function AgentDetailPage() {
+  const { t } = useI18n();
   const location = useLocation();
   const navigate = useNavigate();
   const { agentName = "" } = useParams();
@@ -935,7 +968,7 @@ export function AgentDetailPage() {
       <AgentWorkspaceShell>
         <div className="flex h-full min-w-0 flex-col px-6 lg:px-12">
           <div className="flex min-h-20 w-full items-center text-sm text-zinc-500">
-            正在加载 Agent 详情...
+            {t('agent.detailLoading')}
           </div>
         </div>
       </AgentWorkspaceShell>
@@ -947,9 +980,9 @@ export function AgentDetailPage() {
       <AgentWorkspaceShell>
         <div className="flex h-full min-w-0 flex-col px-6 lg:px-12">
           <AgentPageHeader
-            backLabel="返回 Agent 列表"
+            backLabel={t('nav.backAgentList')}
             backTo="/agents"
-            title="实例不存在"
+            title={t('agent.notFoundTitle')}
           />
           <main className="flex min-h-0 flex-1 flex-col gap-3 pb-6">
             <AgentHubOverview
@@ -957,9 +990,7 @@ export function AgentDetailPage() {
               onClose={() => controller.setMessage("")}
             />
             <div className="workbench-card-strong flex h-full min-h-[320px] flex-1 items-center justify-center px-6 py-16 text-center text-sm text-zinc-500">
-              当前没有找到名为{" "}
-              <span className="font-medium text-zinc-950">{agentName}</span> 的
-              Agent。
+              {t('agent.notFoundMessage', { name: agentName })}
             </div>
           </main>
         </div>
@@ -967,21 +998,26 @@ export function AgentDetailPage() {
     );
   }
 
+  const fixedDetailScale = detailScale.mode === "fixed";
+  const fluidDetailScale = detailScale.mode === "fluid";
+
   return (
     <AgentWorkspaceShell>
       <div
         className={
-          detailScale.enabled
+          fixedDetailScale
             ? "h-full w-full overflow-x-hidden overflow-y-auto p-3"
+            : fluidDetailScale
+              ? "h-full w-full overflow-hidden"
             : "h-full w-full overflow-hidden"
         }
       >
         <div
-          className={detailScale.enabled ? "relative" : "contents"}
+          className={fixedDetailScale ? "relative" : fluidDetailScale ? "relative h-full w-full overflow-hidden" : "contents"}
           style={
-            detailScale.enabled
+            fixedDetailScale
               ? {
-                width: DETAIL_SCALE_CANVAS_WIDTH * detailScale.scale,
+                width: detailScale.canvasWidth * detailScale.scale,
                 height: detailScale.canvasHeight * detailScale.scale,
               }
               : undefined
@@ -990,18 +1026,27 @@ export function AgentDetailPage() {
         <div
           className={cn(
             "flex min-w-0 flex-col",
-            detailScale.enabled
+            fixedDetailScale
               ? "absolute left-0 top-0 max-w-none px-0"
+              : fluidDetailScale
+                ? "absolute left-0 top-0 max-w-none px-5 lg:px-7 2xl:px-8"
               : "mx-auto h-full w-full max-w-[1600px] px-5 lg:px-7 2xl:px-8",
           )}
           style={
-            detailScale.enabled
+            fixedDetailScale
               ? {
-                width: DETAIL_SCALE_CANVAS_WIDTH,
+                width: detailScale.canvasWidth,
                 height: detailScale.canvasHeight,
                 transform: `scale(${detailScale.scale})`,
                 transformOrigin: "top left",
               }
+              : fluidDetailScale
+                ? {
+                  width: `${100 / detailScale.scale}%`,
+                  height: `${100 / detailScale.scale}%`,
+                  transform: `scale(${detailScale.scale})`,
+                  transformOrigin: "top left",
+                }
               : undefined
           }
         >

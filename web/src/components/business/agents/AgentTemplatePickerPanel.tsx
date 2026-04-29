@@ -2,6 +2,13 @@ import { Badge } from '../../ui/Badge'
 import { Card, CardContent } from '../../ui/Card'
 import { Skeleton } from '../../ui/Skeleton'
 import { cn } from '../../../lib/format'
+import {
+  translateTemplateAccessLabel,
+  translateTemplateActionLabel,
+  translateTemplateDescription,
+  translateTemplateDocsLabel,
+  useI18n,
+} from '../../../i18n'
 import type { AgentTemplateDefinition, AgentTemplateId } from '../../../domains/agents/types'
 
 interface AgentTemplatePickerPanelProps {
@@ -29,6 +36,7 @@ function TemplateCard({
   template: AgentTemplateDefinition
   onSelect: () => void
 }) {
+  const { t } = useI18n()
   return (
     <button
       className={cn(
@@ -70,33 +78,33 @@ function TemplateCard({
             </div>
 
             <Badge variant={template.backendSupported ? 'outline' : 'muted'}>
-              {template.backendSupported ? '可创建' : '仅展示'}
+              {template.backendSupported ? t('template.creatable') : t('template.previewOnly')}
             </Badge>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">{template.docsLabel}</Badge>
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+            <Badge className="shrink-0" variant="secondary">{translateTemplateDocsLabel(template.id, template.docsLabel, t)}</Badge>
             {template.actions.slice(0, 2).map((item) => (
-              <Badge className="capitalize" key={item.key} variant="muted">
-                {item.label}
+              <Badge className="shrink-0 capitalize" key={item.key} variant="muted">
+                {translateTemplateActionLabel(item.key, item.label, t)}
               </Badge>
             ))}
           </div>
 
           <p className="line-clamp-2 text-sm leading-6 text-zinc-500">
-            {template.description}
+            {translateTemplateDescription(template.id, template.description, t)}
           </p>
 
-          <div className="mt-auto flex flex-wrap items-center gap-2">
+          <div className="mt-auto flex min-w-0 items-center gap-2 overflow-hidden">
             {template.access.map((access) => {
               const meta = accessMeta[access.key] || { label: access.label, dotClassName: 'bg-zinc-400' }
               return (
                 <span
-                  className="inline-flex h-6 items-center gap-1.5 rounded-md border border-zinc-200/80 bg-white px-2 text-[11px] text-zinc-600"
+                  className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-md border border-zinc-200/80 bg-white px-2 text-[11px] text-zinc-600"
                   key={access.key}
                 >
                   <span className={cn('h-1.5 w-1.5 rounded-full', meta.dotClassName)} />
-                  {meta.label}
+                  {translateTemplateAccessLabel(access.key, meta.label, t)}
                 </span>
               )
             })}
@@ -112,7 +120,7 @@ export function AgentTemplatePickerPanelLoading({
   count = 6,
 }: AgentTemplatePickerPanelLoadingProps) {
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 min-[1800px]:grid-cols-5">
       {Array.from({ length: count }, (_, index) => (
         <Card className="overflow-hidden rounded-[12px] border-zinc-200 bg-white" key={index}>
           <CardContent className="space-y-3.5 px-4 pb-5 !pt-5">
@@ -151,10 +159,10 @@ export function AgentTemplatePickerPanel({
   templates,
 }: AgentTemplatePickerPanelProps) {
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-      {templates.map((template) => (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 min-[1800px]:grid-cols-5">
+      {templates.map((template, index) => (
         <TemplateCard
-          key={template.id}
+          key={`${template.id}-${index}`}
           onSelect={() => onSelect(template.id)}
           template={template}
         />

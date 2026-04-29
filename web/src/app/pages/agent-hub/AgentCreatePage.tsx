@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AgentConfigForm } from "../../../components/business/agents/AgentConfigForm";
 import { Button } from "../../../components/ui/Button";
+import { useI18n } from "../../../i18n";
 import { AgentCreateSidebar } from "./components/AgentCreateSidebar";
 import { AgentHubOverview } from "./components/AgentHubOverview";
 import { AgentWorkspaceShell } from "./components/AgentWorkspaceShell";
@@ -13,6 +14,7 @@ import { writeBlueprintSettingValue } from "../../../domains/agents/blueprintFie
 import type { AgentBlueprint } from "../../../domains/agents/types";
 
 export function AgentCreatePage() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const controller = useAgentHub();
@@ -173,7 +175,7 @@ export function AgentCreatePage() {
             size="md"
             variant="secondary"
           >
-            更换模板
+            {t('agent.changeTemplate')}
           </Button>
           <Button
             className="min-w-[124px]"
@@ -182,7 +184,7 @@ export function AgentCreatePage() {
             size="md"
             variant="primary"
           >
-            {submitting ? "部署中..." : "确认部署"}
+            {submitting ? t('common.deploying') : t('common.confirmDeploy')}
           </Button>
         </>
       }
@@ -218,25 +220,25 @@ export function AgentCreatePage() {
                 {waitingForBlueprint ? (
                   <div className="workbench-card-strong flex min-h-[420px] flex-col items-center justify-center px-6 py-8 text-center">
                     <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400">
-                      正在准备
+                      {t('agent.preparing')}
                     </div>
                     <div className="mt-2 text-[1.35rem]/8 font-semibold tracking-[-0.03em] text-zinc-950">
-                      正在准备创建配置
+                      {t('agent.preparingConfig')}
                     </div>
                     <div className="mt-2 max-w-[28rem] text-[13px]/6 text-zinc-500">
-                      正在读取模板与默认配置，请稍候。
+                      {t('agent.preparingConfigDesc')}
                     </div>
                   </div>
                 ) : missingClusterContext ? (
                   <div className="workbench-card-strong flex min-h-[420px] flex-col items-center justify-center px-6 py-8 text-center">
                     <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400">
-                      暂时不可用
+                      {t('agent.unavailable')}
                     </div>
                     <div className="mt-2 text-[1.35rem]/8 font-semibold tracking-[-0.03em] text-zinc-950">
-                      当前工作区还没准备好
+                      {t('agent.workspaceNotReady')}
                     </div>
                     <div className="mt-2 max-w-[30rem] text-[13px]/6 text-zinc-500">
-                      请先返回列表页再重新进入，然后继续创建。
+                      {t('agent.workspaceNotReadyDesc')}
                     </div>
                     <div className="mt-5">
                       <Button
@@ -245,7 +247,7 @@ export function AgentCreatePage() {
                         size="md"
                         variant="secondary"
                       >
-                        返回列表页
+                        {t('nav.backAgentList')}
                       </Button>
                     </div>
                   </div>

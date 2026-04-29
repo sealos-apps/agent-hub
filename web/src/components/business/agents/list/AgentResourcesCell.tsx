@@ -1,4 +1,5 @@
 import type { AgentListItem } from '../../../../domains/agents/types'
+import { useI18n } from '../../../../i18n'
 import { formatCpu, formatMemory, formatStorage } from '../../../../lib/format'
 
 function ResourceMetric({
@@ -23,11 +24,12 @@ interface AgentResourcesCellProps {
 }
 
 export function AgentResourcesCell({ item }: AgentResourcesCellProps) {
+  const { t } = useI18n()
   return (
     <div className="grid grid-cols-3 gap-2 py-0.5 pr-1 sm:gap-3 sm:pr-2 xl:gap-4 xl:pr-4">
       <ResourceMetric label="CPU" value={formatCpu(item.cpu)} />
-      <ResourceMetric label="内存" value={formatMemory(item.memory)} />
-      <ResourceMetric label="存储" value={formatStorage(item.storage)} />
+      <ResourceMetric label={t('agent.memory')} value={formatMemory(item.memory)} />
+      <ResourceMetric label={t('agent.storage')} value={formatStorage(item.storage)} />
     </div>
   )
 }

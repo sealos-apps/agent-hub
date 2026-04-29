@@ -2,19 +2,20 @@ import type { ReactNode } from 'react'
 import { readBlueprintSettingValue } from '../../../../domains/agents/blueprintFields'
 import { formatModelProviderLabel } from '../../../../domains/agents/aiproxy'
 import { formatCpu, formatMemory, formatStorage } from '../../../../lib/format'
+import { useI18n } from '../../../../i18n'
 import type {
   AgentBlueprint,
   AgentSettingField,
   AgentTemplateDefinition,
 } from '../../../../domains/agents/types'
 
-function formatKeySourceLabel(value = '', ready = false) {
-  if (!ready) return '未准备'
+function formatKeySourceLabel(value = '', ready = false, t: ReturnType<typeof useI18n>['t']) {
+  if (!ready) return t('agent.keyNotReady')
   const normalized = String(value || '')
     .trim()
     .toLowerCase()
-  if (!normalized || normalized === 'unset') return '未准备'
-  if (normalized === 'workspace-aiproxy') return '由工作区提供'
+  if (!normalized || normalized === 'unset') return t('agent.keyNotReady')
+  if (normalized === 'workspace-aiproxy') return t('agent.keyFromWorkspace')
   return value
 }
 
@@ -94,6 +95,7 @@ export function AgentCreateSidebar({
   workspaceModelBaseURL,
   workspaceModelKeyReady,
 }: AgentCreateSidebarProps) {
+  const { t } = useI18n()
   if (!template) {
     return null
   }
@@ -133,7 +135,7 @@ export function AgentCreateSidebar({
     }
 
     if (bindingKey === 'keySource') {
-      return formatKeySourceLabel(fieldValue, workspaceModelKeyReady)
+      return formatKeySourceLabel(fieldValue, workspaceModelKeyReady, t)
     }
 
     return fieldValue || '--'
@@ -142,40 +144,40 @@ export function AgentCreateSidebar({
   return (
     <aside className="grid h-full w-full gap-4 pb-10 sm:pb-12 xl:pb-10">
       <SidebarSection
-        description="这里汇总当前创建单里的核心信息，提交前在这一张卡里快速确认就可以。"
-        title="摘要卡片"
+        description={t('summary.cardDesc')}
+        title={t('summary.card')}
         className="h-full"
       >
         <div className="space-y-4">
           <div className="border-b border-zinc-200 pb-4">
-            <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-400">别名</div>
+            <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-400">{t('agent.alias')}</div>
             <div className="mt-1.5 text-[1.15rem]/7 font-semibold tracking-[-0.03em] text-zinc-950">
-              {blueprint.aliasName || '未填写'}
+              {blueprint.aliasName || t('summary.emptyAlias')}
             </div>
-            <div className="mt-1 text-[12px]/5 text-zinc-500">实例名称会在提交后自动生成并用于资源关联。</div>
+            <div className="mt-1 text-[12px]/5 text-zinc-500">{t('summary.instanceGenerated')}</div>
           </div>
 
           <div className="border-b border-zinc-200 pb-4">
-            <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-400">模型</div>
+            <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-400">{t('agent.model')}</div>
             <div className="mt-1.5 break-all text-[1rem]/6 font-semibold tracking-[-0.02em] text-zinc-950">
-              {blueprint.model || '未选择'}
+              {blueprint.model || t('summary.notSelected')}
             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-2">
             <SummaryMetric label="CPU" value={formatCpu(blueprint.cpu)} />
-            <SummaryMetric label="内存" value={formatMemory(blueprint.memory)} />
-            <SummaryMetric label="存储" value={formatStorage(blueprint.storageLimit)} />
+            <SummaryMetric label={t('agent.memory')} value={formatMemory(blueprint.memory)} />
+            <SummaryMetric label={t('agent.storage')} value={formatStorage(blueprint.storageLimit)} />
           </div>
 
           <div className="divide-y divide-zinc-200">
             <SummaryField
-              label="实例名称"
+              label={t('summary.instanceName')}
               mono
-              value={blueprint.appName || '提交后自动生成'}
+              value={blueprint.appName || t('summary.generatedAfterSubmit')}
             />
             <SummaryField
-              label="命名空间"
+              label={t('agent.namespace')}
               mono
               value={blueprint.namespace || '--'}
             />

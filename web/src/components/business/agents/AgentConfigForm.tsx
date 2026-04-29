@@ -1,10 +1,12 @@
 import { HardDrive, Minus, Plus } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { readBlueprintSettingValue } from "../../../domains/agents/blueprintFields";
+import { RESOURCE_PRESETS } from "../../../domains/agents/templates";
 import {
-  describeRegionModelPreset,
-  RESOURCE_PRESETS,
-} from "../../../domains/agents/templates";
+  translateTemplateDescription,
+  translateTemplateDocsLabel,
+  useI18n,
+} from "../../../i18n";
 import { cn } from "../../../lib/format";
 import type {
   AgentBlueprint,
@@ -193,6 +195,7 @@ export function AgentConfigForm({
   onChangeSettingField,
   onSelectPreset,
 }: AgentConfigFormProps) {
+  const { t } = useI18n();
   const [customResourceModalOpen, setCustomResourceModalOpen] = useState(false);
   const [customDraft, setCustomDraft] = useState(() => ({
     cpu: CPU_OPTIONS[1],
@@ -204,17 +207,36 @@ export function AgentConfigForm({
   }
 
   const formWidthClassName = "w-full";
-  const modelPresetHint = describeRegionModelPreset(
-    String(workspaceRegion || "")
-      .trim()
-      .toLowerCase() === "cn"
-      ? "cn"
-      : "us",
-    template,
-  );
+  const modelPresetHint = !template.modelOptions.length
+    ? t('agent.modelPresetEmpty')
+    : String(workspaceRegion || "").trim().toLowerCase() === "cn"
+      ? t('agent.modelPresetCn')
+      : t('agent.modelPresetUs');
   const controlClassName =
     "h-10 rounded-[10px] border-zinc-200 bg-white text-[14px] leading-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
   const compactInputClassName = `${controlClassName} w-full`;
+  const getPresetLabel = (presetId: string) => {
+    if (presetId === "minimum") return t('agent.presetMinimum');
+    if (presetId === "recommended") return t('agent.presetRecommended');
+    if (presetId === "luxury") return t('agent.presetLuxury');
+    if (presetId === "custom") return t('agent.presetCustom');
+    return presetId;
+  };
+  const getPresetDescription = (presetId: string) => {
+    if (presetId === "minimum") return t('agent.presetMinimumDesc');
+    if (presetId === "recommended") return t('agent.presetRecommendedDesc');
+    if (presetId === "luxury") return t('agent.presetLuxuryDesc');
+    if (presetId === "custom") return t('agent.presetCustomDesc');
+    return "";
+  };
+  const getFieldLabel = (field: AgentSettingField) => {
+    const bindingKey = String(field.binding?.key || "").trim();
+    if (bindingKey === "model") return t('agent.model');
+    if (bindingKey === "modelProvider") return t('agent.modelProvider');
+    if (bindingKey === "modelBaseURL") return "Base URL";
+    if (bindingKey === "keySource") return t('agent.keySource');
+    return field.label;
+  };
 
   const cpuDisplayValue = (() => {
     const normalized = String(blueprint.cpu || "").trim();
@@ -322,8 +344,8 @@ export function AgentConfigForm({
   const renderRuntimeItem = () => (
     <SectionShell
       className={formWidthClassName}
-      description="当前创建流程会沿用模板预设的运行目录和文档说明。"
-      title="运行时环境"
+      description={t('agent.runtimeSectionDesc')}
+      title={t('agent.runtimeSection')}
     >
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -340,11 +362,11 @@ export function AgentConfigForm({
                 {template.name}
               </span>
               <span className="shrink-0 rounded-full border-[0.5px] border-zinc-200 bg-white px-2 py-0.5 text-xs/4 font-medium text-zinc-600">
-                {template.docsLabel}
+                {translateTemplateDocsLabel(template.id, template.docsLabel, t)}
               </span>
             </div>
             <div className="mt-0.5 text-sm/5 text-zinc-500">
-              {template.description || "暂无描述"}
+              {translateTemplateDescription(template.id, template.description, t) || t('common.none')}
             </div>
           </div>
         </div>
@@ -363,7 +385,7 @@ export function AgentConfigForm({
               type="button"
               variant="secondary"
             >
-              更换模板
+              {t('agent.changeTemplate')}
             </Button>
           ) : null}
         </div>
@@ -374,15 +396,15 @@ export function AgentConfigForm({
   const renderAgentSettingsCard = () => (
     <SectionShell
       className={formWidthClassName}
-      description="这里放真正需要手动调整的 Agent 配置项，避免把展示态字段混进表单里。"
-      title="Agent 设置"
+      description={t('agent.settingsSectionDesc')}
+      title={t('agent.settingsSection')}
     >
       <div className="grid gap-4 md:grid-cols-2">
-        <FormItem className="w-full" label="别名">
+        <FormItem className="w-full" label={t('agent.alias')}>
           <Input
             className={`w-full ${controlClassName}`}
             onChange={(event) => onChange("aliasName", event.target.value)}
-            placeholder="例如：客服助手"
+            placeholder={t('agent.aliasPlaceholder')}
             size="md"
             value={blueprint.aliasName}
           />
@@ -393,7 +415,7 @@ export function AgentConfigForm({
       {editableFields.length > 0 ? (
         <div className="mt-5">
           <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-400">
-            更多配置
+            {t('agent.moreSettings')}
           </div>
           <div className="mt-3 grid gap-4 md:grid-cols-2">
             {editableFields.map((field) => (
@@ -408,8 +430,8 @@ export function AgentConfigForm({
   const renderResourceCard = () => (
     <SectionShell
       className={formWidthClassName}
-      description="可以沿用模板推荐配置，也可以切换到自定义资源规格。"
-      title="资源规格"
+      description={t('agent.resourceSectionDesc')}
+      title={t('agent.resourceSpec')}
     >
       <div className="grid grid-cols-2 gap-2.5">
         {RESOURCE_PRESETS.map((preset) => {
@@ -434,7 +456,7 @@ export function AgentConfigForm({
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="min-w-0 truncate text-sm font-medium text-zinc-950">
-                  {preset.label}
+                  {getPresetLabel(preset.id)}
                 </span>
                 <span
                   className={cn(
@@ -446,11 +468,11 @@ export function AgentConfigForm({
                         : "invisible",
                   )}
                 >
-                  {showCustomEdit ? "点击修改" : "当前"}
+                  {showCustomEdit ? t('agent.clickEdit') : t('agent.current')}
                 </span>
               </div>
               <div className="mt-2 text-xs leading-5 text-zinc-500">
-                {preset.description}
+                {getPresetDescription(preset.id)}
               </div>
             </button>
           );
@@ -462,18 +484,18 @@ export function AgentConfigForm({
           <MetricDisplayField
             className="w-full"
             label="CPU"
-            suffix="核"
+            suffix={t('agent.unitCore')}
             value={cpuDisplayValue}
           />
           <MetricDisplayField
             className="w-full"
-            label="内存"
+            label={t('agent.memory')}
             suffix="GiB"
             value={memoryDisplayValue}
           />
           <NumberStepperField
             className="w-full"
-            label="存储"
+            label={t('agent.storage')}
             onChange={(nextValue) => onChange("storageLimit", `${nextValue}Gi`)}
             step={1}
             suffix="GiB"
@@ -490,7 +512,7 @@ export function AgentConfigForm({
 
     if (bindingKey === "model") {
       const options = [
-        { label: "请选择模型", value: "" },
+        { label: t('agent.selectModel'), value: "" },
         ...template.modelOptions.map((option) => ({
           label: option.helper
             ? `${option.label} · ${option.helper}`
@@ -500,7 +522,7 @@ export function AgentConfigForm({
       ];
 
       return (
-        <FormItem className="w-full" hint={modelPresetHint} label={field.label}>
+        <FormItem className="w-full" hint={modelPresetHint} label={getFieldLabel(field)}>
           <SelectMenu
             className="w-full"
             onChange={handleModelChange}
@@ -513,7 +535,7 @@ export function AgentConfigForm({
 
     if (field.type === "select") {
       const options = [
-        { label: "请选择", value: "" },
+        { label: t('common.select'), value: "" },
         ...(field.options || []).map((option) => ({
           label: option.label,
           value: option.value,
@@ -521,7 +543,7 @@ export function AgentConfigForm({
       ];
 
       return (
-        <FormItem className="w-full" hint={field.description} label={field.label}>
+        <FormItem className="w-full" hint={field.description} label={getFieldLabel(field)}>
           <SelectMenu
             className="w-full"
             onChange={(value) => onChangeSettingField(field, value)}
@@ -536,7 +558,7 @@ export function AgentConfigForm({
       <Input
         className={compactInputClassName}
         hint={field.description}
-        label={field.label}
+        label={getFieldLabel(field)}
         readOnly={field.readOnly}
         onChange={(event) => onChangeSettingField(field, event.target.value)}
         size="md"
@@ -556,7 +578,7 @@ export function AgentConfigForm({
       </div>
 
       <Modal
-        description="自定义资源仅支持固定档位选择，调整后会同步更新页面摘要。"
+        description={t('agent.customResourceDesc')}
         footer={
           <>
             <Button
@@ -564,16 +586,16 @@ export function AgentConfigForm({
               type="button"
               variant="secondary"
             >
-              取消
+              {t('common.cancel')}
             </Button>
             <Button onClick={applyCustomResourceDraft} type="button">
-              应用设置
+              {t('common.applySettings')}
             </Button>
           </>
         }
         onClose={() => setCustomResourceModalOpen(false)}
         open={customResourceModalOpen}
-        title="自定义资源"
+        title={t('agent.customResourceTitle')}
         widthClassName="max-w-2xl"
       >
         <div className="space-y-8">
@@ -586,11 +608,11 @@ export function AgentConfigForm({
               label: String(value),
               value,
             }))}
-            unit="核"
+            unit={t('agent.unitCore')}
             value={customDraft.cpu}
           />
           <Slider
-            label="内存"
+            label={t('agent.memory')}
             onChange={(nextValue) =>
               setCustomDraft((current) => ({ ...current, memory: nextValue }))
             }

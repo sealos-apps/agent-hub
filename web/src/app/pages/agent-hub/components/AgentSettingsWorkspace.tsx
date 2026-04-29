@@ -15,10 +15,7 @@ import {
 import { useState, type ReactNode } from "react";
 import { readBlueprintSettingValue } from "../../../../domains/agents/blueprintFields";
 import { formatModelProviderLabel } from "../../../../domains/agents/aiproxy";
-import {
-  describeRegionModelPreset,
-  RESOURCE_PRESETS,
-} from "../../../../domains/agents/templates";
+import { RESOURCE_PRESETS } from "../../../../domains/agents/templates";
 import type {
   AgentBlueprint,
   AgentHubRegion,
@@ -26,6 +23,7 @@ import type {
   AgentSettingField,
   AgentTemplateDefinition,
 } from "../../../../domains/agents/types";
+import { useI18n } from "../../../../i18n";
 import { cn, formatTime } from "../../../../lib/format";
 import { Button } from "../../../../components/ui/Button";
 import { Modal } from "../../../../components/ui/Modal";
@@ -48,13 +46,13 @@ interface AgentSettingsWorkspaceProps {
   onSettingsFieldChange: (field: AgentSettingField, value: string) => void;
 }
 
-function formatKeySourceLabel(value = "", ready = false) {
-  if (!ready) return "未准备";
+function formatKeySourceLabel(value = "", ready = false, t: ReturnType<typeof useI18n>["t"]) {
+  if (!ready) return t('agent.keyNotReady');
   const normalized = String(value || "")
     .trim()
     .toLowerCase();
-  if (!normalized || normalized === "unset") return "未准备";
-  if (normalized === "workspace-aiproxy") return "由工作区提供";
+  if (!normalized || normalized === "unset") return t('agent.keyNotReady');
+  if (normalized === "workspace-aiproxy") return t('agent.keyFromWorkspace');
   return value;
 }
 
@@ -63,16 +61,16 @@ function copyText(value: string) {
   void navigator.clipboard.writeText(value);
 }
 
-function formatDurationSince(value = "") {
+function formatDurationSince(value = "", t: ReturnType<typeof useI18n>["t"]) {
   const startedAt = new Date(value).getTime();
   if (!Number.isFinite(startedAt)) return "--";
   const totalMinutes = Math.max(0, Math.floor((Date.now() - startedAt) / 60000));
   const days = Math.floor(totalMinutes / 1440);
   const hours = Math.floor((totalMinutes % 1440) / 60);
   const minutes = totalMinutes % 60;
-  if (days > 0) return `${days} 天 ${hours} 小时 ${minutes} 分`;
-  if (hours > 0) return `${hours} 小时 ${minutes} 分`;
-  return `${minutes} 分`;
+  if (days > 0) return `${days} ${t('agent.day')} ${hours} ${t('agent.hour')} ${minutes} ${t('agent.minute')}`;
+  if (hours > 0) return `${hours} ${t('agent.hour')} ${minutes} ${t('agent.minute')}`;
+  return `${minutes} ${t('agent.minute')}`;
 }
 
 function FieldShell({
@@ -252,7 +250,7 @@ function DashboardCard({
   className?: string;
 }) {
   return (
-    <section className={cn("flex h-full min-h-0 flex-col rounded-[18px] border border-[#dfe6f0] bg-white p-5 shadow-[0_14px_34px_rgba(35,48,76,0.06)]", className)}>
+    <section className={cn("flex h-full min-h-0 flex-col rounded-[18px] border border-[#dfe6f0] bg-white p-5", className)}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-[#eef5ff] text-blue-600">
@@ -345,7 +343,7 @@ function SideCard({
   className?: string;
 }) {
   return (
-    <aside className={cn("flex h-full min-h-0 flex-col rounded-[18px] border border-[#dfe6f0] bg-[#fbfcff] p-5 shadow-[0_14px_34px_rgba(35,48,76,0.06)]", className)}>
+    <aside className={cn("flex h-full min-h-0 flex-col rounded-[18px] border border-[#dfe6f0] bg-[#fbfcff] p-5", className)}>
       <div className="flex items-start gap-3">
         <Icon className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
         <div className="min-w-0">
@@ -370,10 +368,10 @@ function SideRow({
   copyValue?: string;
 }) {
   return (
-    <div className="flex min-h-[42px] items-center justify-between gap-4 border-b border-[#e9edf3] text-[13px]/5 last:border-b-0">
+    <div className="flex min-h-[52px] items-center justify-between gap-4 border-b border-[#e9edf3] py-1 text-[13px]/6 last:border-b-0">
       <div className="shrink-0 text-zinc-500">{label}</div>
       <div className="flex min-w-0 items-center justify-end gap-1.5">
-        <div className={cn("min-w-0 text-right font-medium text-zinc-900", mono && "break-all font-mono text-xs")}>{value || "--"}</div>
+        <div className={cn("min-w-0 text-right font-medium leading-6 text-zinc-900", mono && "break-all font-mono text-xs leading-5")}>{value || "--"}</div>
         {copyValue ? (
           <button
             aria-label={`复制${label}`}
@@ -416,6 +414,7 @@ export function AgentSettingsWorkspace({
   onSettingsChange,
   onSettingsFieldChange,
 }: AgentSettingsWorkspaceProps) {
+  const { t } = useI18n();
   const [customResourceModalOpen, setCustomResourceModalOpen] = useState(false);
   const [customDraft, setCustomDraft] = useState(() => ({
     cpu: CPU_OPTIONS[1],
@@ -485,14 +484,26 @@ export function AgentSettingsWorkspace({
 
   const resolvedModelBaseURL =
     workspaceModelBaseURL || settingsBlueprint.modelBaseURL;
-  const modelPresetHint = describeRegionModelPreset(
-    String(workspaceRegion || "")
-      .trim()
-      .toLowerCase() === "cn"
-      ? "cn"
-      : "us",
-    template,
-  );
+  const modelPresetHint = !template.modelOptions.length
+    ? t('agent.modelPresetEmpty')
+    : String(workspaceRegion || "").trim().toLowerCase() === "cn"
+      ? t('agent.modelPresetCn')
+      : t('agent.modelPresetUs');
+  const getPresetLabel = (presetId: string) => {
+    if (presetId === "minimum") return t('agent.presetMinimum');
+    if (presetId === "recommended") return t('agent.presetRecommended');
+    if (presetId === "luxury") return t('agent.presetLuxury');
+    if (presetId === "custom") return t('agent.presetCustom');
+    return presetId;
+  };
+  const getFieldLabel = (field: AgentSettingField) => {
+    const bindingKey = String(field.binding?.key || "").trim();
+    if (bindingKey === "model") return t('agent.model');
+    if (bindingKey === "modelProvider") return t('agent.modelProvider');
+    if (bindingKey === "modelBaseURL") return "Base URL";
+    if (bindingKey === "keySource") return t('agent.keySource');
+    return field.label;
+  };
   const handleModelChange = (value: string) => {
     const option =
       template.modelOptions.find((entry) => entry.value === value) || null;
@@ -552,7 +563,7 @@ export function AgentSettingsWorkspace({
     if (bindingKey === "modelProvider") {
       return (
         <DisplayField
-          label="模型渠道"
+          label={t('agent.modelProvider')}
           hint="该字段会随模型自动切换。"
           value={formatModelProviderLabel(fieldValue)}
         />
@@ -565,7 +576,7 @@ export function AgentSettingsWorkspace({
         return (
           <DisplayField
             hint={modelPresetHint}
-            label={field.label}
+            label={getFieldLabel(field)}
             value={option?.label || fieldValue}
           />
         );
@@ -573,10 +584,10 @@ export function AgentSettingsWorkspace({
 
       return (
         <EditableSelectField
-          label={field.label}
+          label={getFieldLabel(field)}
           onChange={handleModelChange}
           options={[
-            { label: "请选择模型", value: "" },
+            { label: t('agent.selectModel'), value: "" },
             ...template.modelOptions.map((option) => ({
               label: option.helper ? `${option.label} · ${option.helper}` : option.label,
               value: option.value,
@@ -590,7 +601,7 @@ export function AgentSettingsWorkspace({
     if (bindingKey === "modelBaseURL") {
       return (
         <DisplayField
-          label={field.label}
+          label={getFieldLabel(field)}
           hint="这里展示并提交当前 Agent 的模型入口地址。"
           mono
           value={resolvedModelBaseURL}
@@ -602,10 +613,11 @@ export function AgentSettingsWorkspace({
       const keySourceLabel = formatKeySourceLabel(
         fieldValue,
         workspaceModelKeyReady,
+        t,
       );
       return (
         <DisplayField
-          label="密钥来源"
+          label={t('agent.keySource')}
           hint="这里仅展示密钥来源，密钥内容不会显示在页面上。"
           value={keySourceLabel}
         />
@@ -618,7 +630,7 @@ export function AgentSettingsWorkspace({
         return (
           <DisplayField
             hint={field.description}
-            label={field.label}
+            label={getFieldLabel(field)}
             value={option?.label || fieldValue}
           />
         );
@@ -626,10 +638,10 @@ export function AgentSettingsWorkspace({
 
       return (
         <EditableSelectField
-          label={field.label}
+          label={getFieldLabel(field)}
           onChange={(value) => onSettingsFieldChange(field, value)}
           options={[
-            { label: "请选择", value: "" },
+            { label: t('common.select'), value: "" },
             ...(field.options || []).map((option) => ({
               label: option.label,
               value: option.value,
@@ -644,7 +656,7 @@ export function AgentSettingsWorkspace({
       return (
         <DisplayField
           hint={field.description}
-          label={field.label}
+          label={getFieldLabel(field)}
           value={fieldValue}
         />
       );
@@ -653,14 +665,14 @@ export function AgentSettingsWorkspace({
     return (
       editing ? (
         <EditableInputField
-          label={field.label}
+          label={getFieldLabel(field)}
           onChange={(value) => onSettingsFieldChange(field, value)}
           value={fieldValue}
         />
       ) : (
         <DisplayField
           hint={field.description}
-          label={field.label}
+          label={getFieldLabel(field)}
           value={fieldValue}
         />
       )
@@ -670,16 +682,16 @@ export function AgentSettingsWorkspace({
   return (
     <div className="grid min-h-full min-w-0 grid-cols-[320px_minmax(0,1fr)] grid-rows-[minmax(0,0.95fr)_minmax(0,1.05fr)] gap-4">
       <SideCard
-        className="col-start-1 row-span-2 row-start-1"
-        description="实例状态、环境和基础标识"
+      className="col-start-1 row-span-2 row-start-1"
+        description={t('agent.instanceOverviewDesc')}
         icon={Activity}
-        title="实例概况"
+        title={t('agent.instanceOverview')}
       >
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-5">
           <section className="rounded-[14px] border border-[#dfe6f0] bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-[12px]/4 font-medium text-zinc-500">当前状态</div>
+                <div className="text-[12px]/4 font-medium text-zinc-500">{t('agent.currentStatus')}</div>
                 <div className="mt-2">
                   <StatusBadge compact status={item.status} />
                 </div>
@@ -690,43 +702,43 @@ export function AgentSettingsWorkspace({
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[#eef1f6] pt-4">
               <div>
-                <div className="text-[12px]/4 text-zinc-500">运行时长</div>
+                <div className="text-[12px]/4 text-zinc-500">{t('agent.uptime')}</div>
                 <div className="mt-1 truncate text-[14px]/5 font-semibold text-[#111827]">
-                  {formatDurationSince(item.contract.core.createdAt || item.updatedAt)}
+                  {formatDurationSince(item.contract.core.createdAt || item.updatedAt, t)}
                 </div>
               </div>
               <div>
-                <div className="text-[12px]/4 text-zinc-500">健康状态</div>
+                <div className="text-[12px]/4 text-zinc-500">{t('agent.health')}</div>
                 <div className="mt-1 inline-flex items-center gap-1 rounded-[7px] bg-emerald-50 px-2 py-0.5 text-[12px]/4 font-medium text-emerald-700">
                   <CheckCircle2 className="h-3.5 w-3.5" />
-                  {item.status === "error" ? "异常" : "正常"}
+                  {item.status === "error" ? t('agent.error') : t('agent.normal')}
                 </div>
               </div>
             </div>
           </section>
 
           <section className="flex min-h-0 flex-col">
-            <div className="mb-2 flex items-center gap-2 text-[14px]/5 font-semibold text-[#111827]">
+            <div className="mb-3 flex items-center gap-2 text-[14px]/5 font-semibold text-[#111827]">
               <FileText className="h-4 w-4 text-blue-600" />
-              实例信息
+              {t('agent.instanceInfo')}
             </div>
             <div className="flex min-h-0 flex-col rounded-[14px] border border-[#dfe6f0] bg-white px-4">
-              <SideRow copyValue={item.name} label="实例 ID" mono value={item.name} />
-              <SideRow copyValue={item.namespace} label="命名空间" mono value={item.namespace} />
-              <SideRow label="工作目录" mono value={item.workingDir || template.workingDir} />
-              <SideRow label="创建时间" value={formatTime(item.contract.core.createdAt || "")} />
-              <SideRow label="更新时间" value={formatTime(item.updatedAt)} />
+              <SideRow copyValue={item.name} label={t('agent.id')} mono value={item.name} />
+              <SideRow copyValue={item.namespace} label={t('agent.namespace')} mono value={item.namespace} />
+              <SideRow label={t('agent.workDir')} mono value={item.workingDir || template.workingDir} />
+              <SideRow label={t('agent.createdAt')} value={formatTime(item.contract.core.createdAt || "")} />
+              <SideRow label={t('agent.updatedAt')} value={formatTime(item.updatedAt)} />
             </div>
           </section>
 
           <section>
-            <div className="mb-2 flex items-center gap-2 text-[14px]/5 font-semibold text-[#111827]">
+            <div className="mb-3 flex items-center gap-2 text-[14px]/5 font-semibold text-[#111827]">
               <Activity className="h-4 w-4 text-emerald-600" />
-              运行状态
+              {t('agent.runningStatus')}
             </div>
             <div className="rounded-[14px] border border-[#dfe6f0] bg-white px-4">
-              <SideRow label="重启次数" value="0 次" />
-              <SideRow label="运行环境" value={item.contract.runtime.runtimeClassName || "devbox-runtime"} />
+              <SideRow label={t('agent.restartCount')} value={`0 ${t('agent.unitTimes')}`} />
+              <SideRow label={t('agent.runtimeEnv')} value={item.contract.runtime.runtimeClassName || "devbox-runtime"} />
             </div>
           </section>
         </div>
@@ -736,7 +748,7 @@ export function AgentSettingsWorkspace({
         action={
           editing ? (
             <div className="flex items-center gap-2">
-              <span className="text-[12px]/4 font-medium text-zinc-500">资源预设</span>
+              <span className="text-[12px]/4 font-medium text-zinc-500">{t('agent.resourcePreset')}</span>
               <SelectMenu
                 className="w-[168px]"
                 menuClassName="w-[168px]"
@@ -745,9 +757,9 @@ export function AgentSettingsWorkspace({
                   onRuntimePreset(value as AgentBlueprint["profile"]);
                 }}
                 options={[
-                  { label: "选择预设", value: "" },
+                  { label: t('agent.selectPreset'), value: "" },
                   ...resourcePresetOptions.map((preset) => ({
-                  label: preset.label,
+                  label: getPresetLabel(preset.id),
                   value: preset.id,
                   })),
                 ]}
@@ -764,33 +776,33 @@ export function AgentSettingsWorkspace({
                 type="button"
                 variant={runtimeBlueprint.profile === "custom" ? "primary" : "secondary"}
               >
-                自定义资源
+                {t('agent.customResource')}
               </Button>
             </div>
           ) : null
         }
         className="col-start-2 row-start-1"
-        description="调整 CPU、内存和存储资源，以满足应用运行需求"
+        description={t('agent.runningResourceDesc')}
         icon={Database}
-        title="运行资源"
+        title={t('agent.runningResource')}
       >
           <div className="grid h-full grid-cols-3 gap-3">
             <ResourceMetricCard
               icon={Cpu}
               label="CPU"
               percent={20}
-              suffix="核"
+              suffix={t('agent.unitCore')}
               tone="blue"
-              usedText={`已使用 ${Number(cpuDisplayValue || 0) * 0.2 || 0.4} 核 / 总计 ${cpuDisplayValue || "--"} 核`}
+              usedText={t('agent.usedCpu', { used: Number(cpuDisplayValue || 0) * 0.2 || 0.4, total: cpuDisplayValue || "--" })}
               value={cpuDisplayValue}
             />
             <ResourceMetricCard
               icon={Database}
-              label="内存"
+              label={t('agent.memory')}
               percent={60}
               suffix="GiB"
               tone="violet"
-              usedText={`已使用 ${Number(memoryDisplayValue || 0) * 0.6 || 2.4} GiB / 总计 ${memoryDisplayValue || "--"} GiB`}
+              usedText={t('agent.usedMemory', { used: Number(memoryDisplayValue || 0) * 0.6 || 2.4, total: memoryDisplayValue || "--" })}
               value={memoryDisplayValue}
             />
             <div className="min-w-0">
@@ -800,13 +812,13 @@ export function AgentSettingsWorkspace({
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-emerald-50 text-emerald-600">
                       <HardDrive className="h-5 w-5" />
                     </div>
-                    <div className="text-[15px]/6 font-semibold text-zinc-950">存储</div>
+                    <div className="text-[15px]/6 font-semibold text-zinc-950">{t('agent.storage')}</div>
                   </div>
                   <div>
                     <NumberStepperField
                       className="w-full"
                       hint="存储独立于预设规格，可单独调整。"
-                      label="存储容量"
+                      label={t('agent.storageCapacity')}
                       max={500}
                       min={1}
                       onChange={(value) => onRuntimeChange("storageLimit", `${value}Gi`)}
@@ -818,11 +830,11 @@ export function AgentSettingsWorkspace({
               ) : (
                 <ResourceMetricCard
                   icon={HardDrive}
-                  label="存储"
+                  label={t('agent.storage')}
                   percent={40}
                   suffix="GiB"
                   tone="green"
-                  usedText={`已使用 ${Number(storageDisplayValue || 0) * 0.4 || 4} GiB / 总计 ${storageDisplayValue || "--"} GiB`}
+                  usedText={t('agent.usedStorage', { used: Number(storageDisplayValue || 0) * 0.4 || 4, total: storageDisplayValue || "--" })}
                   value={storageDisplayValue}
                 />
               )}
@@ -832,42 +844,42 @@ export function AgentSettingsWorkspace({
 
       <DashboardCard
         className="col-start-2 row-start-2"
-        description="调整别名、模型和模板等参数，配置当前 Agent"
+        description={t('agent.configDesc')}
         icon={Bot}
-        title="Agent 配置"
+        title={t('agent.config')}
       >
         <div className="grid h-full grid-cols-2 gap-4">
           <div className="flex h-full min-h-[150px] flex-col rounded-[14px] border border-[#e2e8f0] bg-[#f8fafc] p-4">
             <div className="mb-3 flex items-center gap-2 text-[15px]/6 font-semibold text-zinc-950">
               <Info className="h-4 w-4 text-zinc-500" />
-              基本信息
+              {t('agent.basicInfo')}
             </div>
             <div className="flex min-h-0 flex-1 flex-col border-t border-[#e7edf5]">
               {editing ? (
                 <EditableInputField
-                  label="别名"
+                  label={t('agent.alias')}
                   onChange={(value) =>
                     onSettingsChange("aliasName", value)
                   }
-                  placeholder="例如：客服助手"
+                  placeholder={t('agent.aliasPlaceholder')}
                   value={settingsBlueprint.aliasName}
                 />
               ) : (
-                <DisplayField label="别名" value={settingsBlueprint.aliasName || item.aliasName || item.name} />
+                <DisplayField label={t('agent.alias')} value={settingsBlueprint.aliasName || item.aliasName || item.name} />
               )}
               {editing && modelField ? (
                 <div className="py-1">{renderAgentField(modelField)}</div>
               ) : (
-                <DisplayField label="模型" value={item.model || settingsBlueprint.model || "--"} />
+                <DisplayField label={t('agent.model')} value={item.model || settingsBlueprint.model || "--"} />
               )}
-              <DisplayField label="运行环境" value={item.contract.runtime.runtimeClassName || "devbox-runtime"} />
+              <DisplayField label={t('agent.runtimeEnv')} value={item.contract.runtime.runtimeClassName || "devbox-runtime"} />
             </div>
           </div>
 
           <div className="flex h-full min-h-[150px] flex-col rounded-[14px] border border-[#e2e8f0] bg-[#f8fafc] p-4">
             <div className="mb-3 flex items-center gap-2 text-[15px]/6 font-semibold text-zinc-950">
               <Link2 className="h-4 w-4 text-zinc-500" />
-              模型与接口
+              {t('agent.modelAndApi')}
             </div>
             {connectionFields.length > 0 ? (
               <div className="flex min-h-0 flex-1 flex-col border-t border-[#e7edf5]">
@@ -877,7 +889,7 @@ export function AgentSettingsWorkspace({
               </div>
             ) : (
               <div className="rounded-[10px] bg-zinc-50 px-3.5 py-3 text-[12px]/5 text-zinc-500">
-                当前模板没有额外 Agent 配置项。
+                {t('agent.noExtraConfig')}
               </div>
             )}
           </div>
@@ -885,7 +897,7 @@ export function AgentSettingsWorkspace({
       </DashboardCard>
 
       <Modal
-        description="自定义时仅调整 CPU 与内存，存储可在页面中独立设置。"
+        description={t('agent.customResourceSpecDesc')}
         footer={
           <>
             <Button
@@ -893,16 +905,16 @@ export function AgentSettingsWorkspace({
               type="button"
               variant="secondary"
             >
-              取消
+              {t('common.cancel')}
             </Button>
             <Button onClick={applyCustomResourceDraft} type="button">
-              应用设置
+              {t('common.applySettings')}
             </Button>
           </>
         }
         onClose={() => setCustomResourceModalOpen(false)}
         open={customResourceModalOpen}
-        title="自定义资源规格"
+        title={t('agent.customResourceSpecTitle')}
         widthClassName="max-w-lg"
       >
         <div className="space-y-8 pt-1">
@@ -915,11 +927,11 @@ export function AgentSettingsWorkspace({
               label: `${value}`,
               value,
             }))}
-            unit="核"
+            unit={t('agent.unitCore')}
             value={customDraft.cpu}
           />
           <Slider
-            label="内存"
+            label={t('agent.memory')}
             onChange={(value) =>
               setCustomDraft((current) => ({ ...current, memory: value }))
             }

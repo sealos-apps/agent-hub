@@ -19,6 +19,7 @@ import {
 } from '../../../../components/ui/DropdownMenu'
 import { StatusBadge } from '../../../../components/ui/StatusBadge'
 import type { AgentListItem } from '../../../../domains/agents/types'
+import { useI18n } from '../../../../i18n'
 
 interface AgentDetailHeaderProps {
   item: AgentListItem
@@ -49,15 +50,16 @@ export function AgentDetailHeader({
   onToggleState,
   extraActions,
 }: AgentDetailHeaderProps) {
-  const toggleLabel = item.status === 'running' ? '暂停实例' : '启动实例'
+  const { t } = useI18n()
+  const toggleLabel = item.status === 'running' ? t('agent.pauseInstance') : t('agent.startInstance')
   const toggleDisabled = item.status === 'creating'
-  const toggleTitle = toggleDisabled ? '实例创建中，暂时不可切换状态' : toggleLabel
+  const toggleTitle = toggleDisabled ? t('agent.creatingCannotToggle') : toggleLabel
   const primaryAction = {
-    label: '进入控制台',
+    label: t('agent.enterConsole'),
     icon: Terminal,
     onClick: onOpenTerminalWindow,
     disabled: !item.terminalAvailable,
-    title: item.terminalAvailable ? '打开控制台' : item.terminalDisabledReason || '控制台不可用',
+    title: item.terminalAvailable ? t('agent.openConsole') : item.terminalDisabledReason || t('agent.consoleUnavailable'),
   }
 
   return (
@@ -79,9 +81,9 @@ export function AgentDetailHeader({
           </div>
           <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1 text-[13px]/5 text-[#657084]">
             <span className="inline-flex items-center gap-1.5">
-              实例 ID: <span className="font-mono text-[#111827]">{item.name}</span>
+              {t('agent.id')}: <span className="font-mono text-[#111827]">{item.name}</span>
               <button
-                aria-label="复制实例 ID"
+                aria-label={t('common.copy', { label: t('agent.id') })}
                 className="inline-flex h-5 w-5 items-center justify-center rounded-[5px] text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
                 onClick={() => copyText(item.name)}
                 type="button"
@@ -90,9 +92,9 @@ export function AgentDetailHeader({
               </button>
             </span>
             <span className="inline-flex items-center gap-1.5">
-              命名空间: <span className="font-mono text-[#111827]">{item.namespace}</span>
+              {t('agent.namespace')}: <span className="font-mono text-[#111827]">{item.namespace}</span>
               <button
-                aria-label="复制命名空间"
+                aria-label={t('common.copy', { label: t('agent.namespace') })}
                 className="inline-flex h-5 w-5 items-center justify-center rounded-[5px] text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
                 onClick={() => copyText(item.namespace)}
                 type="button"
@@ -101,7 +103,7 @@ export function AgentDetailHeader({
               </button>
             </span>
             <span className="inline-flex min-w-0 items-center gap-1.5">
-              模型: <span className="truncate font-medium text-[#111827]">{item.model || '--'}</span>
+              {t('agent.model')}: <span className="truncate font-medium text-[#111827]">{item.model || '--'}</span>
             </span>
           </div>
         </div>
@@ -141,12 +143,12 @@ export function AgentDetailHeader({
           disabled={configActionDisabled}
           onClick={onOpenConfig}
           size="md"
-          title={configEditing ? '保存' : '变更'}
+          title={configEditing ? t('common.save') : t('agent.change')}
           type="button"
           variant="secondary"
         >
           {configEditing ? <Check className="h-4 w-4" /> : <Settings className="h-4 w-4" />}
-          {configEditing ? '保存配置' : '修改配置'}
+          {configEditing ? t('common.saveConfig') : t('agent.editConfig')}
         </Button>
 
         <DropdownMenu>
@@ -154,19 +156,19 @@ export function AgentDetailHeader({
             <Button
               className="h-10 min-w-[104px] rounded-[10px] border-[#dfe5ee] bg-white px-4 text-[14px] font-medium leading-5 text-[#18181b] shadow-[0_1px_1px_rgba(15,23,42,0.04)] hover:border-[#cfd8e6] hover:bg-[#f8fafc]"
               size="md"
-              title="更多操作"
+              title={t('common.moreActions')}
               type="button"
               variant="secondary"
             >
               <MoreVertical className="h-4 w-4" />
-              更多
+              {t('common.more')}
               <ChevronDown className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-[180px]">
             <DropdownMenuItem destructive onSelect={onDelete}>
               <Trash2 className="h-4 w-4" />
-              删除实例
+              {t('agent.deleteInstance')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

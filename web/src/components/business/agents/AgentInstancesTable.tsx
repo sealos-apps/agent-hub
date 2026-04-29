@@ -10,7 +10,7 @@ import {
   Filter,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { getStatusText } from '../../../domains/agents/templates'
+import { translateStatus, useI18n } from '../../../i18n'
 import { cn, formatCpu, formatMemory, formatStorage, formatTime } from '../../../lib/format'
 import type { AgentListItem, AgentRuntimeStatus } from '../../../domains/agents/types'
 import { Button } from '../../ui/Button'
@@ -69,6 +69,7 @@ function StatusFilterDropdown({
   statusFilterLabel: string
   onStatusFilterChange: (value: AgentListStatusFilter) => void
 }) {
+  const { t } = useI18n()
   return (
     <>
       <DropdownMenu>
@@ -78,12 +79,12 @@ function StatusFilterDropdown({
             type="button"
           >
             <Filter className="h-4 w-4 text-zinc-400" />
-            <span className="truncate font-medium">状态</span>
+            <span className="truncate font-medium">{t('agent.status')}</span>
             <ChevronDown className="h-4 w-4 shrink-0 text-zinc-400" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-[180px] p-2" sideOffset={8}>
-          <div className="px-2.5 pb-1.5 pt-1 text-[13px]/5 font-medium text-zinc-500">状态</div>
+          <div className="px-2.5 pb-1.5 pt-1 text-[13px]/5 font-medium text-zinc-500">{t('agent.status')}</div>
           <DropdownMenuItem
             className={cn(
               'min-h-10 rounded-[8px] text-zinc-700',
@@ -92,7 +93,7 @@ function StatusFilterDropdown({
             onClick={() => onStatusFilterChange(STATUS_FILTER_OPTIONS)}
             onSelect={(event) => event.preventDefault()}
           >
-            <span>全部状态</span>
+            <span>{t('agent.allStatus')}</span>
             <span className="ml-auto flex h-4 w-4 items-center justify-center">
               {allStatusesSelected ? <Check className="h-4 w-4 text-blue-600" /> : null}
             </span>
@@ -116,7 +117,7 @@ function StatusFilterDropdown({
                 }
               >
                 <span className={cn('h-2 w-2 rounded-[2px]', STATUS_FILTER_DOT_CLASSNAME[value])} />
-                <span>{getStatusText(value)}</span>
+                <span>{translateStatus(value, t)}</span>
                 <span className="ml-auto flex h-4 w-4 items-center justify-center">
                   {active ? <Check className="h-4 w-4 text-blue-600" /> : null}
                 </span>
@@ -196,6 +197,7 @@ function CompactAgentCard({
   onToggleState: (item: AgentListItem) => void
   onWebUI: (item: AgentListItem) => void
 }) {
+  const { t } = useI18n()
   return (
     <Card className="rounded-[16px] border-zinc-200/90 p-4 shadow-[0_1px_2px_rgba(24,24,27,0.03)]">
       <div className="flex min-w-0 items-start justify-between gap-3">
@@ -209,13 +211,13 @@ function CompactAgentCard({
 
       <div className="mt-4 grid grid-cols-3 gap-2">
         <CompactMetric label="CPU" value={formatCpu(item.cpu)} />
-        <CompactMetric label="内存" value={formatMemory(item.memory)} />
-        <CompactMetric label="存储" value={formatStorage(item.storage)} />
+        <CompactMetric label={t('agent.memory')} value={formatMemory(item.memory)} />
+        <CompactMetric label={t('agent.storage')} value={formatStorage(item.storage)} />
       </div>
 
       <div className="mt-4 flex min-w-0 items-center justify-between gap-3 border-t border-zinc-100 pt-3">
         <div className="min-w-0 text-[12px]/5 text-zinc-500">
-          <span className="text-zinc-400">更新</span>
+          <span className="text-zinc-400">{t('agent.update')}</span>
           <span className="ml-2 tabular-nums text-zinc-700">{formatTime(item.updatedAt)}</span>
         </div>
         <AgentActionsCell
@@ -235,9 +237,10 @@ function CompactAgentCard({
 }
 
 function AgentListFooter({ total }: { total: number }) {
+  const { t } = useI18n()
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 px-1 py-3 text-[14px] text-zinc-500">
-      <div>总计：{total}</div>
+      <div>{t('common.total', { total })}</div>
       <div className="flex flex-wrap items-center justify-end gap-3">
         <div className="flex items-center gap-2">
           <Button
@@ -284,7 +287,7 @@ function AgentListFooter({ total }: { total: number }) {
             <ChevronsRight className="h-4 w-4" />
           </Button>
         </div>
-        <div>30 /页</div>
+        <div>{t('common.pageSize')}</div>
       </div>
     </div>
   )
@@ -307,13 +310,14 @@ export function AgentInstancesTable({
   onEdit,
   onDelete,
 }: AgentInstancesTableProps) {
+  const { t } = useI18n()
   const allStatusesSelected = statusFilter.length === STATUS_FILTER_OPTIONS.length
   const statusFilterLabel =
     allStatusesSelected
-      ? '全部状态'
+      ? t('agent.allStatus')
       : statusFilter.length === 1
-        ? getStatusText(statusFilter[0])
-        : `已选 ${statusFilter.length} 项`
+        ? translateStatus(statusFilter[0], t)
+        : t('agent.selectedCount', { count: statusFilter.length })
   const tableGridClassName =
     'grid min-w-[936px] grid-cols-[minmax(188px,1.5fr)_minmax(124px,0.82fr)_minmax(160px,1fr)_minmax(136px,0.86fr)_minmax(232px,1fr)] items-center gap-4'
 
@@ -333,7 +337,7 @@ export function AgentInstancesTable({
                 type="button"
               >
                 <ArrowUpAZ className="h-4 w-4 text-zinc-400" />
-                <span className="font-medium">实例</span>
+                <span className="font-medium">{t('agent.instance')}</span>
                 {sortKey === 'name' ? (
                   <span className="shrink-0 text-[11px]/4 font-medium text-blue-600">
                     {sortOrder === 'asc' ? 'A-Z' : 'Z-A'}
@@ -348,21 +352,21 @@ export function AgentInstancesTable({
                   statusFilterLabel={statusFilterLabel}
                 />
               </div>
-              <div className="min-w-0 truncate pr-2 font-medium">资源规格</div>
+              <div className="min-w-0 truncate pr-2 font-medium">{t('agent.resourceSpec')}</div>
               <button
                 className="flex min-w-0 items-center gap-1 truncate pr-2 text-left font-medium transition hover:text-zinc-700"
                 onClick={onToggleUpdatedAtSort}
                 type="button"
               >
                 <ArrowUpWideNarrow className="h-4 w-4 text-blue-500" />
-                <span className="font-medium">更新时间</span>
+                <span className="font-medium">{t('agent.updatedAt')}</span>
                 {sortKey === 'updatedAt' ? (
                   <span className="shrink-0 text-[11px]/4 font-medium text-blue-600">
-                    {sortOrder === 'asc' ? '最早' : '最新'}
+                    {sortOrder === 'asc' ? t('agent.earliest') : t('agent.latest')}
                   </span>
                 ) : null}
               </button>
-              <div className="min-w-0 truncate text-left font-medium">操作</div>
+              <div className="min-w-0 truncate text-left font-medium">{t('agent.actions')}</div>
             </div>
           </div>
         </Card>
@@ -424,14 +428,14 @@ export function AgentInstancesTable({
               icon={<ArrowUpAZ className="h-4 w-4" />}
               onClick={onToggleNameSort}
             >
-              {sortKey === 'name' ? (sortOrder === 'asc' ? '名称 A-Z' : '名称 Z-A') : '按名称'}
+              {sortKey === 'name' ? (sortOrder === 'asc' ? t('agent.sortNameAsc') : t('agent.sortNameDesc')) : t('agent.sortName')}
             </CompactSortButton>
             <CompactSortButton
               active={sortKey === 'updatedAt'}
               icon={<ArrowUpWideNarrow className="h-4 w-4" />}
               onClick={onToggleUpdatedAtSort}
             >
-              {sortKey === 'updatedAt' ? (sortOrder === 'asc' ? '最早更新' : '最新更新') : '按更新'}
+              {sortKey === 'updatedAt' ? (sortOrder === 'asc' ? t('agent.sortEarliest') : t('agent.sortLatest')) : t('agent.sortUpdated')}
             </CompactSortButton>
           </div>
         </Card>

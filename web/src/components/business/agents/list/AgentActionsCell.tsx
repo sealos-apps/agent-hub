@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { getAccessItem, getActionItem } from '../../../../domains/agents/mappers'
 import type { AgentListItem } from '../../../../domains/agents/types'
+import { useI18n } from '../../../../i18n'
 import { Button } from '../../../ui/Button'
 import {
   DropdownMenu,
@@ -45,6 +46,7 @@ export function AgentActionsCell({
   onDelete,
   onWebUI,
 }: AgentActionsCellProps) {
+  const { t } = useI18n()
   const chatAction = getActionItem(item, 'open-chat')
   const terminalAction = getActionItem(item, 'open-terminal')
   const filesAction = getActionItem(item, 'open-files')
@@ -59,36 +61,36 @@ export function AgentActionsCell({
   const canTerminal = Boolean(terminalAction?.enabled && item.terminalAvailable)
   const canWebUI = Boolean(webUIAccess?.enabled)
   const canToggleState = Boolean(runAction?.enabled || pauseAction?.enabled)
-  const toggleTitle = pauseAction?.enabled ? pauseAction.label : runAction?.enabled ? runAction.label : '当前状态不可切换'
+  const toggleTitle = pauseAction?.enabled ? t('agent.pause') : runAction?.enabled ? t('agent.start') : t('agent.currentStatusCannotToggle')
 
   const menuItems = [
     chatAction || getAccessItem(item, 'api')
       ? {
       key: 'chat',
-      label: '对话',
+      label: t('agent.chat'),
       icon: Bot,
       disabled: !canChat,
-      title: chatAction?.reason || item.chatDisabledReason || '当前模板或状态不支持对话',
+      title: chatAction?.reason || item.chatDisabledReason || t('agent.chatUnavailable'),
       onClick: () => onChat(item),
     }
       : null,
     terminalAction || getAccessItem(item, 'terminal')
       ? {
       key: 'terminal',
-      label: '控制台',
+      label: t('agent.console'),
       icon: Terminal,
       disabled: !canTerminal,
-      title: terminalAction?.reason || item.terminalDisabledReason || '当前状态不可进入控制台',
+      title: terminalAction?.reason || item.terminalDisabledReason || t('agent.terminalUnavailable'),
       onClick: () => onTerminal(item),
     }
       : null,
     filesAction || getAccessItem(item, 'files')
       ? {
       key: 'files',
-      label: '文件',
+      label: t('agent.files'),
       icon: FolderOpen,
       disabled: !canFiles,
-      title: filesAction?.reason || '当前状态不可进入文件管理',
+      title: filesAction?.reason || t('agent.filesUnavailable'),
       onClick: () => onFiles(item),
     }
       : null,
@@ -98,7 +100,7 @@ export function AgentActionsCell({
       label: 'Web UI',
       icon: Globe,
       disabled: !canWebUI,
-      title: webUIAccess?.reason || '当前模板不提供 Web UI',
+      title: webUIAccess?.reason || t('agent.webUIUnavailable'),
       onClick: () => onWebUI(item),
     }
       : null,
@@ -115,20 +117,20 @@ export function AgentActionsCell({
     settingsAction
       ? {
       key: 'edit',
-      label: '配置',
+      label: t('common.config'),
       icon: Settings,
       disabled: !settingsAction?.enabled,
-      title: settingsAction?.reason || '配置',
+      title: settingsAction?.reason || t('common.config'),
       onClick: () => onEdit(item),
     }
       : null,
     deleteAction
       ? {
       key: 'delete',
-      label: '删除',
+      label: t('common.delete'),
       icon: Trash2,
       disabled: !deleteAction?.enabled,
-      title: deleteAction?.reason || '删除',
+      title: deleteAction?.reason || t('common.delete'),
       destructive: true,
       onClick: () => onDelete(item),
     }
@@ -166,11 +168,11 @@ export function AgentActionsCell({
         className="inline-flex h-10 w-[104px] shrink-0 items-center justify-center gap-2 rounded-[8px] bg-zinc-950 px-3 text-[14px]/5 font-semibold text-white shadow-[0_1px_2px_rgba(24,24,27,0.18)] transition hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50"
         disabled={!canTerminal}
         onClick={() => onTerminal(item)}
-        title={terminalAction?.reason || item.terminalDisabledReason || '当前状态不可进入控制台'}
+        title={terminalAction?.reason || item.terminalDisabledReason || t('agent.terminalUnavailable')}
         type="button"
       >
         <Terminal className="h-5 w-5 shrink-0 text-white" strokeWidth={2} />
-        <span>控制台</span>
+        <span>{t('agent.console')}</span>
       </button>
       <Button
         className="h-10 min-w-[72px] shrink-0 rounded-[8px] border-0 bg-zinc-100 px-4 py-2 text-[14px]/5 font-semibold text-zinc-900 shadow-none hover:bg-zinc-200/60"
@@ -179,14 +181,14 @@ export function AgentActionsCell({
         type="button"
         variant="secondary"
       >
-        详情
+        {t('agent.detail')}
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             className="h-10 w-10 shrink-0 rounded-[8px] border-0 bg-transparent px-0 text-zinc-600 shadow-none outline-none ring-0 hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
             size="sm"
-            title="更多操作"
+            title={t('common.moreActions')}
             type="button"
             variant="secondary"
           >
