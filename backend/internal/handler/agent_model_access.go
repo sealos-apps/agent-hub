@@ -54,3 +54,20 @@ func ensureManagedModelAccess(
 		TokenName: tokenName,
 	}, nil
 }
+
+func resolveManagedModelAccessWithoutToken(
+	cfg config.Config,
+	factory *kube.Factory,
+	requestedProvider string,
+	explicitBaseURL string,
+) (resolvedModelAccess, error) {
+	profile, err := resolveAIProxyHermesProvider(requestedProvider)
+	if err != nil {
+		return resolvedModelAccess{}, err
+	}
+
+	return resolvedModelAccess{
+		Provider: profile.Provider,
+		BaseURL:  resolveAIProxyProviderBaseURL(firstNonEmpty(explicitBaseURL, cfg.AIProxyModelBaseURL), factory.ClusterServer(), profile.Provider),
+	}, nil
+}

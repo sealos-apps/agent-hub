@@ -212,8 +212,6 @@ export function useAgentHubController() {
           })();
           const message =
             error instanceof Error ? error.message : String(error || "");
-          const nextMessage = detail ? `${message}（${detail}）` : message;
-          setMessage(nextMessage || "读取 AI-Proxy 密钥失败");
           console.warn("[aiproxy] ensure workspace token failed", {
             message,
             detail,
@@ -760,7 +758,13 @@ export function useAgentHubController() {
         setMessage(
           `已更新 ${getAgentLabel(item.aliasName, item.name)} 的运行时设置`,
         );
-        await loadAll();
+        const updatedItem = response?.agent
+          ? mapBackendAgentsToListItems([response.agent], templates, clusterInfo)[0]
+          : null;
+        if (updatedItem) {
+          primeItem(updatedItem);
+        }
+        void loadItemsSilently();
 
         return {
           agentName: item.name,
@@ -773,9 +777,12 @@ export function useAgentHubController() {
     [
       buildRuntimeUpdatePayload,
       clusterContext,
+      clusterInfo,
       getAgentLabel,
-      loadAll,
+      loadItemsSilently,
+      primeItem,
       resolveClusterContext,
+      templates,
       mockMode,
     ],
   );
@@ -836,7 +843,13 @@ export function useAgentHubController() {
         setMessage(
           `已更新 ${getAgentLabel(aliasName, item.name)} 的 Agent 设置`,
         );
-        await loadAll();
+        const updatedItem = response?.agent
+          ? mapBackendAgentsToListItems([response.agent], templates, clusterInfo)[0]
+          : null;
+        if (updatedItem) {
+          primeItem(updatedItem);
+        }
+        void loadItemsSilently();
 
         return {
           agentName: item.name,
@@ -850,10 +863,13 @@ export function useAgentHubController() {
     [
       buildSettingsUpdatePayload,
       clusterContext,
+      clusterInfo,
       ensureWorkspaceTokenReady,
       getAgentLabel,
-      loadAll,
+      loadItemsSilently,
+      primeItem,
       resolveClusterContext,
+      templates,
       templatesById,
       mockMode,
     ],

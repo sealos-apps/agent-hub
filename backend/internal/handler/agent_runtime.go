@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,6 +15,8 @@ import (
 	"github.com/nightwhite/Agent-Hub/internal/agent"
 	"github.com/nightwhite/Agent-Hub/internal/kube"
 )
+
+const agentRuntimeStatusTimeout = 5 * time.Second
 
 var fatalContainerWaitingReasons = map[string]struct{}{
 	"createcontainerconfigerror": {},
@@ -70,7 +73,9 @@ func resolveAgentRuntimeStatus(
 		return agent.StatusDeleting
 	}
 
-	pod, err := getLatestAgentPod(ctx, clientset, namespace, agentName)
+	statusCtx, cancel := context.WithTimeout(ctx, agentRuntimeStatusTimeout)
+	defer cancel()
+	pod, err := getLatestAgentPod(statusCtx, clientset, namespace, agentName)
 	if err == nil && pod != nil {
 		return resolveAgentRuntimeStatusFromPod(devbox, pod)
 	}

@@ -65,15 +65,21 @@ func ListAgents(c *gin.Context) {
 	wg.Add(3)
 	go func() {
 		defer wg.Done()
-		devboxes, devboxErr = repo.List(ctx, kube.ManagedListSelector())
+		queryCtx, cancel := context.WithTimeout(ctx, agentListPrimaryTimeout)
+		defer cancel()
+		devboxes, devboxErr = repo.List(queryCtx, kube.ManagedListSelector())
 	}()
 	go func() {
 		defer wg.Done()
-		ingressDomainsByAgent, ingressErr = listManagedIngressDomains(ctx, clientset, factory.Namespace())
+		queryCtx, cancel := context.WithTimeout(ctx, agentListAuxiliaryTimeout)
+		defer cancel()
+		ingressDomainsByAgent, ingressErr = listManagedIngressDomains(queryCtx, clientset, factory.Namespace())
 	}()
 	go func() {
 		defer wg.Done()
-		latestPodsByAgent, podErr = listManagedLatestAgentPods(ctx, clientset, factory.Namespace())
+		queryCtx, cancel := context.WithTimeout(ctx, agentListAuxiliaryTimeout)
+		defer cancel()
+		latestPodsByAgent, podErr = listManagedLatestAgentPods(queryCtx, clientset, factory.Namespace())
 	}()
 	wg.Wait()
 
@@ -134,8 +140,12 @@ func ListAgents(c *gin.Context) {
 }
 
 const (
-	agentListCacheTTL        = 2 * time.Second
-	agentListCacheMaxEntries = 256
+	agentListCacheTTL             = 2 * time.Second
+	agentListCacheMaxEntries      = 256
+	agentListPrimaryTimeout       = 12 * time.Second
+	agentListAuxiliaryTimeout     = 6 * time.Second
+	agentCreateModelAccessTimeout = 6 * time.Second
+	agentCreateQuotaCheckTimeout  = 6 * time.Second
 )
 
 type cachedAgentList struct {
@@ -250,6 +260,17 @@ func CreateAgent(c *gin.Context) {
 		writeKubernetesError(c, err, "failed to check existing agent")
 		return
 	}
+	quotaCtx, cancelQuotaCheck := context.WithTimeout(ctx, agentCreateQuotaCheckTimeout)
+	quotaErr := validateCreateResourceQuota(quotaCtx, clientset, factory.Namespace(), req)
+	cancelQuotaCheck()
+	if quotaErr != nil {
+		status := http.StatusUnprocessableEntity
+		if quotaErr.Code() == appErr.CodeKubernetesOperation {
+			status = http.StatusGatewayTimeout
+		}
+		writeAppError(c, status, quotaErr)
+		return
+	}
 
 	apiServerKey, genErr := random.String(64)
 	if genErr != nil {
@@ -277,19 +298,31 @@ func CreateAgent(c *gin.Context) {
 
 	ingressDomain := domainPrefix + "-" + strings.TrimSpace(cfg.IngressSuffix)
 	if mappedSettings.ModelProvider != nil && mappedSettings.ModelBaseURL != nil {
+		modelAccessCtx, cancelModelAccess := context.WithTimeout(ctx, agentCreateModelAccessTimeout)
 		modelAccess, accessErr := ensureManagedModelAccess(
-			ctx,
+			modelAccessCtx,
 			cfg,
 			factory,
 			strings.TrimSpace(c.GetHeader(kube.DefaultAuthorizationHeader)),
 			strings.TrimSpace(*mappedSettings.ModelProvider),
 			strings.TrimSpace(*mappedSettings.ModelBaseURL),
 		)
+		cancelModelAccess()
 		if accessErr != nil {
-			writeAppError(c, http.StatusBadGateway, appErr.New(appErr.CodeAIProxyOperation, "failed to prepare managed model access").WithDetails(map[string]any{
-				"reason": accessErr.Error(),
-			}))
-			return
+			fallbackAccess, fallbackErr := resolveManagedModelAccessWithoutToken(
+				cfg,
+				factory,
+				strings.TrimSpace(*mappedSettings.ModelProvider),
+				strings.TrimSpace(*mappedSettings.ModelBaseURL),
+			)
+			if fallbackErr != nil {
+				writeAppError(c, http.StatusBadGateway, appErr.New(appErr.CodeAIProxyOperation, "failed to prepare managed model access").WithDetails(map[string]any{
+					"reason": fallbackErr.Error(),
+				}))
+				return
+			}
+			log.Printf("aiproxy token unavailable during agent create; continuing without model api key: provider=%s baseURL=%s err=%v", fallbackAccess.Provider, fallbackAccess.BaseURL, accessErr)
+			modelAccess = fallbackAccess
 		}
 		mappedSettings.ModelProvider = stringPtr(modelAccess.Provider)
 		mappedSettings.ModelBaseURL = stringPtr(modelAccess.BaseURL)
@@ -1177,6 +1210,72 @@ func validateQuantity(field, value string) *appErr.AppError {
 		return validationFieldError(field, "invalid_quantity", value)
 	}
 	return nil
+}
+
+func validateCreateResourceQuota(
+	ctx context.Context,
+	clientset kubernetes.Interface,
+	namespace string,
+	req dto.CreateAgentRequest,
+) *appErr.AppError {
+	requestedCPU, err := resource.ParseQuantity(strings.TrimSpace(req.AgentCPU))
+	if err != nil {
+		return validationFieldError("agent-cpu", "invalid_quantity", req.AgentCPU)
+	}
+	requestedMemory, err := resource.ParseQuantity(strings.TrimSpace(req.AgentMemory))
+	if err != nil {
+		return validationFieldError("agent-memory", "invalid_quantity", req.AgentMemory)
+	}
+
+	quotas, err := clientset.CoreV1().ResourceQuotas(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return appErr.New(appErr.CodeKubernetesOperation, "failed to check resource quota").WithDetails(map[string]any{
+			"reason": err.Error(),
+		})
+	}
+
+	for _, quota := range quotas.Items {
+		if quotaExceeded(quota.Status.Used, quota.Status.Hard, corev1.ResourceLimitsCPU, requestedCPU) {
+			return resourceQuotaExceededError("agent-cpu", quota.Name, quota.Status.Used, quota.Status.Hard, corev1.ResourceLimitsCPU, requestedCPU)
+		}
+		if quotaExceeded(quota.Status.Used, quota.Status.Hard, corev1.ResourceLimitsMemory, requestedMemory) {
+			return resourceQuotaExceededError("agent-memory", quota.Name, quota.Status.Used, quota.Status.Hard, corev1.ResourceLimitsMemory, requestedMemory)
+		}
+	}
+
+	return nil
+}
+
+func quotaExceeded(used corev1.ResourceList, hard corev1.ResourceList, resourceName corev1.ResourceName, requested resource.Quantity) bool {
+	limit, hasLimit := hard[resourceName]
+	if !hasLimit {
+		return false
+	}
+	current := used[resourceName]
+	total := current.DeepCopy()
+	total.Add(requested)
+	return total.Cmp(limit) > 0
+}
+
+func resourceQuotaExceededError(
+	field string,
+	quotaName string,
+	used corev1.ResourceList,
+	hard corev1.ResourceList,
+	resourceName corev1.ResourceName,
+	requested resource.Quantity,
+) *appErr.AppError {
+	current := used[resourceName]
+	limit := hard[resourceName]
+	return appErr.New(appErr.CodeValidationFailed, "resource quota exceeded").WithDetails(map[string]any{
+		"field":     field,
+		"reason":    "resource_quota_exceeded",
+		"quota":     quotaName,
+		"resource":  string(resourceName),
+		"requested": requested.String(),
+		"used":      current.String(),
+		"limit":     limit.String(),
+	})
 }
 
 func validateModelBaseURL(value string) *appErr.AppError {

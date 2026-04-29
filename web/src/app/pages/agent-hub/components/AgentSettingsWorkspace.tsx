@@ -1,5 +1,6 @@
 import {
   Activity,
+  AlertCircle,
   Bot,
   CheckCircle2,
   Copy,
@@ -10,7 +11,9 @@ import {
   Info,
   Link2,
   Minus,
+  PauseCircle,
   Plus,
+  Clock3,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { readBlueprintSettingValue } from "../../../../domains/agents/blueprintFields";
@@ -71,6 +74,42 @@ function formatDurationSince(value = "", t: ReturnType<typeof useI18n>["t"]) {
   if (days > 0) return `${days} ${t('agent.day')} ${hours} ${t('agent.hour')} ${minutes} ${t('agent.minute')}`;
   if (hours > 0) return `${hours} ${t('agent.hour')} ${minutes} ${t('agent.minute')}`;
   return `${minutes} ${t('agent.minute')}`;
+}
+
+function resolveHealthDisplay(item: AgentListItem, t: ReturnType<typeof useI18n>["t"]) {
+  if (item.status === "running" && item.ready) {
+    return {
+      label: t("agent.normal"),
+      icon: CheckCircle2,
+      iconClassName: "bg-emerald-50 text-emerald-600",
+      badgeClassName: "bg-emerald-50 text-emerald-700",
+    };
+  }
+
+  if (item.status === "error") {
+    return {
+      label: item.bootstrapMessage || t("agent.error"),
+      icon: AlertCircle,
+      iconClassName: "bg-rose-50 text-rose-600",
+      badgeClassName: "bg-rose-50 text-rose-700",
+    };
+  }
+
+  if (item.status === "stopped") {
+    return {
+      label: t("agent.statusStopped"),
+      icon: PauseCircle,
+      iconClassName: "bg-slate-50 text-slate-600",
+      badgeClassName: "bg-slate-50 text-slate-700",
+    };
+  }
+
+  return {
+    label: item.bootstrapMessage || t("agent.statusCreating"),
+    icon: Clock3,
+    iconClassName: "bg-amber-50 text-amber-600",
+    badgeClassName: "bg-amber-50 text-amber-700",
+  };
 }
 
 function FieldShell({
@@ -415,6 +454,8 @@ export function AgentSettingsWorkspace({
   onSettingsFieldChange,
 }: AgentSettingsWorkspaceProps) {
   const { t } = useI18n();
+  const healthDisplay = resolveHealthDisplay(item, t);
+  const HealthIcon = healthDisplay.icon;
   const [customResourceModalOpen, setCustomResourceModalOpen] = useState(false);
   const [customDraft, setCustomDraft] = useState(() => ({
     cpu: CPU_OPTIONS[1],
@@ -696,8 +737,13 @@ export function AgentSettingsWorkspace({
                   <StatusBadge compact status={item.status} />
                 </div>
               </div>
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-[12px] bg-emerald-50 text-emerald-600">
-                <CheckCircle2 className="h-5 w-5" />
+              <span
+                className={cn(
+                  "inline-flex h-10 w-10 items-center justify-center rounded-[12px]",
+                  healthDisplay.iconClassName,
+                )}
+              >
+                <HealthIcon className="h-5 w-5" />
               </span>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[#eef1f6] pt-4">
@@ -709,9 +755,14 @@ export function AgentSettingsWorkspace({
               </div>
               <div>
                 <div className="text-[12px]/4 text-zinc-500">{t('agent.health')}</div>
-                <div className="mt-1 inline-flex items-center gap-1 rounded-[7px] bg-emerald-50 px-2 py-0.5 text-[12px]/4 font-medium text-emerald-700">
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  {item.status === "error" ? t('agent.error') : t('agent.normal')}
+                <div
+                  className={cn(
+                    "mt-1 inline-flex max-w-full items-center gap-1 rounded-[7px] px-2 py-0.5 text-[12px]/4 font-medium",
+                    healthDisplay.badgeClassName,
+                  )}
+                >
+                  <HealthIcon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{healthDisplay.label}</span>
                 </div>
               </div>
             </div>
