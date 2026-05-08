@@ -398,6 +398,7 @@ export function AgentConsoleWindowPage() {
     () => item?.aliasName || item?.name || activeAgentName || 'Agent 控制台',
     [activeAgentName, item?.aliasName, item?.name],
   )
+  const webUIUrl = String(item?.webUIAccess?.enabled ? item.webUIAccess.url || '' : '').trim()
 
   const serviceTabs = useMemo(() => readServiceList(services, item), [item, services])
   const shouldAutoOpenTerminal = location.pathname.endsWith('/desktop/terminal')
@@ -779,6 +780,14 @@ export function AgentConsoleWindowPage() {
     })
   }, [])
 
+  const openWebUIWindow = useCallback(() => {
+    if (!webUIUrl) return
+    const opened = window.open(webUIUrl, '_blank', 'noopener,noreferrer')
+    if (!opened) {
+      setMessage('浏览器阻止了新窗口，请允许弹窗后重试。')
+    }
+  }, [webUIUrl])
+
   const closeTab = useCallback(
     (tabId: string) => {
       if (tabId === initialConsoleTabId) return
@@ -910,14 +919,28 @@ export function AgentConsoleWindowPage() {
             <div className="mt-1 truncate text-[12px] text-zinc-500">{item?.name || activeAgentName || '等待 Agent'}</div>
           </div>
         </div>
-        <button
-          className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-[8px] border border-zinc-200 bg-white px-4 text-[14px] font-medium text-zinc-800 transition hover:border-zinc-300 hover:bg-zinc-50"
-          onClick={() => navigate('/agents')}
-          type="button"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          返回 Agent Hub
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {webUIUrl ? (
+            <button
+              className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-[8px] border border-blue-200 bg-blue-50 px-4 text-[14px] font-medium text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
+              onClick={openWebUIWindow}
+              title="打开 Web UI"
+              type="button"
+            >
+              <Globe className="h-4 w-4" />
+              <span>Web UI</span>
+              <ExternalLink className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+          <button
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-[8px] border border-zinc-200 bg-white px-4 text-[14px] font-medium text-zinc-800 transition hover:border-zinc-300 hover:bg-zinc-50"
+            onClick={() => navigate('/agents')}
+            type="button"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            返回 Agent Hub
+          </button>
+        </div>
       </header>
 
       <div

@@ -11,6 +11,15 @@ const ENABLE_LOCAL_CONSOLE_FALLBACK =
   import.meta.env.DEV &&
   String(import.meta.env.VITE_AGENTHUB_ENABLE_LOCAL_SESSION || '').toLowerCase() === 'true'
 
+const isLoopbackHost = () => {
+  if (typeof window === 'undefined') return false
+  const host = window.location.hostname.toLowerCase()
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1'
+}
+
+const shouldOpenLocalConsoleWindow = () =>
+  import.meta.env.DEV && (ENABLE_LOCAL_CONSOLE_FALLBACK || isLoopbackHost())
+
 const openLocalConsoleWindow = (agentName: string) => {
   if (typeof window === 'undefined') return
 
@@ -31,22 +40,31 @@ export const openAgentConsoleDesktopWindow = async (item: AgentListItem) => {
     throw new Error('缺少 Agent 实例名称，无法打开控制台窗口。')
   }
 
-  if (ENABLE_LOCAL_CONSOLE_FALLBACK) {
+  if (shouldOpenLocalConsoleWindow()) {
     openLocalConsoleWindow(agentName)
     return
   }
 
-  await openSealosDesktopApp({
-    appKey: AGENTHUB_CONSOLE_APP_KEY,
-    pathname: AGENTHUB_CONSOLE_ROUTE,
-    query: {
-      agentName,
-    },
-    messageData: {
-      type: AGENTHUB_CONSOLE_MESSAGE_TYPE,
-      agentName,
-      aliasName: item.aliasName || item.name,
-    },
-    appSize: 'normal',
-  })
+  try {
+    await openSealosDesktopApp({
+      appKey: AGENTHUB_CONSOLE_APP_KEY,
+      pathname: AGENTHUB_CONSOLE_ROUTE,
+      query: {
+        agentName,
+      },
+      messageData: {
+        type: AGENTHUB_CONSOLE_MESSAGE_TYPE,
+        agentName,
+        aliasName: item.aliasName || item.name,
+      },
+      appSize: 'normal',
+    })
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn('[agent-hub] failed to open desktop console app, fallback to local window:', error)
+      openLocalConsoleWindow(agentName)
+      return
+    }
+    throw error
+  }
 }
