@@ -115,23 +115,17 @@ export function AgentWorkspaceShell({
   const renderTopActions = () => {
     if (view === 'agents') {
       return (
-        <div className="flex shrink-0 items-center gap-2 min-[860px]:gap-2.5">
+        <div className="w-full shrink-0 min-[720px]:flex min-[720px]:w-auto min-[720px]:items-center min-[720px]:gap-2 min-[860px]:gap-2.5">
+          <span className="hidden min-[720px]:contents">
+            <LanguageSwitch />
+          </span>
           <Button
-            className="min-[720px]:h-9 min-[720px]:px-3 min-[720px]:text-[13px] min-[860px]:h-10 min-[860px]:px-4 min-[860px]:text-[14px]"
-            onClick={() => navigate('/agents/templates')}
-            size="md"
-            variant="secondary"
-          >
-            {t('nav.browseTemplates')}
-          </Button>
-          <LanguageSwitch className="hidden min-[720px]:inline-flex" />
-          <Button
-            className="shadow-[0_10px_20px_rgba(37,99,255,0.18)] min-[720px]:h-9 min-[720px]:px-3 min-[720px]:text-[13px] min-[860px]:h-10 min-[860px]:px-4 min-[860px]:text-[14px]"
+            className="h-11 w-full min-w-0 px-4 text-[15px] shadow-[0_10px_20px_rgba(23,23,23,0.18)] active:scale-[0.99] min-[720px]:h-9 min-[720px]:w-auto min-[720px]:px-3 min-[720px]:text-[13px] min-[860px]:h-10 min-[860px]:px-4 min-[860px]:text-[14px]"
             onClick={() => navigate('/agents/templates')}
             size="md"
             variant="primary"
           >
-            ＋ {t('nav.createAgent')}
+            <span className="truncate">＋ {t('nav.createAgent')}</span>
           </Button>
         </div>
       )
@@ -158,12 +152,12 @@ export function AgentWorkspaceShell({
           className={cn(
             'relative z-10 flex items-center border-b border-[var(--color-border)] bg-[rgba(255,255,255,.96)]',
             isAgentsView
-              ? 'min-h-[72px] flex-wrap gap-x-3 gap-y-2 px-4 py-3 sm:px-5 min-[720px]:flex-nowrap'
+              ? 'min-h-[72px] flex-wrap gap-x-3 gap-y-2.5 px-4 py-4 sm:px-5 min-[720px]:flex-nowrap min-[720px]:py-3'
               : 'flex-wrap gap-x-4 gap-y-3 px-5 sm:px-7',
             view === 'detail' ? 'min-h-[58px] py-2' : isAgentsView ? '' : 'min-h-[78px] py-3',
           )}
         >
-          <div className={cn('flex min-w-0 items-center', isAgentsView ? 'shrink-0 gap-2.5' : 'gap-3')}>
+          <div className={cn('flex min-w-0 items-center', isAgentsView ? 'w-full shrink-0 gap-2.5 min-[720px]:w-auto' : 'gap-3')}>
             {showLeftBack ? (
               <Button
                 aria-label={t('common.back')}
@@ -191,6 +185,10 @@ export function AgentWorkspaceShell({
               </>
             ) : null}
 
+            {isAgentsView ? (
+              <LanguageSwitch className="ml-auto min-[720px]:hidden [&>button]:px-2" />
+            ) : null}
+
             <div
               className={cn(
                 'min-w-0 items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-semibold text-[#697386]',
@@ -206,7 +204,7 @@ export function AgentWorkspaceShell({
               className={cn(
                 'ml-auto flex items-center justify-end gap-2',
                 isAgentsView
-                  ? 'w-full flex-wrap min-[720px]:w-auto min-[720px]:flex-nowrap'
+                  ? 'w-full flex-wrap gap-y-2.5 min-[720px]:w-auto min-[720px]:flex-nowrap'
                   : 'w-full flex-wrap md:w-auto md:flex-nowrap',
               )}
             >
@@ -215,7 +213,7 @@ export function AgentWorkspaceShell({
                   aria-label={headerSearchPlaceholder}
                   className={cn(
                     isAgentsView
-                      ? 'w-full min-w-[150px] sm:w-[240px] min-[720px]:w-[180px] min-[860px]:w-[240px] lg:w-[320px]'
+                      ? 'w-full min-w-[150px] min-[720px]:w-[180px] min-[860px]:w-[240px] lg:w-[320px]'
                       : 'w-full min-w-[220px] sm:w-[280px] lg:w-[360px]',
                   )}
                   onChange={(event) => handleHeaderSearchChange(event.target.value)}

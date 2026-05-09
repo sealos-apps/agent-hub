@@ -404,9 +404,9 @@ export function AgentTerminalWorkspace({
   }
 
   return (
-    <div className="flex h-full min-h-[460px] flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="agent-terminal-surface relative flex h-full min-h-0 flex-col overflow-hidden bg-[#05070a]">
       {session.error ? (
-        <div className="px-4 pt-3">
+        <div className="absolute left-3 right-3 top-3 z-[1]">
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700">
             {session.error}
           </div>
@@ -421,23 +421,19 @@ export function AgentTerminalWorkspace({
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 px-4 py-4">
-        <div className="relative h-full overflow-hidden rounded-xl border border-slate-900 bg-[#05070a] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-          <div
-            className="h-full min-h-[360px] w-full bg-[#05070a] [scrollbar-gutter:stable] [&_.xterm]:h-full [&_.xterm-screen]:h-full [&_.xterm-viewport]:overflow-y-auto"
-            ref={containerRef}
-          />
+      <div
+        className="h-full min-h-0 w-full bg-[#05070a] [scrollbar-gutter:stable] [&_.xterm-helper-textarea]:bg-[#05070a] [&_.xterm-screen]:h-full [&_.xterm-screen]:bg-[#05070a] [&_.xterm-scroll-area]:bg-[#05070a] [&_.xterm-viewport]:bg-[#05070a] [&_.xterm-viewport]:overflow-y-auto [&_.xterm-viewport::-webkit-scrollbar-corner]:bg-[#05070a] [&_.xterm]:h-full [&_.xterm]:bg-[#05070a]"
+        ref={containerRef}
+      />
 
-          {(session.status === 'initializing' || session.status === 'connecting' || session.status === 'reconnecting') && !session.error ? (
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/28">
-              <div className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/90 px-4 py-2 text-sm text-white shadow-lg backdrop-blur">
-                <LoaderCircle className="animate-spin" size={16} />
-                {session.status === 'reconnecting' ? '正在恢复终端连接...' : '正在连接终端...'}
-              </div>
-            </div>
-          ) : null}
+      {(session.status === 'initializing' || session.status === 'connecting' || session.status === 'reconnecting') && !session.error ? (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/28">
+          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/90 px-4 py-2 text-sm text-white shadow-lg backdrop-blur">
+            <LoaderCircle className="animate-spin" size={16} />
+            {session.status === 'reconnecting' ? '正在恢复终端连接...' : '正在连接终端...'}
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   )
 }

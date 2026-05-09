@@ -165,9 +165,9 @@ export function AgentCreatePage() {
   return (
     <AgentWorkspaceShell
       headerActions={
-        <>
+        <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto md:items-center md:justify-end">
           <Button
-            className="min-w-[124px]"
+            className="h-10 w-full min-w-0 px-3 md:hidden"
             onClick={() => navigate("/agents/templates")}
             size="md"
             variant="secondary"
@@ -175,7 +175,7 @@ export function AgentCreatePage() {
             {t('agent.changeTemplate')}
           </Button>
           <Button
-            className="min-w-[124px]"
+            className="h-10 w-full min-w-0 px-3 md:w-auto md:min-w-[124px]"
             disabled={submitting || waitingForBlueprint || missingClusterContext}
             onClick={handleSubmit}
             size="md"
@@ -183,7 +183,7 @@ export function AgentCreatePage() {
           >
             {submitting ? t('common.deploying') : t('common.confirmDeploy')}
           </Button>
-        </>
+        </div>
       }
     >
       <div className="flex h-full min-w-0 flex-col">
@@ -194,7 +194,7 @@ export function AgentCreatePage() {
             <div className="grid w-full gap-3 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)]">
               {selectedTemplate ? (
                 <div
-                  className="min-w-0 lg:w-[280px] xl:w-[300px] 2xl:w-[320px]"
+                  className="hidden min-w-0 lg:block lg:w-[280px] xl:w-[300px] 2xl:w-[320px]"
                   style={
                     syncedSidebarHeight
                       ? { height: `${syncedSidebarHeight}px` }

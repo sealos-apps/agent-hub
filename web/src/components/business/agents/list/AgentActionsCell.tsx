@@ -12,6 +12,7 @@ import {
 import { getAccessItem, getActionItem } from '../../../../domains/agents/mappers'
 import type { AgentListItem } from '../../../../domains/agents/types'
 import { useI18n } from '../../../../i18n'
+import { cn } from '../../../../lib/format'
 import { Button } from '../../../ui/Button'
 import {
   DropdownMenu,
@@ -23,6 +24,7 @@ import {
 
 interface AgentActionsCellProps {
   item: AgentListItem
+  layout?: 'default' | 'mobileCard'
   onChat: (item: AgentListItem) => void
   onFiles: (item: AgentListItem) => void
   onTerminal: (item: AgentListItem) => void
@@ -36,6 +38,7 @@ const hiddenMenuActionKeys = new Set(['chat', 'terminal', 'files'])
 
 export function AgentActionsCell({
   item,
+  layout = 'default',
   onChat,
   onFiles,
   onTerminal,
@@ -45,6 +48,7 @@ export function AgentActionsCell({
   onWebUI,
 }: AgentActionsCellProps) {
   const { t } = useI18n()
+  const isMobileCardLayout = layout === 'mobileCard'
   const chatAction = getActionItem(item, 'open-chat')
   const terminalAction = getActionItem(item, 'open-terminal')
   const filesAction = getActionItem(item, 'open-files')
@@ -152,9 +156,19 @@ export function AgentActionsCell({
   )
 
   return (
-    <div className="relative inline-flex min-w-[232px] flex-nowrap items-center justify-start gap-2 whitespace-nowrap">
+    <div
+      className={cn(
+        'relative whitespace-nowrap',
+        isMobileCardLayout
+          ? 'grid w-full min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px] items-center gap-2'
+          : 'inline-flex min-w-[232px] flex-nowrap items-center justify-start gap-2',
+      )}
+    >
       <button
-        className="inline-flex h-10 w-[104px] shrink-0 items-center justify-center gap-2 rounded-[8px] bg-zinc-950 px-3 text-[14px]/5 font-semibold text-white shadow-[0_1px_2px_rgba(24,24,27,0.18)] transition hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50"
+        className={cn(
+          'inline-flex h-10 items-center justify-center gap-2 rounded-[8px] bg-zinc-950 px-3 text-[14px]/5 font-semibold text-white shadow-[0_1px_2px_rgba(24,24,27,0.18)] transition hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50',
+          isMobileCardLayout ? 'w-full min-w-0' : 'w-[104px] shrink-0',
+        )}
         disabled={!canTerminal}
         onClick={() => onTerminal(item)}
         title={terminalAction?.reason || item.terminalDisabledReason || t('agent.terminalUnavailable')}
@@ -164,7 +178,10 @@ export function AgentActionsCell({
         <span>{t('agent.console')}</span>
       </button>
       <Button
-        className="h-10 min-w-[72px] shrink-0 rounded-[8px] border-0 bg-zinc-100 px-4 py-2 text-[14px]/5 font-semibold text-zinc-900 shadow-none hover:bg-zinc-200/60"
+        className={cn(
+          'h-10 rounded-[8px] border-0 bg-zinc-100 px-4 py-2 text-[14px]/5 font-semibold text-zinc-900 shadow-none hover:bg-zinc-200/60',
+          isMobileCardLayout ? 'w-full min-w-0' : 'min-w-[72px] shrink-0',
+        )}
         disabled={!canEdit}
         onClick={() => onEdit(item)}
         size="sm"

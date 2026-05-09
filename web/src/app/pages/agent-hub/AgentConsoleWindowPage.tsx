@@ -1,5 +1,6 @@
 import {
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ExternalLink,
   FileText,
@@ -68,13 +69,17 @@ type TerminalTabStateMap = Record<string, TerminalSessionState['status']>
 type ExplorerChildrenMap = Record<string, AgentFileItem[]>
 type ExplorerFlagMap = Record<string, boolean>
 type ExplorerErrorMap = Record<string, string>
+type MobileConsolePane = 'explorer' | 'workspace'
 
 const fileSystemRootPath = explorerFileSystemRootPath
 const mockWorkspaceRoot = '/workspace'
+const MOBILE_CONSOLE_BREAKPOINT = 768
 const CONSOLE_SCALE_BREAKPOINT = 1180
 const CONSOLE_SCALE_CANVAS_WIDTH = 1120
+const CONSOLE_SCALE_MIN_CANVAS_HEIGHT = 560
 const CONSOLE_SCALE_CANVAS_HEIGHT = 720
 const CONSOLE_SCALE_PADDING = 24
+const CONSOLE_STATUS_BAR_HEIGHT = 24
 
 type ConsoleScaleState = {
   enabled: boolean
@@ -87,15 +92,30 @@ const resolveConsoleScaleState = (): ConsoleScaleState => {
     return { enabled: false, scale: 1, canvasHeight: CONSOLE_SCALE_CANVAS_HEIGHT }
   }
 
+  if (window.innerWidth < MOBILE_CONSOLE_BREAKPOINT) {
+    return { enabled: false, scale: 1, canvasHeight: CONSOLE_SCALE_CANVAS_HEIGHT }
+  }
+
   const availableWidth = Math.max(320, window.innerWidth - CONSOLE_SCALE_PADDING)
   const scale = Number(Math.min(1, availableWidth / CONSOLE_SCALE_CANVAS_WIDTH).toFixed(4))
+  const enabled = window.innerWidth < CONSOLE_SCALE_BREAKPOINT || scale < 0.995
+  const availableHeight = Math.max(
+    CONSOLE_SCALE_MIN_CANVAS_HEIGHT,
+    window.innerHeight - CONSOLE_STATUS_BAR_HEIGHT - (enabled ? CONSOLE_SCALE_PADDING : 0),
+  )
+  const canvasHeight = enabled
+    ? Math.max(CONSOLE_SCALE_MIN_CANVAS_HEIGHT, Math.ceil(availableHeight / scale))
+    : CONSOLE_SCALE_CANVAS_HEIGHT
 
   return {
-    enabled: window.innerWidth < CONSOLE_SCALE_BREAKPOINT || scale < 0.995,
+    enabled,
     scale,
-    canvasHeight: CONSOLE_SCALE_CANVAS_HEIGHT,
+    canvasHeight,
   }
 }
+
+const resolveMobileConsoleState = () =>
+  typeof window !== 'undefined' && window.innerWidth < MOBILE_CONSOLE_BREAKPOINT
 
 const mockExplorerChildren: ExplorerChildrenMap = {
   '/workspace': [
@@ -362,7 +382,7 @@ function TerminalTabPane({
   }
 
   return (
-    <div className={isVisible ? 'h-full min-h-0' : 'hidden'}>
+    <div className={isVisible ? 'h-full min-h-0 bg-[#05070a]' : 'hidden'}>
       <AgentTerminalWorkspace
         isVisible={isVisible}
         onAttachOutput={subscribeTerminalOutput}
@@ -456,10 +476,13 @@ export function AgentConsoleWindowPage() {
   const [explorerLoading, setExplorerLoading] = useState<ExplorerFlagMap>({})
   const [explorerErrors, setExplorerErrors] = useState<ExplorerErrorMap>({})
   const [consoleScale, setConsoleScale] = useState<ConsoleScaleState>(() => resolveConsoleScaleState())
+  const [isMobileConsole, setIsMobileConsole] = useState(() => resolveMobileConsoleState())
+  const [mobilePane, setMobilePane] = useState<MobileConsolePane>('explorer')
 
   const tabSeedRef = useRef(0)
   const didAutoOpenTerminalRef = useRef(false)
   const manuallyCollapsedPathsRef = useRef(new Set<string>())
+  const mobileTabsScrollerRef = useRef<HTMLDivElement | null>(null)
 
   const {
     closeFiles,
@@ -486,7 +509,12 @@ export function AgentConsoleWindowPage() {
 
   useEffect(() => {
     const syncScale = () => {
+      const nextMobile = resolveMobileConsoleState()
+      setIsMobileConsole(nextMobile)
       setConsoleScale(resolveConsoleScaleState())
+      if (nextMobile && activeTabId === initialConsoleTabId) {
+        setMobilePane('explorer')
+      }
     }
 
     syncScale()
@@ -497,7 +525,7 @@ export function AgentConsoleWindowPage() {
       window.removeEventListener('resize', syncScale)
       window.removeEventListener('orientationchange', syncScale)
     }
-  }, [])
+  }, [activeTabId])
   const activeTab = useMemo(() => {
     if (pageTabs.length && activeTabId === initialConsoleTabId) return pageTabs[0]
     return tabs.find((tab) => tab.id === activeTabId) || pageTabs[0] || tabs[0]
@@ -648,6 +676,7 @@ export function AgentConsoleWindowPage() {
   useEffect(() => {
     setTabs(createInitialConsoleTabs())
     setActiveTabId(initialConsoleTabId)
+    setMobilePane('explorer')
     setTerminalStates({})
     didAutoOpenTerminalRef.current = false
     manuallyCollapsedPathsRef.current = new Set()
@@ -933,6 +962,7 @@ export function AgentConsoleWindowPage() {
       const existing = tabs.find((tab) => tab.type === 'file' && tab.path === entry.path)
       if (existing) {
         setActiveTabId(existing.id)
+        if (isMobileConsole) setMobilePane('workspace')
         return
       }
 
@@ -956,9 +986,10 @@ export function AgentConsoleWindowPage() {
 
       setTabs((current) => [...current, nextTab])
       setActiveTabId(nextTab.id)
+      if (isMobileConsole) setMobilePane('workspace')
       void loadFileTabContent(nextTab.id, entry)
     },
-    [loadFileTabContent, tabs],
+    [isMobileConsole, loadFileTabContent, tabs],
   )
 
   const openNewTerminalTab = useCallback(() => {
@@ -970,7 +1001,8 @@ export function AgentConsoleWindowPage() {
     }
     setTabs((current) => [...current, nextTab])
     setActiveTabId(nextTab.id)
-  }, [pageTabs])
+    if (isMobileConsole) setMobilePane('workspace')
+  }, [isMobileConsole, pageTabs])
 
   useEffect(() => {
     if (!shouldAutoOpenTerminal || !item || didAutoOpenTerminalRef.current) return
@@ -983,6 +1015,7 @@ export function AgentConsoleWindowPage() {
       const existing = current.find((tab) => tab.type === 'web' && tab.serviceKey === service.key)
       if (existing) {
         setActiveTabId(existing.id)
+        if (isMobileConsole) setMobilePane('workspace')
         return current
       }
       tabSeedRef.current += 1
@@ -995,9 +1028,10 @@ export function AgentConsoleWindowPage() {
         refreshKey: 0,
       }
       setActiveTabId(nextTab.id)
+      if (isMobileConsole) setMobilePane('workspace')
       return [...current, nextTab]
     })
-  }, [])
+  }, [isMobileConsole])
 
   const closeTab = useCallback(
     async (tabId: string) => {
@@ -1018,6 +1052,9 @@ export function AgentConsoleWindowPage() {
         if (activeTabId === tabId) {
           const fallback = next.find((tab) => tab.id !== initialConsoleTabId) || next[0]
           setActiveTabId(fallback?.id || initialConsoleTabId)
+          if (isMobileConsole && (!fallback || fallback.id === initialConsoleTabId)) {
+            setMobilePane('explorer')
+          }
         }
         return next.length ? next : createInitialConsoleTabs()
       })
@@ -1028,7 +1065,7 @@ export function AgentConsoleWindowPage() {
         return next
       })
     },
-    [activeTabId, saveFileTab, tabs],
+    [activeTabId, isMobileConsole, saveFileTab, tabs],
   )
 
   useEffect(() => {
@@ -1042,6 +1079,15 @@ export function AgentConsoleWindowPage() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [activeTab, saveFileTab])
+
+  useEffect(() => {
+    if (!isMobileConsole || mobilePane !== 'workspace') return
+    window.requestAnimationFrame(() => {
+      const scroller = mobileTabsScrollerRef.current
+      const activeButton = scroller?.querySelector<HTMLButtonElement>('[data-active-tab="true"]')
+      activeButton?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+    })
+  }, [activeTabId, isMobileConsole, mobilePane, visibleTabs.length])
 
   const renderExplorerNode = useCallback(
     (entry: AgentFileItem, depth: number) => {
@@ -1166,17 +1212,24 @@ export function AgentConsoleWindowPage() {
         : activeTab?.type === 'web'
           ? activeTab.url
           : ''
+  const showMobileExplorer = isMobileConsole && mobilePane === 'explorer'
+  const showMobileWorkspace = isMobileConsole && mobilePane === 'workspace'
+  const canReturnMobileWorkspace = isMobileConsole && activeTab?.id !== initialConsoleTabId
+  const activeWorkspaceDark = activeTab?.type === 'terminal' || activeTab?.type === 'file'
 
   return (
-    <main className="flex h-screen min-h-screen flex-col overflow-hidden bg-white text-[var(--color-text)]">
+    <main className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-white text-[var(--color-text)]">
       <div
         className={
-          consoleScale.enabled
+          isMobileConsole
+            ? 'flex min-h-0 flex-1 flex-col overflow-hidden bg-white'
+            : consoleScale.enabled
             ? 'min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-white p-3'
             : 'flex min-h-0 flex-1 flex-col overflow-hidden bg-white px-4 py-5 sm:px-6 lg:px-12 lg:py-6'
         }
       >
         <div
+          data-testid={consoleScale.enabled ? 'console-scale-frame' : undefined}
           className={consoleScale.enabled ? 'relative' : 'contents'}
           style={
             consoleScale.enabled
@@ -1189,7 +1242,9 @@ export function AgentConsoleWindowPage() {
         >
         <div
           className={
-            consoleScale.enabled
+            isMobileConsole
+              ? 'flex min-h-0 flex-1 flex-col'
+              : consoleScale.enabled
               ? 'absolute left-0 top-0 flex min-w-0 flex-col'
               : 'flex min-h-0 flex-1 flex-col'
           }
@@ -1218,8 +1273,24 @@ export function AgentConsoleWindowPage() {
           </div>
         ) : null}
 
-        <div className="grid min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)] gap-5">
-          <aside className="flex min-h-0 flex-col overflow-hidden rounded-[12px] border border-zinc-200 bg-white">
+        <div
+          className={
+            isMobileConsole
+              ? 'flex min-h-0 flex-1 overflow-hidden'
+              : 'grid min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)] gap-5'
+          }
+        >
+          <aside
+            className={[
+              'min-h-0 flex-col overflow-hidden bg-white',
+              isMobileConsole
+                ? showMobileExplorer
+                  ? 'flex w-full rounded-none border-0'
+                  : 'hidden'
+                : 'flex rounded-[12px] border border-zinc-200',
+            ].join(' ')}
+            data-testid="console-explorer-pane"
+          >
             <div className="border-b border-zinc-100 px-4 py-4">
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
@@ -1258,7 +1329,19 @@ export function AgentConsoleWindowPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
+                  {canReturnMobileWorkspace ? (
+                    <button
+                      aria-label="返回编辑区域"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-[7px] border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50 active:scale-[0.98]"
+                      onClick={() => setMobilePane('workspace')}
+                      title="返回编辑区域"
+                      type="button"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  ) : null}
                   <button
+                    aria-label="添加终端"
                     className="inline-flex h-8 w-8 items-center justify-center rounded-[7px] border border-zinc-950 bg-zinc-950 text-white transition hover:bg-black"
                     onClick={openNewTerminalTab}
                     type="button"
@@ -1302,20 +1385,59 @@ export function AgentConsoleWindowPage() {
             </div>
           </aside>
 
-          <section className="flex min-h-0 flex-col overflow-hidden rounded-[12px] border border-zinc-200 bg-white">
+          <section
+            className={[
+              'min-h-0 flex-col overflow-hidden',
+              activeWorkspaceDark ? 'bg-[#05070a]' : 'bg-white',
+              isMobileConsole
+                ? showMobileWorkspace
+                  ? 'flex w-full rounded-none border-0'
+                  : 'hidden'
+                : activeWorkspaceDark
+                  ? 'flex rounded-t-[12px] border border-zinc-200'
+                  : 'flex rounded-[12px] border border-zinc-200',
+            ].join(' ')}
+            data-testid="console-workspace-pane"
+          >
             <div className="flex h-11 shrink-0 border-b border-zinc-100 bg-white">
-              <div className="flex min-w-0 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {isMobileConsole ? (
+                <button
+                  aria-label="返回资源管理器"
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center border-r border-zinc-100 text-zinc-700 transition active:scale-[0.98]"
+                  onClick={() => setMobilePane('explorer')}
+                  title="返回资源管理器"
+                  type="button"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+              ) : null}
+              <div
+                className={[
+                  'flex min-w-0 flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+                  isMobileConsole ? 'touch-pan-x snap-x snap-mandatory' : '',
+                ].join(' ')}
+                ref={mobileTabsScrollerRef}
+              >
                 {visibleTabs.map((tab) => {
                   const Icon = iconForTab(tab)
                   const active = tab.id === activeTab?.id
                   return (
                     <button
                       className={[
-                        'group flex h-11 min-w-[156px] max-w-[240px] items-center gap-2 border-r border-zinc-100 px-4 text-[13px] transition',
+                        'group flex h-11 items-center gap-2 border-r border-zinc-100 px-4 text-[13px] transition',
+                        isMobileConsole
+                          ? 'min-w-[148px] max-w-[176px] shrink-0 snap-start'
+                          : 'min-w-[156px] max-w-[240px]',
                         active ? 'bg-zinc-50 text-zinc-950' : 'bg-white text-zinc-500 hover:bg-zinc-50 hover:text-zinc-800',
                       ].join(' ')}
+                      data-active-tab={active ? 'true' : undefined}
                       key={tab.id}
-                      onClick={() => setActiveTabId(tab.id)}
+                      onClick={() => {
+                        setActiveTabId(tab.id)
+                        if (isMobileConsole && tab.id !== initialConsoleTabId) {
+                          setMobilePane('workspace')
+                        }
+                      }}
                       type="button"
                     >
                       <Icon className="h-4 w-4 shrink-0" />
@@ -1346,7 +1468,8 @@ export function AgentConsoleWindowPage() {
                 })}
               </div>
               <button
-                className="inline-flex h-11 w-12 shrink-0 items-center justify-center border-l border-zinc-100 text-zinc-600 transition hover:bg-zinc-50"
+                aria-label="添加终端"
+                className="inline-flex h-11 w-12 shrink-0 items-center justify-center border-l border-zinc-100 text-zinc-600 transition hover:bg-zinc-50 active:scale-[0.98]"
                 onClick={openNewTerminalTab}
                 type="button"
               >
@@ -1376,7 +1499,12 @@ export function AgentConsoleWindowPage() {
               </div>
             ) : null}
 
-            <div className="min-h-0 flex-1 overflow-hidden">
+            <div
+              className={[
+                'min-h-0 flex-1 overflow-hidden',
+                activeWorkspaceDark ? 'bg-[#05070a]' : '',
+              ].join(' ')}
+            >
               {activeTab?.type === 'home' ? (
                 <div className="flex h-full min-h-0 items-stretch overflow-hidden p-6">
                   <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden rounded-[16px] border border-dashed border-zinc-300 bg-[#fafafa] px-6 py-12 text-center">

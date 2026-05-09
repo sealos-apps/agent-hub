@@ -175,6 +175,48 @@ a {
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
   }
 
+  .agent-terminal-surface,
+  .agent-terminal-surface .xterm,
+  .agent-terminal-surface .xterm-screen,
+  .agent-terminal-surface .xterm-viewport,
+  .agent-terminal-surface .xterm-scroll-area {
+    background: #05070a !important;
+  }
+
+  .agent-terminal-surface .xterm {
+    height: 100%;
+  }
+
+  .agent-terminal-surface::after {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    width: 20px;
+    height: 20px;
+    background: #05070a;
+    content: '';
+    pointer-events: none;
+  }
+
+  .agent-terminal-surface .xterm-viewport {
+    overflow-y: auto;
+    scrollbar-color: #52525b #05070a;
+  }
+
+  .agent-terminal-surface .xterm-viewport::-webkit-scrollbar,
+  .agent-terminal-surface .xterm-viewport::-webkit-scrollbar-track,
+  .agent-terminal-surface .xterm-viewport::-webkit-scrollbar-corner,
+  .agent-terminal-surface .xterm-viewport::-webkit-resizer {
+    background: #05070a !important;
+  }
+
+  .agent-terminal-surface .xterm-viewport::-webkit-scrollbar-thumb {
+    border: 3px solid #05070a;
+    border-radius: 999px;
+    background: #52525b;
+  }
+
   .agent-markdown {
     color: #18181b;
     font-size: 14px;

@@ -656,7 +656,7 @@ export function AgentsListPage() {
   return (
     <AgentWorkspaceShell>
       <div className="flex h-full w-full min-w-0 flex-col">
-        <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-0 pt-6 lg:px-12">
+        <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-0 pt-6 sm:px-5 min-[960px]:px-6 lg:px-12">
           <AgentHubOverview
             message={controller.message}
             onClose={() => controller.setMessage("")}

@@ -572,7 +572,7 @@ export function AgentConfigForm({
       <div
         className={`relative flex ${formWidthClassName} flex-col gap-4 pb-10 sm:pb-12 xl:h-full xl:pb-10`}
       >
-        {renderRuntimeItem()}
+        <div className="hidden lg:block">{renderRuntimeItem()}</div>
         <div className="xl:flex-1">{renderAgentSettingsCard()}</div>
         {renderResourceCard()}
       </div>

@@ -218,21 +218,24 @@ function CompactAgentCard({
         <CompactMetric label={t('agent.storage')} value={formatStorage(item.storage)} />
       </div>
 
-      <div className="mt-4 flex min-w-0 items-center justify-between gap-3 border-t border-zinc-100 pt-3">
-        <div className="min-w-0 text-[12px]/5 text-zinc-500">
-          <span className="text-zinc-400">{t('agent.update')}</span>
-          <span className="ml-2 tabular-nums text-zinc-700">{formatTime(item.updatedAt)}</span>
+      <div className="mt-4 border-t border-zinc-100 pt-3">
+        <div className="flex min-w-0 items-center justify-between gap-3 rounded-[10px] bg-zinc-50/80 px-3 py-2 text-[12px]/5">
+          <span className="shrink-0 font-medium text-zinc-400">{t('agent.updatedAt')}</span>
+          <span className="min-w-0 truncate text-right tabular-nums text-zinc-700">{formatTime(item.updatedAt)}</span>
         </div>
-        <AgentActionsCell
-          item={item}
-          onChat={onChat}
-          onDelete={onDelete}
-          onEdit={onEdit}
-          onFiles={onFiles}
-          onTerminal={onTerminal}
-          onToggleState={onToggleState}
-          onWebUI={onWebUI}
-        />
+        <div className="mt-3 min-w-0">
+          <AgentActionsCell
+            item={item}
+            layout="mobileCard"
+            onChat={onChat}
+            onDelete={onDelete}
+            onEdit={onEdit}
+            onFiles={onFiles}
+            onTerminal={onTerminal}
+            onToggleState={onToggleState}
+            onWebUI={onWebUI}
+          />
+        </div>
       </div>
     </Card>
   )
@@ -414,7 +417,7 @@ export function AgentInstancesTable({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col min-[960px]:hidden">
-        <Card className="rounded-[14px] border-zinc-200/90 p-3 shadow-[0_1px_2px_rgba(24,24,27,0.03)]">
+        <Card className="rounded-none border-0 bg-transparent p-0 shadow-none min-[960px]:rounded-[14px] min-[960px]:border-zinc-200/90 min-[960px]:p-3 min-[960px]:shadow-[0_1px_2px_rgba(24,24,27,0.03)]">
           <div className="grid grid-cols-3 gap-2">
             <div className="flex h-10 min-w-0 items-center justify-center rounded-[10px] border border-zinc-200 bg-white px-3 text-[13px] font-medium text-zinc-600">
               <StatusFilterDropdown
@@ -442,7 +445,7 @@ export function AgentInstancesTable({
           </div>
         </Card>
 
-        <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
+        <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
           <div className="flex flex-col gap-3">
             {items.map((item) => (
               <CompactAgentCard
