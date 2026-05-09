@@ -71,7 +71,7 @@ describe('AgentConsoleWindowPage helpers', () => {
     first.push({ id: 'file-1', type: 'home', title: 'mutated' })
 
     expect(second).toEqual([
-      { id: initialConsoleTabId, type: 'home', title: '控制台首页' },
+      { id: initialConsoleTabId, type: 'home', title: 'Console Home' },
     ])
   })
 

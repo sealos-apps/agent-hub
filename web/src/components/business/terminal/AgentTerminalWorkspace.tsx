@@ -12,6 +12,7 @@ import {
   terminalOutputCharsPerFlush,
 } from './terminalOutputScheduler'
 import { Button } from '../../ui/Button'
+import { useI18n } from '../../../i18n'
 
 interface AgentTerminalWorkspaceProps {
   isVisible?: boolean
@@ -60,6 +61,7 @@ export function AgentTerminalWorkspace({
   onResize,
   onAttachOutput,
 }: AgentTerminalWorkspaceProps) {
+  const { t } = useI18n()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<XTerm | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -82,7 +84,18 @@ export function AgentTerminalWorkspace({
   const outputWriteInFlightRef = useRef(false)
   const webglActiveRef = useRef(false)
   const visibleRef = useRef(isVisible)
+  const terminalTextRef = useRef({
+    connecting: t('terminal.connecting'),
+    disconnected: t('terminal.disconnected'),
+  })
   const activeTerminalId = session?.terminalId || ''
+
+  useEffect(() => {
+    terminalTextRef.current = {
+      connecting: t('terminal.connecting'),
+      disconnected: t('terminal.disconnected'),
+    }
+  }, [t])
 
   useEffect(() => {
     inputHandlerRef.current = onInput
@@ -132,7 +145,7 @@ export function AgentTerminalWorkspace({
     fitAddonRef.current = fitAddon
     webglActiveRef.current = false
 
-    terminal.writeln('\x1b[90m正在连接终端...\x1b[0m')
+    terminal.writeln(`\x1b[90m${terminalTextRef.current.connecting}\x1b[0m`)
 
     const resizeNow = () => {
       if (!terminalRef.current || !fitAddonRef.current) return
@@ -376,7 +389,7 @@ export function AgentTerminalWorkspace({
 
     if (session.status === 'disconnected' && announcedStateRef.current !== 'disconnected') {
       announcedStateRef.current = 'disconnected'
-      terminalRef.current.writeln('\r\n\x1b[33m终端连接已关闭。\x1b[0m')
+      terminalRef.current.writeln(`\r\n\x1b[33m${terminalTextRef.current.disconnected}\x1b[0m`)
     }
     previousStatusRef.current = session.status
   }, [session])
@@ -387,15 +400,15 @@ export function AgentTerminalWorkspace({
         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500">
           <TerminalIcon size={22} />
         </div>
-        <div className="mt-4 text-base font-medium text-slate-950">终端工作台</div>
+        <div className="mt-4 text-base font-medium text-slate-950">{t('terminal.workspace')}</div>
         <p className="mt-2 max-w-lg text-sm leading-6 text-slate-500">
-          打开终端后会直接进入 Agent 容器环境，用于检查进程、日志、Hermes CLI 和安装状态。
+          {t('terminal.workspaceDesc')}
         </p>
         {onOpen ? (
           <div className="mt-4">
             <Button onClick={onOpen} variant="secondary">
               <TerminalIcon size={16} />
-              连接终端
+              {t('terminal.connect')}
             </Button>
           </div>
         ) : null}
@@ -414,7 +427,7 @@ export function AgentTerminalWorkspace({
             <div className="mt-3">
               <Button onClick={onOpen} variant="secondary">
                 <TerminalIcon size={16} />
-                重新连接
+                {t('terminal.reconnect')}
               </Button>
             </div>
           ) : null}
@@ -430,7 +443,7 @@ export function AgentTerminalWorkspace({
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/28">
           <div className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/90 px-4 py-2 text-sm text-white shadow-lg backdrop-blur">
             <LoaderCircle className="animate-spin" size={16} />
-            {session.status === 'reconnecting' ? '正在恢复终端连接...' : '正在连接终端...'}
+            {session.status === 'reconnecting' ? t('terminal.reconnecting') : t('terminal.connecting')}
           </div>
         </div>
       ) : null}

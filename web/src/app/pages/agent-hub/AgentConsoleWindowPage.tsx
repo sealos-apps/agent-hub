@@ -31,6 +31,7 @@ import type {
   ClusterContext,
   TerminalSessionState,
 } from '../../../domains/agents/types'
+import { useI18n } from '../../../i18n'
 import { addSealosAppEventListener, getSealosSession } from '../../../sealosSdk'
 import { useAgentFiles } from './hooks/useAgentFiles'
 import { useAgentTerminal } from './hooks/useAgentTerminal'
@@ -333,6 +334,22 @@ function TerminalTabPane({
   onStatusChange: (tabId: string, status: TerminalSessionState['status']) => void
   tabId: string
 }) {
+  const { t } = useI18n()
+  const terminalMessages = useMemo(
+    () => ({
+      connectionFailed: t('terminal.connectionFailed'),
+      connectionRestored: t('terminal.connectionRestored'),
+      droppedOutputNotice: t('terminal.droppedOutputNotice'),
+      reconnectFailed: t('terminal.reconnectFailed'),
+      workspaceNotReady: t('terminal.workspaceNotReady'),
+      connectionLostReconnecting: (code: number | undefined, seconds: number) =>
+        t('terminal.connectionLostReconnecting', {
+          code: code ? t('terminal.connectionCode', { code }) : '',
+          seconds,
+        }),
+    }),
+    [t],
+  )
   const {
     markTerminalConnected,
     markTerminalError,
@@ -343,6 +360,7 @@ function TerminalTabPane({
     terminalSession,
   } = useAgentTerminal({
     clusterContext,
+    messages: terminalMessages,
   })
 
   useEffect(() => {
@@ -453,6 +471,12 @@ function FileTabPane({
 }
 
 export function AgentConsoleWindowPage() {
+  const { t } = useI18n()
+  const agentConsoleTitle = t('console.agentConsole')
+  const consoleHomeTitle = t('console.home')
+  const consoleTerminalTabLabel = t('console.terminalTab')
+  const consoleLoadFailedMock = t('console.loadFailedMock')
+  const consoleSearchFilesFailed = t('console.searchFilesFailed')
   const location = useLocation()
   const [searchParams] = useSearchParams()
   const [clusterContext, setClusterContext] = useState<ClusterContext | null>(null)
@@ -467,7 +491,7 @@ export function AgentConsoleWindowPage() {
   const [resourceSearchItems, setResourceSearchItems] = useState<AgentFileItem[]>([])
   const [resourceSearchLoading, setResourceSearchLoading] = useState(false)
   const [resourceSearchError, setResourceSearchError] = useState('')
-  const [tabs, setTabs] = useState<ConsoleTab[]>(() => createInitialConsoleTabs())
+  const [tabs, setTabs] = useState<ConsoleTab[]>(() => createInitialConsoleTabs(consoleHomeTitle))
   const [activeTabId, setActiveTabId] = useState(initialConsoleTabId)
   const [terminalStates, setTerminalStates] = useState<TerminalTabStateMap>({})
   const [explorerRootPath, setExplorerRootPath] = useState(mockWorkspaceRoot)
@@ -497,8 +521,8 @@ export function AgentConsoleWindowPage() {
   })
 
   const displayName = useMemo(
-    () => item?.aliasName || item?.name || activeAgentName || 'Agent 控制台',
-    [activeAgentName, item?.aliasName, item?.name],
+    () => item?.aliasName || item?.name || activeAgentName || agentConsoleTitle,
+    [activeAgentName, agentConsoleTitle, item?.aliasName, item?.name],
   )
 
   const serviceTabs = useMemo(() => readServiceList(services, item), [item, services])
@@ -506,6 +530,30 @@ export function AgentConsoleWindowPage() {
 
   const pageTabs = useMemo(() => tabs.filter((tab) => tab.id !== initialConsoleTabId), [tabs])
   const visibleTabs = pageTabs.length ? pageTabs : tabs
+
+  useEffect(() => {
+    setTabs((current) => {
+      let terminalIndex = 0
+      let changed = false
+      const next = current.map((tab) => {
+        if (tab.id === initialConsoleTabId && tab.type === 'home') {
+          const title = consoleHomeTitle
+          if (tab.title === title) return tab
+          changed = true
+          return { ...tab, title }
+        }
+        if (tab.type === 'terminal') {
+          terminalIndex += 1
+          const title = `${consoleTerminalTabLabel} ${terminalIndex}`
+          if (tab.title === title) return tab
+          changed = true
+          return { ...tab, title }
+        }
+        return tab
+      })
+      return changed ? next : current
+    })
+  }, [consoleHomeTitle, consoleTerminalTabLabel])
 
   useEffect(() => {
     const syncScale = () => {
@@ -649,7 +697,7 @@ export function AgentConsoleWindowPage() {
         setMessage('')
       } catch (error) {
         if (!active) return
-        applyMock(targetAgentName, error instanceof Error ? error.message : '读取 Agent 控制台失败，已展示示例控制台。')
+        applyMock(targetAgentName, error instanceof Error ? error.message : consoleLoadFailedMock)
       } finally {
         if (active) setLoading(false)
       }
@@ -660,7 +708,7 @@ export function AgentConsoleWindowPage() {
     return () => {
       active = false
     }
-  }, [activeAgentName, clusterContext])
+  }, [activeAgentName, clusterContext, consoleLoadFailedMock])
 
   useEffect(() => {
     if (!item || mockConsoleMode) {
@@ -674,13 +722,13 @@ export function AgentConsoleWindowPage() {
   }, [closeFiles, item, mockConsoleMode, openFiles])
 
   useEffect(() => {
-    setTabs(createInitialConsoleTabs())
+    setTabs(createInitialConsoleTabs(consoleHomeTitle))
     setActiveTabId(initialConsoleTabId)
     setMobilePane('explorer')
     setTerminalStates({})
     didAutoOpenTerminalRef.current = false
     manuallyCollapsedPathsRef.current = new Set()
-  }, [item?.name])
+  }, [consoleHomeTitle, item?.name])
 
   useEffect(() => {
     if (!mockConsoleMode) return
@@ -774,7 +822,7 @@ export function AgentConsoleWindowPage() {
             return
           }
           setResourceSearchItems([])
-          setResourceSearchError(error instanceof Error ? error.message : '搜索文件失败')
+          setResourceSearchError(error instanceof Error ? error.message : consoleSearchFilesFailed)
         } finally {
           if (active) setResourceSearchLoading(false)
         }
@@ -787,7 +835,7 @@ export function AgentConsoleWindowPage() {
       active = false
       window.clearTimeout(timer)
     }
-  }, [explorerRootPath, filesSession?.status, mockConsoleMode, resourceSearch, searchFiles])
+  }, [consoleSearchFilesFailed, explorerRootPath, filesSession?.status, mockConsoleMode, resourceSearch, searchFiles])
 
   const updateTerminalState = useCallback((tabId: string, status: TerminalSessionState['status']) => {
     setTerminalStates((current) => {
@@ -997,12 +1045,12 @@ export function AgentConsoleWindowPage() {
     const nextTab: TerminalTab = {
       id: `terminal-${Date.now()}-${tabSeedRef.current}`,
       type: 'terminal',
-      title: `终端 ${pageTabs.filter((tab) => tab.type === 'terminal').length + 1}`,
+      title: `${consoleTerminalTabLabel} ${pageTabs.filter((tab) => tab.type === 'terminal').length + 1}`,
     }
     setTabs((current) => [...current, nextTab])
     setActiveTabId(nextTab.id)
     if (isMobileConsole) setMobilePane('workspace')
-  }, [isMobileConsole, pageTabs])
+  }, [consoleTerminalTabLabel, isMobileConsole, pageTabs])
 
   useEffect(() => {
     if (!shouldAutoOpenTerminal || !item || didAutoOpenTerminalRef.current) return
@@ -1056,7 +1104,7 @@ export function AgentConsoleWindowPage() {
             setMobilePane('explorer')
           }
         }
-        return next.length ? next : createInitialConsoleTabs()
+        return next.length ? next : createInitialConsoleTabs(consoleHomeTitle)
       })
       setTerminalStates((current) => {
         if (!(tabId in current)) return current
@@ -1065,7 +1113,7 @@ export function AgentConsoleWindowPage() {
         return next
       })
     },
-    [activeTabId, isMobileConsole, saveFileTab, tabs],
+    [activeTabId, consoleHomeTitle, isMobileConsole, saveFileTab, tabs],
   )
 
   useEffect(() => {
@@ -1202,13 +1250,13 @@ export function AgentConsoleWindowPage() {
           : ''
   const contextSub =
     activeTab?.type === 'terminal'
-      ? terminalStates[activeTab.id] || '准备中'
+      ? terminalStates[activeTab.id] || t('console.ready')
       : activeTab?.type === 'file'
         ? activeTab.loading
-          ? '读取中'
+          ? t('console.reading')
           : activeTab.stale
-            ? '来自缓存，正在刷新'
-            : '文件预览'
+            ? t('console.cacheRefreshing')
+            : t('console.filePreview')
         : activeTab?.type === 'web'
           ? activeTab.url
           : ''
@@ -1263,7 +1311,7 @@ export function AgentConsoleWindowPage() {
           <div className="mb-4 flex items-center justify-between gap-3 rounded-[8px] border border-amber-200 bg-amber-50 px-4 py-2 text-[13px] text-amber-800">
             <span className="min-w-0 flex-1">{message}</span>
             <button
-              aria-label="关闭提示"
+              aria-label={t('console.closeNotice')}
               className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-amber-700 transition hover:bg-amber-100 hover:text-amber-900"
               onClick={() => setMessage('')}
               type="button"
@@ -1294,13 +1342,13 @@ export function AgentConsoleWindowPage() {
             <div className="border-b border-zinc-100 px-4 py-4">
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="text-[15px] font-medium text-zinc-950">资源管理器</div>
+                  <div className="text-[15px] font-medium text-zinc-950">{t('console.resourceExplorer')}</div>
                   <div className="mt-2 flex max-w-[220px] items-center gap-1 overflow-hidden text-[12px] text-zinc-500">
                     <button
                       className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-35"
                       disabled={!canGoParent}
                       onClick={() => navigateExplorerToPath(parentPath(explorerRootPath))}
-                      title="返回上一级"
+                      title={t('console.backParent')}
                       type="button"
                     >
                       <Undo2 className="h-3.5 w-3.5" />
@@ -1331,17 +1379,17 @@ export function AgentConsoleWindowPage() {
                 <div className="flex items-center gap-1">
                   {canReturnMobileWorkspace ? (
                     <button
-                      aria-label="返回编辑区域"
+                      aria-label={t('console.backWorkspace')}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-[7px] border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50 active:scale-[0.98]"
                       onClick={() => setMobilePane('workspace')}
-                      title="返回编辑区域"
+                      title={t('console.backWorkspace')}
                       type="button"
                     >
                       <ChevronRight className="h-4 w-4" />
                     </button>
                   ) : null}
                   <button
-                    aria-label="添加终端"
+                    aria-label={t('console.addTerminal')}
                     className="inline-flex h-8 w-8 items-center justify-center rounded-[7px] border border-zinc-950 bg-zinc-950 text-white transition hover:bg-black"
                     onClick={openNewTerminalTab}
                     type="button"
@@ -1356,7 +1404,7 @@ export function AgentConsoleWindowPage() {
                 <input
                   className="min-w-0 flex-1 bg-transparent text-zinc-800 outline-none placeholder:text-zinc-400"
                   onChange={(event) => setResourceSearch(event.target.value)}
-                  placeholder="搜索文件"
+                  placeholder={t('console.searchFiles')}
                   value={resourceSearch}
                 />
               </label>
@@ -1364,12 +1412,12 @@ export function AgentConsoleWindowPage() {
 
             <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
               <div className="mb-2 px-2 text-[12px] font-medium text-zinc-500">
-                {searchActive ? `搜索结果：${resourceSearch.trim()}` : '文件层级'}
+                {searchActive ? t('console.searchResults', { keyword: resourceSearch.trim() }) : t('console.fileTree')}
               </div>
               {loading || rootLoading ? (
                 <div className="flex items-center gap-2 px-2 py-3 text-[13px] text-zinc-500">
                   <LoaderCircle className="h-4 w-4 animate-spin" />
-                  {searchActive ? '搜索文件中' : '文件列表加载中'}
+                  {searchActive ? t('console.searchingFiles') : t('console.loadingFiles')}
                 </div>
               ) : rootError ? (
                 <div className="rounded-[8px] border border-rose-100 bg-rose-50 px-3 py-3 text-[13px] text-rose-700">
@@ -1379,7 +1427,7 @@ export function AgentConsoleWindowPage() {
                 <div className="space-y-0.5">{rootEntries.map((entry) => renderExplorerNode(entry, 0))}</div>
               ) : (
                 <div className="rounded-[8px] border border-dashed border-zinc-200 px-3 py-6 text-center text-[13px] text-zinc-500">
-                  {searchActive ? '未找到匹配文件' : '暂无文件层级'}
+                  {searchActive ? t('console.noMatchingFiles') : t('console.noFileTree')}
                 </div>
               )}
             </div>
@@ -1402,10 +1450,10 @@ export function AgentConsoleWindowPage() {
             <div className="flex h-11 shrink-0 border-b border-zinc-100 bg-white">
               {isMobileConsole ? (
                 <button
-                  aria-label="返回资源管理器"
+                  aria-label={t('console.backExplorer')}
                   className="inline-flex h-11 w-11 shrink-0 items-center justify-center border-r border-zinc-100 text-zinc-700 transition active:scale-[0.98]"
                   onClick={() => setMobilePane('explorer')}
-                  title="返回资源管理器"
+                  title={t('console.backExplorer')}
                   type="button"
                 >
                   <ChevronLeft className="h-5 w-5" />
@@ -1444,9 +1492,9 @@ export function AgentConsoleWindowPage() {
                       <span className="min-w-0 flex-1 truncate text-left">{tab.title}</span>
                       {tab.type === 'file' && tab.dirty ? (
                         <span
-                          aria-label="有未保存修改"
+                          aria-label={t('console.unsavedChanges')}
                           className="h-2 w-2 shrink-0 rounded-full bg-sky-500"
-                          title="有未保存修改"
+                          title={t('console.unsavedChanges')}
                         />
                       ) : null}
                       {tab.type === 'file' && tab.saving ? (
@@ -1468,7 +1516,7 @@ export function AgentConsoleWindowPage() {
                 })}
               </div>
               <button
-                aria-label="添加终端"
+                aria-label={t('console.addTerminal')}
                 className="inline-flex h-11 w-12 shrink-0 items-center justify-center border-l border-zinc-100 text-zinc-600 transition hover:bg-zinc-50 active:scale-[0.98]"
                 onClick={openNewTerminalTab}
                 type="button"
@@ -1509,9 +1557,9 @@ export function AgentConsoleWindowPage() {
                 <div className="flex h-full min-h-0 items-stretch overflow-hidden p-6">
                   <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden rounded-[16px] border border-dashed border-zinc-300 bg-[#fafafa] px-6 py-12 text-center">
                     <div className="relative z-10 flex max-w-[430px] flex-col items-center gap-3">
-                      <h2 className="text-[24px]/8 font-medium tracking-normal text-black">暂无打开的页面</h2>
+                      <h2 className="text-[24px]/8 font-medium tracking-normal text-black">{t('console.noOpenPage')}</h2>
                       <p className="text-[16px]/6 font-normal text-[#4d4d4d]">
-                        您可以从左侧文件列表选取文件，或启动一个终端。
+                        {t('console.noOpenPageDesc')}
                       </p>
                       <button
                         className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-[8px] border border-[#171717] bg-[#171717] px-4 text-[14px] font-medium text-[#fafafa] shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition hover:border-black hover:bg-black"
@@ -1519,7 +1567,7 @@ export function AgentConsoleWindowPage() {
                         type="button"
                       >
                         <Plus className="h-4 w-4" />
-                        添加终端
+                        {t('console.addTerminal')}
                       </button>
                     </div>
                   </div>

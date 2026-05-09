@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { buildAgentWebSocketUrl } from '../../../../api'
 import type {
   AgentListItem,
@@ -13,7 +13,25 @@ const fallbackTerminalCwd = '/opt/hermes'
 const maxBufferedOutputChunks = 200
 const reconnectDelaySchedule = [600, 1200, 2400, 5000]
 const maxReconnectAttempts = 6
-const droppedOutputNotice = '\r\n\x1b[33m[服务端高压保护：已跳过部分历史输出以保持交互]\x1b[0m\r\n'
+
+type TerminalMessages = {
+  connectionFailed: string
+  connectionRestored: string
+  droppedOutputNotice: string
+  reconnectFailed: string
+  workspaceNotReady: string
+  connectionLostReconnecting: (code: number | undefined, seconds: number) => string
+}
+
+const defaultTerminalMessages: TerminalMessages = {
+  connectionFailed: 'Terminal connection failed',
+  connectionRestored: 'Terminal connection restored.',
+  droppedOutputNotice: '[Server backpressure protection: some historical output was skipped to keep interaction responsive]',
+  reconnectFailed: 'Terminal connection retried several times. Please reconnect manually.',
+  workspaceNotReady: 'The current workspace is not ready, so the terminal cannot connect yet.',
+  connectionLostReconnecting: (code, seconds) =>
+    `Connection lost${code ? ` (code=${code})` : ''}, reconnecting in ${seconds}s...`,
+}
 
 const createTerminalSession = (
   resource: AgentListItem,
@@ -40,11 +58,19 @@ type ReconnectPlan = {
 
 interface UseAgentTerminalOptions {
   clusterContext: ClusterContext | null
+  messages?: Partial<TerminalMessages>
   onErrorMessage?: (message: string) => void
 }
 
-export function useAgentTerminal({ clusterContext, onErrorMessage }: UseAgentTerminalOptions) {
+export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: UseAgentTerminalOptions) {
   const [terminalSession, setTerminalSession] = useState<TerminalSessionState | null>(null)
+  const terminalMessages = useMemo<TerminalMessages>(
+    () => ({
+      ...defaultTerminalMessages,
+      ...messages,
+    }),
+    [messages],
+  )
 
   const socketRef = useRef<WebSocket | null>(null)
   const terminalSessionRef = useRef<TerminalSessionState | null>(null)
@@ -262,13 +288,13 @@ export function useAgentTerminal({ clusterContext, onErrorMessage }: UseAgentTer
             }
           }
           if (mode === 'reconnect') {
-            emitOutput('\r\n\x1b[90mConnection restored.\x1b[0m\r\n')
+            emitOutput(`\r\n\x1b[90m${terminalMessages.connectionRestored}\x1b[0m\r\n`)
           }
           return
         case 'terminal.output':
           if (messageTerminalID !== plan.terminalId) return
           if (data.dropped) {
-            emitOutput(droppedOutputNotice)
+            emitOutput(`\r\n\x1b[33m${terminalMessages.droppedOutputNotice}\x1b[0m\r\n`)
           }
           emitOutput(String(data.output || ''))
           return
@@ -289,7 +315,7 @@ export function useAgentTerminal({ clusterContext, onErrorMessage }: UseAgentTer
             return
           }
 
-          const message = String(data.message || '终端连接失败')
+          const message = String(data.message || terminalMessages.connectionFailed)
           syncSession((current) =>
             current
               ? {
@@ -349,7 +375,7 @@ export function useAgentTerminal({ clusterContext, onErrorMessage }: UseAgentTer
       reconnectAttemptsRef.current = nextAttempt
 
       if (nextAttempt > maxReconnectAttempts) {
-        const message = '终端连接多次重试失败，请手动重新连接。'
+        const message = terminalMessages.reconnectFailed
         clearReconnectTimer()
         syncSession((session) =>
           session
@@ -379,7 +405,7 @@ export function useAgentTerminal({ clusterContext, onErrorMessage }: UseAgentTer
       )
 
       emitOutput(
-        `\r\n\x1b[90mConnection lost${event.code ? ` (code=${event.code})` : ''}, reconnecting in ${Math.max(1, Math.round(delay / 1000))}s...\x1b[0m\r\n`,
+        `\r\n\x1b[90m${terminalMessages.connectionLostReconnecting(event.code || undefined, Math.max(1, Math.round(delay / 1000)))}\x1b[0m\r\n`,
       )
 
       reconnectTimerRef.current = window.setTimeout(() => {
@@ -387,7 +413,7 @@ export function useAgentTerminal({ clusterContext, onErrorMessage }: UseAgentTer
         connectSocketRef.current(version, reconnectPlanRef.current, 'reconnect')
       }, delay)
     })
-  }, [clearReconnectTimer, closeSocket, emitOutput, nextRequestId, onErrorMessage, sendTerminalResize, syncSession])
+  }, [clearReconnectTimer, closeSocket, emitOutput, nextRequestId, onErrorMessage, sendTerminalResize, syncSession, terminalMessages])
 
   useEffect(() => {
     connectSocketRef.current = connectSocket
@@ -417,7 +443,7 @@ export function useAgentTerminal({ clusterContext, onErrorMessage }: UseAgentTer
       closeSocket()
 
       if (!clusterKubeconfig) {
-        const message = '当前工作区还没准备好，暂时无法连接终端。'
+        const message = terminalMessages.workspaceNotReady
         syncSession(() => ({
           ...createTerminalSession(resource),
           status: 'error',
@@ -447,7 +473,7 @@ export function useAgentTerminal({ clusterContext, onErrorMessage }: UseAgentTer
 
       connectSocket(version, plan, 'fresh')
     },
-    [clearReconnectTimer, closeSocket, clusterKubeconfig, connectSocket, nextRequestId, onErrorMessage, syncSession],
+    [clearReconnectTimer, closeSocket, clusterKubeconfig, connectSocket, nextRequestId, onErrorMessage, syncSession, terminalMessages],
   )
 
   const sendTerminalInput = useCallback(
@@ -513,7 +539,7 @@ export function useAgentTerminal({ clusterContext, onErrorMessage }: UseAgentTer
   }, [syncSession])
 
   const markTerminalError = useCallback((message: string) => {
-    const normalizedMessage = String(message || '').trim() || '终端连接失败'
+    const normalizedMessage = String(message || '').trim() || terminalMessages.connectionFailed
     clearReconnectTimer()
     syncSession((current) =>
       current
@@ -525,7 +551,7 @@ export function useAgentTerminal({ clusterContext, onErrorMessage }: UseAgentTer
         : current,
     )
     onErrorMessage?.(normalizedMessage)
-  }, [clearReconnectTimer, onErrorMessage, syncSession])
+  }, [clearReconnectTimer, onErrorMessage, syncSession, terminalMessages.connectionFailed])
 
   const closeTerminal = useCallback(() => {
     requestVersionRef.current += 1

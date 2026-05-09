@@ -7,17 +7,36 @@ import { AgentTerminalWorkspace } from '../../../components/business/terminal/Ag
 import { mapBackendAgentsToListItems } from '../../../domains/agents/mappers'
 import { hydrateTemplateCatalog } from '../../../domains/agents/templates'
 import type { AgentListItem, ClusterContext } from '../../../domains/agents/types'
+import { useI18n } from '../../../i18n'
 import { addSealosAppEventListener, getSealosSession } from '../../../sealosSdk'
 import { useAgentTerminal } from './hooks/useAgentTerminal'
 import { parseAgentTerminalDesktopMessage } from './lib/desktopMessages'
 
 export function AgentTerminalWindowPage() {
+  const { t } = useI18n()
   const [searchParams] = useSearchParams()
   const [clusterContext, setClusterContext] = useState<ClusterContext | null>(null)
   const [activeAgentName, setActiveAgentName] = useState(() => String(searchParams.get('agentName') || '').trim())
   const [activeItem, setActiveItem] = useState<AgentListItem | null>(null)
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
+  const loadWorkspaceFailed = t('terminal.loadWorkspaceFailed')
+  const loadAgentFailed = t('terminal.loadAgentFailed')
+  const terminalMessages = useMemo(
+    () => ({
+      connectionFailed: t('terminal.connectionFailed'),
+      connectionRestored: t('terminal.connectionRestored'),
+      droppedOutputNotice: t('terminal.droppedOutputNotice'),
+      reconnectFailed: t('terminal.reconnectFailed'),
+      workspaceNotReady: t('terminal.workspaceNotReady'),
+      connectionLostReconnecting: (code: number | undefined, seconds: number) =>
+        t('terminal.connectionLostReconnecting', {
+          code: code ? t('terminal.connectionCode', { code }) : '',
+          seconds,
+        }),
+    }),
+    [t],
+  )
 
   const displayName = useMemo(
     () => activeItem?.aliasName || activeItem?.name || activeAgentName || APP_TERMINAL_TITLE,
@@ -38,6 +57,7 @@ export function AgentTerminalWindowPage() {
     terminalSession,
   } = useAgentTerminal({
     clusterContext,
+    messages: terminalMessages,
     onErrorMessage: setMessage,
   })
 
@@ -52,7 +72,7 @@ export function AgentTerminalWindowPage() {
         setClusterContext(nextContext)
       } catch (error) {
         if (!active) return
-        setMessage(error instanceof Error ? error.message : '工作区信息加载失败')
+        setMessage(error instanceof Error ? error.message : loadWorkspaceFailed)
       }
     }
 
@@ -61,7 +81,7 @@ export function AgentTerminalWindowPage() {
     return () => {
       active = false
     }
-  }, [])
+  }, [loadWorkspaceFailed])
 
   useEffect(() => {
     const applyMessage = (raw: unknown) => {
@@ -130,7 +150,7 @@ export function AgentTerminalWindowPage() {
 
         if (!nextItem) {
           setActiveItem(null)
-          setMessage(`未找到名为 ${activeAgentName} 的 Agent 实例。`)
+          setMessage(t('terminal.agentNotFound', { name: activeAgentName }))
           return
         }
 
@@ -139,7 +159,7 @@ export function AgentTerminalWindowPage() {
       } catch (error) {
         if (!active) return
         setActiveItem(null)
-        setMessage(error instanceof Error ? error.message : '读取 Agent 信息失败')
+        setMessage(error instanceof Error ? error.message : loadAgentFailed)
       } finally {
         if (active) {
           setLoading(false)
@@ -152,7 +172,7 @@ export function AgentTerminalWindowPage() {
     return () => {
       active = false
     }
-  }, [activeAgentName, clusterContext])
+  }, [activeAgentName, clusterContext, loadAgentFailed, t])
 
   useEffect(() => {
     if (!activeItem) return
@@ -168,12 +188,14 @@ export function AgentTerminalWindowPage() {
             <TerminalIcon size={18} />
             <span className="truncate text-sm font-semibold">{displayName}</span>
           </div>
-          <div className="mt-1 truncate text-xs text-[var(--color-muted)]">{activeItem?.name || activeAgentName || '等待终端目标'}</div>
+          <div className="mt-1 truncate text-xs text-[var(--color-muted)]">
+            {activeItem?.name || activeAgentName || t('terminal.waitingTarget')}
+          </div>
         </div>
         {loading ? (
           <div className="flex items-center gap-2 text-xs text-[var(--color-muted)]">
             <LoaderCircle className="animate-spin" size={14} />
-            加载中
+            {t('terminal.loading')}
           </div>
         ) : null}
       </header>
