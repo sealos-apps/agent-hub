@@ -52,6 +52,7 @@ interface AgentInstancesTableProps {
   onTerminal: (item: AgentListItem) => void
   onWebUI: (item: AgentListItem) => void
   onToggleState: (item: AgentListItem) => void
+  onRenameAlias: (item: AgentListItem, aliasName: string) => Promise<void> | void
   onEdit: (item: AgentListItem) => void
   onDelete: (item: AgentListItem) => void
 }
@@ -185,6 +186,7 @@ function CompactAgentCard({
   onFiles,
   onTerminal,
   onToggleState,
+  onRenameAlias,
   onWebUI,
 }: {
   item: AgentListItem
@@ -195,6 +197,7 @@ function CompactAgentCard({
   onFiles: (item: AgentListItem) => void
   onTerminal: (item: AgentListItem) => void
   onToggleState: (item: AgentListItem) => void
+  onRenameAlias: (item: AgentListItem, aliasName: string) => Promise<void> | void
   onWebUI: (item: AgentListItem) => void
 }) {
   const { t } = useI18n()
@@ -202,7 +205,7 @@ function CompactAgentCard({
     <Card className="rounded-[16px] border-zinc-200/90 p-4 shadow-[0_1px_2px_rgba(24,24,27,0.03)]">
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <AgentNameCell item={item} onOpenDetail={onOpenDetail} />
+          <AgentNameCell item={item} onOpenDetail={onOpenDetail} onRenameAlias={onRenameAlias} />
         </div>
         <div className="shrink-0 pt-0.5">
           <AgentStatusCell item={item} />
@@ -226,7 +229,6 @@ function CompactAgentCard({
           onDelete={onDelete}
           onEdit={onEdit}
           onFiles={onFiles}
-          onOpenDetail={onOpenDetail}
           onTerminal={onTerminal}
           onToggleState={onToggleState}
           onWebUI={onWebUI}
@@ -307,6 +309,7 @@ export function AgentInstancesTable({
   onTerminal,
   onWebUI,
   onToggleState,
+  onRenameAlias,
   onEdit,
   onDelete,
 }: AgentInstancesTableProps) {
@@ -379,7 +382,7 @@ export function AgentInstancesTable({
                 key={item.id}
               >
                 <div className="min-w-0">
-                  <AgentNameCell item={item} onOpenDetail={onOpenDetail} />
+                  <AgentNameCell item={item} onOpenDetail={onOpenDetail} onRenameAlias={onRenameAlias} />
                 </div>
                 <div className="min-w-0">
                   <AgentStatusCell item={item} />
@@ -397,7 +400,6 @@ export function AgentInstancesTable({
                     onDelete={onDelete}
                     onEdit={onEdit}
                     onFiles={onFiles}
-                    onOpenDetail={onOpenDetail}
                     onTerminal={onTerminal}
                     onToggleState={onToggleState}
                     onWebUI={onWebUI}
@@ -451,6 +453,7 @@ export function AgentInstancesTable({
                 onEdit={onEdit}
                 onFiles={onFiles}
                 onOpenDetail={onOpenDetail}
+                onRenameAlias={onRenameAlias}
                 onTerminal={onTerminal}
                 onToggleState={onToggleState}
                 onWebUI={onWebUI}

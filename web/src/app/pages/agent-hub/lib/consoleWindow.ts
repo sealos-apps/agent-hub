@@ -20,12 +20,39 @@ const isLoopbackHost = () => {
 const shouldOpenLocalConsoleWindow = () =>
   import.meta.env.DEV && (ENABLE_LOCAL_CONSOLE_FALLBACK || isLoopbackHost())
 
+const getCenteredWindowFeatures = (width = 1120, height = 760) => {
+  if (typeof window === 'undefined') {
+    return `popup=yes,width=${width},height=${height},resizable=yes,scrollbars=yes`
+  }
+
+  const screenLeft = window.screenX ?? window.screenLeft ?? 0
+  const screenTop = window.screenY ?? window.screenTop ?? 0
+  const availableWidth = window.outerWidth || window.innerWidth || width
+  const availableHeight = window.outerHeight || window.innerHeight || height
+  const left = Math.max(0, Math.round(screenLeft + (availableWidth - width) / 2))
+  const top = Math.max(0, Math.round(screenTop + (availableHeight - height) / 2))
+
+  return [
+    'popup=yes',
+    `width=${width}`,
+    `height=${height}`,
+    `left=${left}`,
+    `top=${top}`,
+    'resizable=yes',
+    'scrollbars=yes',
+  ].join(',')
+}
+
 const openLocalConsoleWindow = (agentName: string) => {
   if (typeof window === 'undefined') return
 
   const target = new URL(AGENTHUB_CONSOLE_ROUTE, window.location.origin)
   target.searchParams.set('agentName', agentName)
-  const opened = window.open(target.toString(), '_blank')
+  const opened = window.open(
+    target.toString(),
+    `agenthub-console-${agentName}`,
+    getCenteredWindowFeatures(),
+  )
   if (opened) {
     opened.opener = null
     opened.focus()

@@ -44,6 +44,7 @@ var wsBinaryTypeCodeByName = map[string]uint8{
 	"file.upload.chunk": 37,
 	"file.upload.end":   38,
 	"file.result":       39,
+	"file.search":       40,
 }
 
 var wsBinaryTypeNameByCode = func() map[uint8]string {

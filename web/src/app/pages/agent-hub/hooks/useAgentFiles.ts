@@ -33,6 +33,11 @@ type FileReadResponse = {
   stale: boolean
 }
 
+type FileSearchResult = {
+  path: string
+  items: AgentFileItem[]
+}
+
 type ReadyGate = {
   promise: Promise<void>
   resolve: () => void
@@ -161,6 +166,31 @@ const buildDirectoryListing = (response: Record<string, unknown>, requestedPath:
     path: resolvedPath,
     items,
     fetchedAt: Date.now(),
+  }
+}
+
+const buildFileSearchResult = (response: Record<string, unknown>, requestedPath: string): FileSearchResult => {
+  const resolvedPath = String(response.path || requestedPath)
+  const items = Array.isArray(response.items)
+    ? sortEntries(
+        response.items.map((entry) => {
+          const item = entry as Record<string, unknown>
+          const name = String(item.name || '')
+          const path = String(item.path || joinFilePath(resolvedPath, name))
+          const type = String(item.type || 'other')
+          return {
+            name,
+            path,
+            type: type === 'dir' || type === 'file' ? type : 'other',
+            size: Number(item.size || 0),
+          } satisfies AgentFileItem
+        }),
+      )
+    : []
+
+  return {
+    path: resolvedPath,
+    items,
   }
 }
 
@@ -723,6 +753,23 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
     [applyDirectoryListing, fetchDirectoryListing, syncSession],
   )
 
+  const searchFiles = useCallback(
+    async (targetPath: string, query: string) => {
+      const requestedPath = normalizePath(targetPath || fallbackRootPath, fallbackRootPath)
+      const normalizedQuery = String(query || '').trim()
+      if (!normalizedQuery) {
+        return { path: requestedPath, items: [] } satisfies FileSearchResult
+      }
+
+      const response = await sendRequest('file.search', {
+        path: requestedPath,
+        query: normalizedQuery,
+      })
+      return buildFileSearchResult(response, requestedPath)
+    },
+    [sendRequest],
+  )
+
   const prefetchDirectory = useCallback(
     (targetPath: string) => {
       const current = filesSessionRef.current
@@ -1260,6 +1307,18 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
         )
       }
   }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession])
+
+  const saveFile = useCallback(async (path: string, content: string) => {
+    const normalizedPath = normalizePath(path, '')
+    if (!normalizedPath) return
+
+    await sendRequest('file.write', {
+      path: normalizedPath,
+      content,
+    })
+    invalidateFileReadCache(normalizedPath)
+    invalidateDirectoryListing(parentFilePath(normalizedPath))
+  }, [invalidateDirectoryListing, invalidateFileReadCache, sendRequest])
 
   const createEmptyFile = useCallback(async (name: string) => {
     const current = filesSessionRef.current
@@ -1842,6 +1901,8 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
     readDirectory,
     readFile,
     refreshDirectory,
+    searchFiles,
+    saveFile,
     saveSelectedFile,
     selectEntry,
     updateSelectedContent,

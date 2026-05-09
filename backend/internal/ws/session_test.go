@@ -76,6 +76,33 @@ func TestValidateMessageRequiresIDForConcurrentOperations(t *testing.T) {
 	}
 }
 
+func TestSearchCommandBuildsFindByName(t *testing.T) {
+	t.Parallel()
+
+	command := searchCommand("/opt/hermes", "runner", 20)
+	if !strings.Contains(command, "find \"$dir\" -mindepth 1 -maxdepth 8 -iname \"$pattern\"") {
+		t.Fatalf("searchCommand() = %q, want find -iname search", command)
+	}
+	if !strings.Contains(command, "head -n \"$limit\"") {
+		t.Fatalf("searchCommand() = %q, want result limit", command)
+	}
+}
+
+func TestParseSearchOutputIncludesPaths(t *testing.T) {
+	t.Parallel()
+
+	got := parseSearchOutput("/opt/hermes/batch_runner.py\tbatch_runner.py\tfile\t123\n/opt/hermes/cron\tcron\tdir\t0\n")
+	if len(got) != 2 {
+		t.Fatalf("parseSearchOutput() len = %d, want 2", len(got))
+	}
+	if got[0]["path"] != "/opt/hermes/batch_runner.py" || got[0]["name"] != "batch_runner.py" || got[0]["type"] != "file" {
+		t.Fatalf("parseSearchOutput()[0] = %#v", got[0])
+	}
+	if got[1]["type"] != "dir" {
+		t.Fatalf("parseSearchOutput()[1].type = %v, want dir", got[1]["type"])
+	}
+}
+
 func TestValidateMessageAcceptsIDForConcurrentOperations(t *testing.T) {
 	t.Parallel()
 

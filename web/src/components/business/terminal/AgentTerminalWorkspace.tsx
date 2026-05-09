@@ -24,15 +24,6 @@ interface AgentTerminalWorkspaceProps {
   onAttachOutput?: (listener: (chunk: string) => void) => () => void
 }
 
-const statusLabelMap: Record<TerminalSessionState['status'], string> = {
-  initializing: '准备中',
-  connecting: '连接中',
-  reconnecting: '重连中',
-  connected: '已连接',
-  disconnected: '已断开',
-  error: '异常',
-}
-
 const terminalTheme = {
   background: '#05070a',
   foreground: '#e5e7eb',
@@ -414,32 +405,6 @@ export function AgentTerminalWorkspace({
 
   return (
     <div className="flex h-full min-h-[460px] flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3 text-xs text-slate-500">
-        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
-          状态: {statusLabelMap[session.status]}
-        </span>
-        {session.namespace ? (
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
-            命名空间: {session.namespace}
-          </span>
-        ) : null}
-        {session.podName ? (
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
-            实例: {session.podName}
-          </span>
-        ) : null}
-        {session.containerName ? (
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
-            容器: {session.containerName}
-          </span>
-        ) : null}
-        {session.cwd ? (
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-mono">
-            当前目录: {session.cwd}
-          </span>
-        ) : null}
-      </div>
-
       {session.error ? (
         <div className="px-4 pt-3">
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700">

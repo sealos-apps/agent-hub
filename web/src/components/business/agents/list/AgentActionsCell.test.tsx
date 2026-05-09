@@ -29,17 +29,18 @@ describe('AgentActionsCell', () => {
         onDelete={noop}
         onEdit={noop}
         onFiles={noop}
-        onOpenDetail={noop}
         onTerminal={noop}
         onToggleState={noop}
         onWebUI={noop}
       />,
     )
 
+    expect(screen.getByRole('button', { name: '配置' })).toBeInTheDocument()
+
     fireEvent.pointerDown(screen.getByTitle('更多操作'))
     const menu = await screen.findByRole('menu')
 
-    expect(within(menu).getByRole('menuitem', { name: '配置' })).toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: '配置' })).not.toBeInTheDocument()
     expect(within(menu).getByRole('menuitem', { name: '删除' })).toBeInTheDocument()
     expect(within(menu).queryByRole('menuitem', { name: '对话' })).not.toBeInTheDocument()
     expect(within(menu).queryByRole('menuitem', { name: '终端' })).not.toBeInTheDocument()
@@ -71,18 +72,19 @@ describe('AgentActionsCell', () => {
         onDelete={noop}
         onEdit={noop}
         onFiles={noop}
-        onOpenDetail={noop}
         onTerminal={noop}
         onToggleState={noop}
         onWebUI={noop}
       />,
     )
 
+    expect(screen.getByRole('button', { name: '配置' })).toBeInTheDocument()
+
     fireEvent.pointerDown(screen.getByTitle('更多操作'))
     const menu = await screen.findByRole('menu')
 
     expect(within(menu).getByRole('menuitem', { name: 'Web UI' })).toBeInTheDocument()
-    expect(within(menu).getByRole('menuitem', { name: '配置' })).toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: '配置' })).not.toBeInTheDocument()
     expect(within(menu).queryByRole('menuitem', { name: '对话' })).not.toBeInTheDocument()
     expect(within(menu).queryByRole('menuitem', { name: '终端' })).not.toBeInTheDocument()
     expect(within(menu).queryByRole('menuitem', { name: '文件' })).not.toBeInTheDocument()

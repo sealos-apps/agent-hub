@@ -1,5 +1,4 @@
 import {
-  ArrowLeft,
   ChevronDown,
   ChevronRight,
   ExternalLink,
@@ -12,17 +11,15 @@ import {
   Plus,
   Search,
   Terminal,
+  Undo2,
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { createClusterContext, getAgentConsole, getClusterInfo, listAgentTemplates } from '../../../api'
-import { APP_NAME } from '../../../branding'
-import { AgentMarkdownPreview } from '../../../components/business/files/AgentMarkdownPreview'
-import {
-  isMarkdownLikeFile,
-  isTextPreviewableFile,
-} from '../../../components/business/files/fileHelpers'
+import { APP_NAME, APP_TERMINAL_ICON_URL } from '../../../branding'
+import { AgentFileCodeEditor } from '../../../components/business/files/AgentFileCodeEditor'
+import { isTextPreviewableFile } from '../../../components/business/files/fileHelpers'
 import { AgentTerminalWorkspace } from '../../../components/business/terminal/AgentTerminalWorkspace'
 import { mapBackendAgentsToListItems } from '../../../domains/agents/mappers'
 import { hydrateTemplateCatalog } from '../../../domains/agents/templates'
@@ -60,6 +57,9 @@ type FileTab = {
   loaded: boolean
   error: string
   content: string
+  originalContent: string
+  dirty: boolean
+  saving: boolean
   fromCache: boolean
   stale: boolean
 }
@@ -222,8 +222,81 @@ const parentPath = (path: string) => {
   return next || fileSystemRootPath
 }
 
+const buildPathSegments = (path: string) => {
+  const normalized = normalizeExplorerPath(path || fileSystemRootPath)
+  const parts = normalized.split('/').filter(Boolean).slice(0, 2)
+  const segments = [{ label: '/', path: fileSystemRootPath }]
+  let current = ''
+
+  for (const part of parts) {
+    current = `${current}/${part}`
+    segments.push({ label: part, path: current })
+  }
+
+  return segments
+}
+
+const pathDepth = (path: string) => normalizeExplorerPath(path).split('/').filter(Boolean).length
+
+const searchMockEntries = (rootPath: string, query: string) => {
+  const normalizedRoot = normalizeExplorerPath(rootPath)
+  const normalizedQuery = query.trim().toLowerCase()
+  if (!normalizedQuery) return []
+
+  const results: AgentFileItem[] = []
+  const visited = new Set<string>()
+  const visit = (path: string) => {
+    const normalizedPath = normalizeExplorerPath(path)
+    if (visited.has(normalizedPath)) return
+    visited.add(normalizedPath)
+
+    for (const entry of mockExplorerChildren[normalizedPath] || []) {
+      if (entry.name.toLowerCase().includes(normalizedQuery)) {
+        results.push(entry)
+      }
+      if (entry.type === 'dir') {
+        visit(entry.path)
+      }
+    }
+  }
+
+  visit(normalizedRoot)
+  return sortEntries(results)
+}
+
 const isMockClusterContext = (context: ClusterContext | null) =>
   !context || context.server.includes('mock-cluster') || context.token === 'mock-token'
+
+const isTransientFileConnectionError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error || '')
+  return message.includes('文件连接尚未建立') || message.includes('文件连接尚未就绪')
+}
+
+const setDocumentFavicon = (href: string) => {
+  if (typeof document === 'undefined') return () => {}
+
+  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+  if (!link) {
+    link = document.createElement('link')
+    link.rel = 'icon'
+    link.type = 'image/svg+xml'
+    document.head.appendChild(link)
+  }
+
+  const previousHref = link.getAttribute('href') || ''
+  const previousType = link.getAttribute('type') || ''
+  link.type = 'image/svg+xml'
+  link.href = href
+
+  return () => {
+    if (previousType) {
+      link.type = previousType
+    }
+    if (previousHref) {
+      link.href = previousHref
+    }
+  }
+}
 
 function TerminalTabPane({
   clusterContext,
@@ -314,7 +387,13 @@ function WebTabPane({ tab }: { tab: WebTab }) {
   )
 }
 
-function FileTabPane({ tab }: { tab: FileTab }) {
+function FileTabPane({
+  onChange,
+  tab,
+}: {
+  onChange: (tabId: string, content: string) => void
+  tab: FileTab
+}) {
   if (tab.loading) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-zinc-500">
@@ -334,31 +413,26 @@ function FileTabPane({ tab }: { tab: FileTab }) {
     )
   }
 
-  if (isMarkdownLikeFile(tab.title)) {
-    return (
-      <div className="h-full overflow-auto bg-white px-8 py-7">
-        <AgentMarkdownPreview content={tab.content || ''} />
-      </div>
-    )
-  }
-
   if (!isTextPreviewableFile(tab.title)) {
     return (
-      <div className="flex h-full items-center justify-center px-8 text-center text-sm text-zinc-500">
+      <div className="flex h-full items-center justify-center bg-[#05070a] px-8 text-center text-sm text-zinc-400">
         当前文件类型暂不支持预览。
       </div>
     )
   }
 
   return (
-    <pre className="h-full overflow-auto bg-[#fafafa] p-6 text-[13px]/6 text-zinc-800">
-      <code>{tab.content || ''}</code>
-    </pre>
+    <AgentFileCodeEditor
+      className="rounded-none border-0"
+      onChange={(value) => onChange(tab.id, value)}
+      path={tab.path}
+      theme="dark"
+      value={tab.content || ''}
+    />
   )
 }
 
 export function AgentConsoleWindowPage() {
-  const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
   const [clusterContext, setClusterContext] = useState<ClusterContext | null>(null)
@@ -370,6 +444,9 @@ export function AgentConsoleWindowPage() {
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [resourceSearch, setResourceSearch] = useState('')
+  const [resourceSearchItems, setResourceSearchItems] = useState<AgentFileItem[]>([])
+  const [resourceSearchLoading, setResourceSearchLoading] = useState(false)
+  const [resourceSearchError, setResourceSearchError] = useState('')
   const [tabs, setTabs] = useState<ConsoleTab[]>(() => createInitialConsoleTabs())
   const [activeTabId, setActiveTabId] = useState(initialConsoleTabId)
   const [terminalStates, setTerminalStates] = useState<TerminalTabStateMap>({})
@@ -390,6 +467,8 @@ export function AgentConsoleWindowPage() {
     openFiles,
     readDirectory,
     readFile,
+    searchFiles,
+    saveFile,
   } = useAgentFiles({
     clusterContext,
   })
@@ -398,7 +477,6 @@ export function AgentConsoleWindowPage() {
     () => item?.aliasName || item?.name || activeAgentName || 'Agent 控制台',
     [activeAgentName, item?.aliasName, item?.name],
   )
-  const webUIUrl = String(item?.webUIAccess?.enabled ? item.webUIAccess.url || '' : '').trim()
 
   const serviceTabs = useMemo(() => readServiceList(services, item), [item, services])
   const shouldAutoOpenTerminal = location.pathname.endsWith('/desktop/terminal')
@@ -424,10 +502,13 @@ export function AgentConsoleWindowPage() {
     if (pageTabs.length && activeTabId === initialConsoleTabId) return pageTabs[0]
     return tabs.find((tab) => tab.id === activeTabId) || pageTabs[0] || tabs[0]
   }, [activeTabId, pageTabs, tabs])
+  const activeFilePath = activeTab?.type === 'file' ? normalizeExplorerPath(activeTab.path) : ''
 
   useEffect(() => {
     document.title = `${displayName} · ${APP_NAME}`
   }, [displayName])
+
+  useEffect(() => setDocumentFavicon(APP_TERMINAL_ICON_URL), [])
 
   useEffect(() => {
     let active = true
@@ -604,6 +685,10 @@ export function AgentConsoleWindowPage() {
           [normalizeExplorerPath(result.path || normalizedPath)]: sortEntries(result.items || []),
         }))
       } catch (error) {
+        if (isTransientFileConnectionError(error)) {
+          setExplorerErrors((current) => ({ ...current, [normalizedPath]: '' }))
+          return
+        }
         setExplorerErrors((current) => ({
           ...current,
           [normalizedPath]: error instanceof Error ? error.message : '目录读取失败',
@@ -631,12 +716,157 @@ export function AgentConsoleWindowPage() {
     }))
   }, [explorerRootPath, filesSession?.currentPath, filesSession?.items])
 
+  useEffect(() => {
+    const query = resourceSearch.trim()
+    if (!query) {
+      setResourceSearchItems([])
+      setResourceSearchLoading(false)
+      setResourceSearchError('')
+      return
+    }
+
+    let active = true
+    setResourceSearchLoading(true)
+    setResourceSearchError('')
+
+    const timer = window.setTimeout(() => {
+      const runSearch = async () => {
+        try {
+          const items = mockConsoleMode
+            ? searchMockEntries(explorerRootPath, query)
+            : (await searchFiles(explorerRootPath, query)).items
+          if (!active) return
+          setResourceSearchItems(items)
+          setResourceSearchError('')
+        } catch (error) {
+          if (!active) return
+          if (isTransientFileConnectionError(error)) {
+            setResourceSearchError('')
+            return
+          }
+          setResourceSearchItems([])
+          setResourceSearchError(error instanceof Error ? error.message : '搜索文件失败')
+        } finally {
+          if (active) setResourceSearchLoading(false)
+        }
+      }
+
+      void runSearch()
+    }, 250)
+
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [explorerRootPath, filesSession?.status, mockConsoleMode, resourceSearch, searchFiles])
+
   const updateTerminalState = useCallback((tabId: string, status: TerminalSessionState['status']) => {
     setTerminalStates((current) => {
       if (current[tabId] === status) return current
       return { ...current, [tabId]: status }
     })
   }, [])
+
+  const navigateExplorerToPath = useCallback(
+    (path: string) => {
+      const normalizedPath = normalizeExplorerPath(path)
+      setExplorerRootPath(normalizedPath)
+      setExplorerExpanded((current) =>
+        applyAutoExpandChain(current, buildExplorerPathChain(normalizedPath), manuallyCollapsedPathsRef.current),
+      )
+      void ensureDirectoryLoaded(normalizedPath)
+    },
+    [ensureDirectoryLoaded],
+  )
+
+  const toggleDirectory = useCallback(
+    (entry: AgentFileItem) => {
+      const normalizedPath = normalizeExplorerPath(entry.path)
+      setExplorerExpanded((current) => {
+        const nextExpanded = !current[normalizedPath]
+        const next = { ...current, [normalizedPath]: nextExpanded }
+        if (nextExpanded) {
+          manuallyCollapsedPathsRef.current.delete(normalizedPath)
+          void ensureDirectoryLoaded(normalizedPath)
+        } else {
+          manuallyCollapsedPathsRef.current.add(normalizedPath)
+        }
+        return next
+      })
+    },
+    [ensureDirectoryLoaded],
+  )
+
+  const updateFileTabContent = useCallback((tabId: string, content: string) => {
+    setTabs((current) =>
+      current.map((tab) =>
+        tab.id === tabId && tab.type === 'file'
+          ? {
+              ...tab,
+              content,
+              dirty: content !== tab.originalContent,
+            }
+          : tab,
+      ),
+    )
+  }, [])
+
+  const saveFileTab = useCallback(
+    async (tabId: string) => {
+      const target = tabs.find((tab): tab is FileTab => tab.id === tabId && tab.type === 'file')
+      if (!target || target.loading || target.saving || !target.dirty) return true
+      if (!isTextPreviewableFile(target.title)) return true
+
+      setTabs((current) =>
+        current.map((tab) =>
+          tab.id === tabId && tab.type === 'file'
+            ? {
+                ...tab,
+                saving: true,
+                error: '',
+              }
+            : tab,
+        ),
+      )
+
+      try {
+        if (mockConsoleMode) {
+          await new Promise((resolve) => window.setTimeout(resolve, 120))
+        } else {
+          await saveFile(target.path, target.content)
+        }
+        setTabs((current) =>
+          current.map((tab) =>
+            tab.id === tabId && tab.type === 'file'
+              ? {
+                  ...tab,
+                  originalContent: tab.content,
+                  dirty: false,
+                  saving: false,
+                  error: '',
+                }
+              : tab,
+          ),
+        )
+        return true
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '保存文件失败'
+        setTabs((current) =>
+          current.map((tab) =>
+            tab.id === tabId && tab.type === 'file'
+              ? {
+                  ...tab,
+                  saving: false,
+                }
+              : tab,
+          ),
+        )
+        setMessage(message)
+        return false
+      }
+    },
+    [mockConsoleMode, saveFile, tabs],
+  )
 
   const loadFileTabContent = useCallback(
     async (tabId: string, entry: AgentFileItem) => {
@@ -668,6 +898,9 @@ export function AgentConsoleWindowPage() {
                   loaded: true,
                   error: '',
                   content: result.content,
+                  originalContent: result.content,
+                  dirty: false,
+                  saving: false,
                   fromCache: result.fromCache,
                   stale: result.stale,
                 }
@@ -683,6 +916,7 @@ export function AgentConsoleWindowPage() {
                   loading: false,
                   loaded: false,
                   error: error instanceof Error ? error.message : '文件读取失败',
+                  saving: false,
                 }
               : tab,
           ),
@@ -713,6 +947,9 @@ export function AgentConsoleWindowPage() {
         loaded: false,
         error: '',
         content: '',
+        originalContent: '',
+        dirty: false,
+        saving: false,
         fromCache: false,
         stale: false,
       }
@@ -722,24 +959,6 @@ export function AgentConsoleWindowPage() {
       void loadFileTabContent(nextTab.id, entry)
     },
     [loadFileTabContent, tabs],
-  )
-
-  const toggleDirectory = useCallback(
-    (entry: AgentFileItem) => {
-      const normalizedPath = normalizeExplorerPath(entry.path)
-      setExplorerExpanded((current) => {
-        const nextExpanded = !current[normalizedPath]
-        const next = { ...current, [normalizedPath]: nextExpanded }
-        if (nextExpanded) {
-          manuallyCollapsedPathsRef.current.delete(normalizedPath)
-          void ensureDirectoryLoaded(normalizedPath)
-        } else {
-          manuallyCollapsedPathsRef.current.add(normalizedPath)
-        }
-        return next
-      })
-    },
-    [ensureDirectoryLoaded],
   )
 
   const openNewTerminalTab = useCallback(() => {
@@ -780,17 +999,20 @@ export function AgentConsoleWindowPage() {
     })
   }, [])
 
-  const openWebUIWindow = useCallback(() => {
-    if (!webUIUrl) return
-    const opened = window.open(webUIUrl, '_blank', 'noopener,noreferrer')
-    if (!opened) {
-      setMessage('浏览器阻止了新窗口，请允许弹窗后重试。')
-    }
-  }, [webUIUrl])
-
   const closeTab = useCallback(
-    (tabId: string) => {
+    async (tabId: string) => {
       if (tabId === initialConsoleTabId) return
+      const target = tabs.find((tab): tab is FileTab => tab.id === tabId && tab.type === 'file')
+      if (target?.dirty) {
+        const shouldSave = window.confirm(`${target.title} 有未保存的修改，是否保存后关闭？`)
+        if (shouldSave) {
+          const saved = await saveFileTab(tabId)
+          if (!saved) return
+        } else {
+          const shouldDiscard = window.confirm(`不保存并关闭 ${target.title}？`)
+          if (!shouldDiscard) return
+        }
+      }
       setTabs((current) => {
         const next = current.filter((tab) => tab.id !== tabId)
         if (activeTabId === tabId) {
@@ -806,8 +1028,20 @@ export function AgentConsoleWindowPage() {
         return next
       })
     },
-    [activeTabId],
+    [activeTabId, saveFileTab, tabs],
   )
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's') return
+      if (activeTab?.type !== 'file') return
+      event.preventDefault()
+      void saveFileTab(activeTab.id)
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [activeTab, saveFileTab])
 
   const renderExplorerNode = useCallback(
     (entry: AgentFileItem, depth: number) => {
@@ -817,6 +1051,8 @@ export function AgentConsoleWindowPage() {
       const loadingDirectory = Boolean(explorerLoading[normalizedPath])
       const error = explorerErrors[normalizedPath]
       const isDirectory = entry.type === 'dir'
+      const navigableDirectory = isDirectory && pathDepth(normalizedPath) <= 2
+      const selected = !isDirectory && activeFilePath === normalizedPath
       const matchesSearch =
         !resourceSearch.trim() || entry.name.toLowerCase().includes(resourceSearch.trim().toLowerCase())
       const shouldRender = matchesSearch || isDirectory
@@ -826,10 +1062,19 @@ export function AgentConsoleWindowPage() {
       return (
         <div key={entry.path}>
           <button
-            className="flex h-8 w-full items-center gap-1.5 rounded-[6px] pr-2 text-left text-[13px] text-zinc-700 transition hover:bg-zinc-100"
+            className={[
+              'flex h-8 w-full items-center gap-1.5 rounded-[6px] pr-2 text-left text-[13px] transition',
+              selected
+                ? 'bg-zinc-600 font-medium text-white hover:bg-zinc-600'
+                : 'text-zinc-700 hover:bg-zinc-100',
+            ].join(' ')}
             onClick={() => {
               if (isDirectory) {
-                toggleDirectory(entry)
+                if (navigableDirectory) {
+                  navigateExplorerToPath(entry.path)
+                } else {
+                  toggleDirectory(entry)
+                }
               } else {
                 openFileTab(entry)
               }
@@ -837,7 +1082,7 @@ export function AgentConsoleWindowPage() {
             style={nestedPadding(depth)}
             type="button"
           >
-            {isDirectory ? (
+            {isDirectory && !navigableDirectory ? (
               expanded ? (
                 <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
               ) : (
@@ -847,19 +1092,24 @@ export function AgentConsoleWindowPage() {
               <span className="w-3.5 shrink-0" />
             )}
             {isDirectory ? (
-              expanded ? (
+              expanded && !navigableDirectory ? (
                 <FolderOpen className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
               ) : (
                 <Folder className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
               )
             ) : (
-              <FileText className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+              <FileText className={['h-3.5 w-3.5 shrink-0', selected ? 'text-white/80' : 'text-zinc-500'].join(' ')} />
             )}
-            <span className="truncate">{entry.name}</span>
+            <span className="min-w-0 flex-1 truncate">
+              <span className="truncate">{entry.name}</span>
+              {resourceSearch.trim() ? (
+                <span className="ml-2 truncate text-[11px] text-zinc-400">{parentPath(entry.path)}</span>
+              ) : null}
+            </span>
             {loadingDirectory ? <LoaderCircle className="ml-auto h-3 w-3 animate-spin text-zinc-400" /> : null}
           </button>
           {error ? <div className="px-3 py-1 text-[12px] text-rose-600">{error}</div> : null}
-          {isDirectory && expanded ? (
+          {isDirectory && !navigableDirectory && expanded ? (
             <div>{children.map((child) => renderExplorerNode(child, depth + 1))}</div>
           ) : null}
         </div>
@@ -870,16 +1120,32 @@ export function AgentConsoleWindowPage() {
       explorerErrors,
       explorerExpanded,
       explorerLoading,
+      activeFilePath,
+      navigateExplorerToPath,
       openFileTab,
       resourceSearch,
       toggleDirectory,
     ],
   )
 
-  const rootEntries =
-    explorerChildren[explorerRootPath] ||
-    (mockConsoleMode ? mockExplorerChildren[mockWorkspaceRoot] : explorerChildren[parentPath(explorerRootPath)]) ||
-    []
+  const searchActive = Boolean(resourceSearch.trim())
+  const rootEntries = searchActive
+    ? resourceSearchItems
+    : explorerChildren[explorerRootPath] ||
+      (mockConsoleMode ? mockExplorerChildren[mockWorkspaceRoot] : explorerChildren[parentPath(explorerRootPath)]) ||
+      []
+  const rootPathLoaded = Boolean(explorerChildren[explorerRootPath])
+  const filesConnecting =
+    filesSession?.status === 'initializing' ||
+    filesSession?.status === 'connecting' ||
+    Boolean(filesSession?.browsing)
+  const rootLoading =
+    resourceSearchLoading ||
+    Boolean(explorerLoading[explorerRootPath]) ||
+    (!mockConsoleMode && !rootPathLoaded && (!explorerErrors[explorerRootPath] || filesConnecting))
+  const rootError = searchActive ? resourceSearchError : explorerErrors[explorerRootPath]
+  const pathSegments = buildPathSegments(explorerRootPath)
+  const canGoParent = explorerRootPath !== fileSystemRootPath
   const contextTitle =
     activeTab?.type === 'terminal'
       ? activeTab.title
@@ -903,46 +1169,6 @@ export function AgentConsoleWindowPage() {
 
   return (
     <main className="flex h-screen min-h-screen flex-col overflow-hidden bg-white text-[var(--color-text)]">
-      <header className="flex min-h-[78px] items-center justify-between gap-4 border-b border-zinc-200 bg-white px-4 sm:px-6 lg:px-12">
-        <div className="flex min-w-0 items-center gap-3">
-          {item ? (
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-zinc-200 bg-zinc-50/90">
-              <img
-                alt={`${item.template.name} logo`}
-                className="h-9 w-9 object-cover"
-                src={item.template.logo}
-              />
-            </div>
-          ) : null}
-          <div className="min-w-0">
-            <div className="truncate text-[15px] font-medium text-zinc-950">Agent 控制台 / {displayName}</div>
-            <div className="mt-1 truncate text-[12px] text-zinc-500">{item?.name || activeAgentName || '等待 Agent'}</div>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {webUIUrl ? (
-            <button
-              className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-[8px] border border-blue-200 bg-blue-50 px-4 text-[14px] font-medium text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
-              onClick={openWebUIWindow}
-              title="打开 Web UI"
-              type="button"
-            >
-              <Globe className="h-4 w-4" />
-              <span>Web UI</span>
-              <ExternalLink className="h-3.5 w-3.5" />
-            </button>
-          ) : null}
-          <button
-            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-[8px] border border-zinc-200 bg-white px-4 text-[14px] font-medium text-zinc-800 transition hover:border-zinc-300 hover:bg-zinc-50"
-            onClick={() => navigate('/agents')}
-            type="button"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            返回 Agent Hub
-          </button>
-        </div>
-      </header>
-
       <div
         className={
           consoleScale.enabled
@@ -996,20 +1222,42 @@ export function AgentConsoleWindowPage() {
           <aside className="flex min-h-0 flex-col overflow-hidden rounded-[12px] border border-zinc-200 bg-white">
             <div className="border-b border-zinc-100 px-4 py-4">
               <div className="flex items-center justify-between gap-2">
-                <div>
+                <div className="min-w-0">
                   <div className="text-[15px] font-medium text-zinc-950">资源管理器</div>
-                  <div className="mt-1 text-[12px] text-zinc-500">{explorerRootPath}</div>
-                </div>
-                <div className="flex items-center gap-1">
-                  {!pageTabs.length ? (
+                  <div className="mt-2 flex max-w-[220px] items-center gap-1 overflow-hidden text-[12px] text-zinc-500">
                     <button
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-[7px] border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50"
-                      onClick={() => setActiveTabId(initialConsoleTabId)}
+                      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-35"
+                      disabled={!canGoParent}
+                      onClick={() => navigateExplorerToPath(parentPath(explorerRootPath))}
+                      title="返回上一级"
                       type="button"
                     >
-                      <Home className="h-4 w-4" />
+                      <Undo2 className="h-3.5 w-3.5" />
                     </button>
-                  ) : null}
+                    <div className="flex min-w-0 items-center overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      {pathSegments.map((segment, index) => {
+                        const active = segment.path === explorerRootPath
+                        return (
+                          <span className="inline-flex items-center" key={segment.path}>
+                            {index > 1 ? <span className="px-1 text-zinc-300">/</span> : null}
+                            <button
+                              className={[
+                                'max-w-[96px] truncate rounded-[5px] px-1.5 py-0.5 text-left transition hover:bg-zinc-100 hover:text-zinc-900',
+                                active ? 'font-medium text-zinc-800' : 'text-zinc-500',
+                              ].join(' ')}
+                              onClick={() => navigateExplorerToPath(segment.path)}
+                              title={segment.path}
+                              type="button"
+                            >
+                              {segment.label}
+                            </button>
+                          </span>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
                   <button
                     className="inline-flex h-8 w-8 items-center justify-center rounded-[7px] border border-zinc-950 bg-zinc-950 text-white transition hover:bg-black"
                     onClick={openNewTerminalTab}
@@ -1032,17 +1280,23 @@ export function AgentConsoleWindowPage() {
             </div>
 
             <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
-              <div className="mb-2 px-2 text-[12px] font-medium text-zinc-500">文件层级</div>
-              {loading ? (
+              <div className="mb-2 px-2 text-[12px] font-medium text-zinc-500">
+                {searchActive ? `搜索结果：${resourceSearch.trim()}` : '文件层级'}
+              </div>
+              {loading || rootLoading ? (
                 <div className="flex items-center gap-2 px-2 py-3 text-[13px] text-zinc-500">
                   <LoaderCircle className="h-4 w-4 animate-spin" />
-                  加载资源
+                  {searchActive ? '搜索文件中' : '文件列表加载中'}
+                </div>
+              ) : rootError ? (
+                <div className="rounded-[8px] border border-rose-100 bg-rose-50 px-3 py-3 text-[13px] text-rose-700">
+                  {rootError}
                 </div>
               ) : rootEntries.length ? (
                 <div className="space-y-0.5">{rootEntries.map((entry) => renderExplorerNode(entry, 0))}</div>
               ) : (
                 <div className="rounded-[8px] border border-dashed border-zinc-200 px-3 py-6 text-center text-[13px] text-zinc-500">
-                  暂无文件层级
+                  {searchActive ? '未找到匹配文件' : '暂无文件层级'}
                 </div>
               )}
             </div>
@@ -1066,12 +1320,22 @@ export function AgentConsoleWindowPage() {
                     >
                       <Icon className="h-4 w-4 shrink-0" />
                       <span className="min-w-0 flex-1 truncate text-left">{tab.title}</span>
+                      {tab.type === 'file' && tab.dirty ? (
+                        <span
+                          aria-label="有未保存修改"
+                          className="h-2 w-2 shrink-0 rounded-full bg-sky-500"
+                          title="有未保存修改"
+                        />
+                      ) : null}
+                      {tab.type === 'file' && tab.saving ? (
+                        <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-zinc-400" />
+                      ) : null}
                       {tab.id !== initialConsoleTabId ? (
                         <span
                           className="ml-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-zinc-400 opacity-0 transition hover:bg-zinc-200 hover:text-zinc-700 group-hover:opacity-100"
                           onClick={(event) => {
                             event.stopPropagation()
-                            closeTab(tab.id)
+                            void closeTab(tab.id)
                           }}
                         >
                           ×
@@ -1090,7 +1354,7 @@ export function AgentConsoleWindowPage() {
               </button>
             </div>
 
-            {activeTab?.type !== 'home' ? (
+            {activeTab?.type !== 'home' && activeTab?.type !== 'terminal' && activeTab?.type !== 'file' ? (
               <div className="flex min-h-[58px] shrink-0 items-center justify-between gap-4 border-b border-zinc-100 px-5">
                 <div className="min-w-0">
                   <div className="truncate text-[14px] font-medium text-zinc-950">{contextTitle}</div>
@@ -1149,13 +1413,29 @@ export function AgentConsoleWindowPage() {
                 ))}
 
               {activeTab?.type === 'web' ? <WebTabPane tab={activeTab} /> : null}
-              {activeTab?.type === 'file' ? <FileTabPane tab={activeTab} /> : null}
+              {activeTab?.type === 'file' ? (
+                <FileTabPane onChange={updateFileTabContent} tab={activeTab} />
+              ) : null}
             </div>
           </section>
         </div>
         </div>
         </div>
       </div>
+      <footer className="flex h-6 shrink-0 items-center justify-between gap-3 bg-zinc-600 px-3 text-[12px]/6 text-white">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="font-medium">Agent</span>
+          <span className="truncate">{displayName}</span>
+          <span className="text-white/55">/</span>
+          <span className="truncate font-mono text-[11px] text-white/95">
+            {item?.name || activeAgentName || '等待 Agent'}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-3 text-white/90">
+          {item?.namespace ? <span className="hidden sm:inline">{item.namespace}</span> : null}
+          <span>{item?.statusText || status}</span>
+        </div>
+      </footer>
     </main>
   )
 }

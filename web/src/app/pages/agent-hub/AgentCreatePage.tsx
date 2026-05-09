@@ -8,7 +8,6 @@ import { AgentHubOverview } from "./components/AgentHubOverview";
 import { AgentWorkspaceShell } from "./components/AgentWorkspaceShell";
 import { useAgentHub } from "./hooks/AgentHubControllerContext";
 import { applyBlueprintPreset, updateBlueprintField } from "./lib/blueprint";
-import { buildAgentDetailRouteState } from "./lib/navigation";
 import { createEmptyBlueprint } from "../../../domains/agents/templates";
 import { writeBlueprintSettingValue } from "../../../domains/agents/blueprintFields";
 import type { AgentBlueprint } from "../../../domains/agents/types";
@@ -145,10 +144,8 @@ export function AgentCreatePage() {
 
   const handleSubmit = async () => {
     try {
-      const result = await createAgentFromBlueprint(blueprint);
-      navigate(`/agents/${result.agentName}`, {
-        state: buildAgentDetailRouteState(result.item || null, "create"),
-      });
+      await createAgentFromBlueprint(blueprint);
+      navigate("/agents");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "提交失败");
     }

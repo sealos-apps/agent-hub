@@ -23,7 +23,6 @@ import {
 
 interface AgentActionsCellProps {
   item: AgentListItem
-  onOpenDetail: (item: AgentListItem) => void
   onChat: (item: AgentListItem) => void
   onFiles: (item: AgentListItem) => void
   onTerminal: (item: AgentListItem) => void
@@ -37,7 +36,6 @@ const hiddenMenuActionKeys = new Set(['chat', 'terminal', 'files'])
 
 export function AgentActionsCell({
   item,
-  onOpenDetail,
   onChat,
   onFiles,
   onTerminal,
@@ -60,6 +58,7 @@ export function AgentActionsCell({
   const canFiles = Boolean(filesAction?.enabled && getAccessItem(item, 'files')?.enabled)
   const canTerminal = Boolean(terminalAction?.enabled && item.terminalAvailable)
   const canWebUI = Boolean(webUIAccess?.enabled)
+  const canEdit = Boolean(settingsAction?.enabled)
   const canToggleState = Boolean(runAction?.enabled || pauseAction?.enabled)
   const toggleTitle = pauseAction?.enabled ? t('agent.pause') : runAction?.enabled ? t('agent.start') : t('agent.currentStatusCannotToggle')
 
@@ -114,16 +113,6 @@ export function AgentActionsCell({
       onClick: () => onToggleState(item),
     }
       : null,
-    settingsAction
-      ? {
-      key: 'edit',
-      label: t('common.config'),
-      icon: Settings,
-      disabled: !settingsAction?.enabled,
-      title: settingsAction?.reason || t('common.config'),
-      onClick: () => onEdit(item),
-    }
-      : null,
     deleteAction
       ? {
       key: 'delete',
@@ -176,12 +165,15 @@ export function AgentActionsCell({
       </button>
       <Button
         className="h-10 min-w-[72px] shrink-0 rounded-[8px] border-0 bg-zinc-100 px-4 py-2 text-[14px]/5 font-semibold text-zinc-900 shadow-none hover:bg-zinc-200/60"
-        onClick={() => onOpenDetail(item)}
+        disabled={!canEdit}
+        onClick={() => onEdit(item)}
         size="sm"
+        title={settingsAction?.reason || t('agent.editConfig')}
         type="button"
         variant="secondary"
       >
-        {t('agent.detail')}
+        <Settings className="h-4 w-4 shrink-0" strokeWidth={2} />
+        <span>{t('common.config')}</span>
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

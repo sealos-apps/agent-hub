@@ -84,15 +84,21 @@ func ListAgents(c *gin.Context) {
 	wg.Wait()
 
 	if devboxErr != nil {
+		if cached, ok := readStaleCachedAgentList(cacheKey); ok {
+			log.Printf("failed to list agents; serving stale cache: %v", devboxErr)
+			writeSuccess(c, http.StatusOK, markAgentListResponseStale(cached, devboxErr))
+			return
+		}
 		writeKubernetesError(c, devboxErr, "failed to list agents")
 		return
 	}
 	if ingressErr != nil {
-		writeKubernetesError(c, ingressErr, "failed to list agent ingresses")
-		return
+		log.Printf("failed to list managed ingresses for access enrichment: %v", ingressErr)
+		ingressDomainsByAgent = map[string]string{}
 	}
 	if podErr != nil {
 		log.Printf("failed to list managed pods for status enrichment: %v", podErr)
+		latestPodsByAgent = map[string]*corev1.Pod{}
 	}
 
 	cfg := runtimeConfig(c)
@@ -140,17 +146,19 @@ func ListAgents(c *gin.Context) {
 }
 
 const (
-	agentListCacheTTL             = 2 * time.Second
+	agentListCacheTTL             = 10 * time.Second
+	agentListStaleCacheTTL        = 10 * time.Minute
 	agentListCacheMaxEntries      = 256
-	agentListPrimaryTimeout       = 12 * time.Second
-	agentListAuxiliaryTimeout     = 6 * time.Second
+	agentListPrimaryTimeout       = 30 * time.Second
+	agentListAuxiliaryTimeout     = 12 * time.Second
 	agentCreateModelAccessTimeout = 6 * time.Second
 	agentCreateQuotaCheckTimeout  = 6 * time.Second
 )
 
 type cachedAgentList struct {
-	response  dto.AgentListResponse
-	expiresAt time.Time
+	response       dto.AgentListResponse
+	expiresAt      time.Time
+	staleExpiresAt time.Time
 }
 
 var (
@@ -175,15 +183,37 @@ func readCachedAgentList(key string) (dto.AgentListResponse, bool) {
 		return dto.AgentListResponse{}, false
 	}
 	if time.Now().After(entry.expiresAt) {
-		agentListCacheMu.Lock()
-		currentEntry, stillExists := agentListCache[key]
-		if stillExists && time.Now().After(currentEntry.expiresAt) {
-			delete(agentListCache, key)
-		}
-		agentListCacheMu.Unlock()
 		return dto.AgentListResponse{}, false
 	}
 	return entry.response, true
+}
+
+func readStaleCachedAgentList(key string) (dto.AgentListResponse, bool) {
+	if strings.TrimSpace(key) == "" {
+		return dto.AgentListResponse{}, false
+	}
+
+	agentListCacheMu.RLock()
+	entry, ok := agentListCache[key]
+	agentListCacheMu.RUnlock()
+	if !ok || time.Now().After(entry.staleExpiresAt) {
+		return dto.AgentListResponse{}, false
+	}
+	return entry.response, true
+}
+
+func markAgentListResponseStale(response dto.AgentListResponse, err error) dto.AgentListResponse {
+	meta := map[string]any{}
+	for key, value := range response.Meta {
+		meta[key] = value
+	}
+	meta["stale"] = true
+	meta["warning"] = "kubernetes list timed out; served cached agent list"
+	if err != nil {
+		meta["reason"] = err.Error()
+	}
+	response.Meta = meta
+	return response
 }
 
 func writeCachedAgentList(key string, response dto.AgentListResponse) {
@@ -194,7 +224,7 @@ func writeCachedAgentList(key string, response dto.AgentListResponse) {
 	agentListCacheMu.Lock()
 	now := time.Now()
 	for cacheKey, entry := range agentListCache {
-		if now.After(entry.expiresAt) {
+		if now.After(entry.staleExpiresAt) {
 			delete(agentListCache, cacheKey)
 		}
 	}
@@ -212,8 +242,9 @@ func writeCachedAgentList(key string, response dto.AgentListResponse) {
 		}
 	}
 	agentListCache[key] = cachedAgentList{
-		response:  response,
-		expiresAt: now.Add(agentListCacheTTL),
+		response:       response,
+		expiresAt:      now.Add(agentListCacheTTL),
+		staleExpiresAt: now.Add(agentListStaleCacheTTL),
 	}
 	agentListCacheMu.Unlock()
 }

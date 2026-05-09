@@ -875,6 +875,90 @@ export function useAgentHubController() {
     ],
   );
 
+  const updateAgentAlias = useCallback(
+    async (item: AgentListItem, nextAliasName: string) => {
+      const aliasName = nextAliasName.trim();
+      if (!aliasName) {
+        throw new Error("请填写 Agent 别名");
+      }
+      if (aliasName === item.aliasName) {
+        return { agentName: item.name, aliasName, response: { ok: true } };
+      }
+
+      const currentContext = await resolveClusterContext();
+      setSubmitting(true);
+      try {
+        if (mockMode) {
+          setItems((current) =>
+            current.map((entry) =>
+              entry.name === item.name
+                ? {
+                    ...entry,
+                    aliasName,
+                    contract: {
+                      ...entry.contract,
+                      core: {
+                        ...entry.contract.core,
+                        aliasName,
+                      },
+                    },
+                  }
+                : entry,
+            ),
+          );
+          setMessage(`已更新 ${getAgentLabel(aliasName, item.name)} 的别名`);
+          return { agentName: item.name, aliasName, response: { ok: true } };
+        }
+
+        const response = await updateAgentSettings(
+          item.name,
+          { "agent-alias-name": aliasName },
+          currentContext,
+        );
+        setMessage(`已更新 ${getAgentLabel(aliasName, item.name)} 的别名`);
+
+        const updatedItem = response?.agent
+          ? mapBackendAgentsToListItems([response.agent], templates, clusterInfo)[0]
+          : null;
+        if (updatedItem) {
+          primeItem(updatedItem);
+        } else {
+          setItems((current) =>
+            current.map((entry) =>
+              entry.name === item.name
+                ? {
+                    ...entry,
+                    aliasName,
+                    contract: {
+                      ...entry.contract,
+                      core: {
+                        ...entry.contract.core,
+                        aliasName,
+                      },
+                    },
+                  }
+                : entry,
+            ),
+          );
+        }
+        void loadItemsSilently();
+
+        return { agentName: item.name, aliasName, response };
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [
+      clusterInfo,
+      getAgentLabel,
+      loadItemsSilently,
+      mockMode,
+      primeItem,
+      resolveClusterContext,
+      templates,
+    ],
+  );
+
   const deleteAgentItem = useCallback(
     async (item: AgentListItem) => {
       const currentContext = await resolveClusterContext();
@@ -1015,6 +1099,7 @@ export function useAgentHubController() {
     createAgentFromBlueprint,
     updateAgentRuntimeFromBlueprint,
     updateAgentSettingsFromBlueprint,
+    updateAgentAlias,
     deleteAgentItem,
     toggleItemState,
     ensureWorkspaceTokenReady,

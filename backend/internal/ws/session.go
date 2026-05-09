@@ -287,6 +287,8 @@ func (s *session) handleMessage(message dto.WSMessage) {
 		s.unsubscribeLogs(message)
 	case "file.list":
 		go s.fileList(message)
+	case "file.search":
+		go s.fileSearch(message)
 	case "file.read":
 		go s.fileRead(message)
 	case "file.download":
@@ -488,6 +490,39 @@ func (s *session) fileList(message dto.WSMessage) {
 	s.send(dto.WSMessage{Type: "file.result", RequestID: message.RequestID, Data: map[string]any{
 		"op":    "list",
 		"path":  resolved,
+		"items": items,
+	}})
+}
+
+func (s *session) fileSearch(message dto.WSMessage) {
+	resolved, err := resolveFilePath(getTrimmedString(message.Data, "path"))
+	if err != nil {
+		s.sendError(message.RequestID, "invalid_path", err.Error())
+		return
+	}
+
+	query := getTrimmedString(message.Data, "query")
+	if query == "" {
+		s.send(dto.WSMessage{Type: "file.result", RequestID: message.RequestID, Data: map[string]any{
+			"op":    "search",
+			"path":  resolved,
+			"items": []map[string]any{},
+		}})
+		return
+	}
+
+	output, execErr := s.execCapture("list", []string{"sh", "-lc", searchCommand(resolved, query, 200)}, "")
+	if execErr != nil {
+		code, msg := mapFileOperationError("file_search_failed", "search", execErr)
+		s.sendError(message.RequestID, code, msg)
+		return
+	}
+
+	items := parseSearchOutput(output)
+	s.send(dto.WSMessage{Type: "file.result", RequestID: message.RequestID, Data: map[string]any{
+		"op":    "search",
+		"path":  resolved,
+		"query": query,
 		"items": items,
 	}})
 }
@@ -1429,6 +1464,24 @@ func listCommand(dir string) string {
 		"fi"
 }
 
+func searchCommand(dir, query string, limit int) string {
+	if limit <= 0 {
+		limit = 200
+	}
+
+	pattern := "*" + query + "*"
+	return "dir=" + shellQuote(dir) + "; pattern=" + shellQuote(pattern) + "; limit=" + strconv.Itoa(limit) + "; " +
+		"[ -d \"$dir\" ] || { echo 'not_a_directory'; exit 1; }; " +
+		"find \"$dir\" -mindepth 1 -maxdepth 8 -iname \"$pattern\" 2>/dev/null | head -n \"$limit\" | " +
+		"while IFS= read -r p; do " +
+		"base=${p##*/}; " +
+		"if [ -d \"$p\" ]; then kind=dir; size=0; " +
+		"elif [ -f \"$p\" ]; then kind=file; size=$(stat -c %s -- \"$p\" 2>/dev/null || stat -f %z -- \"$p\" 2>/dev/null || printf 0); " +
+		"else kind=other; size=0; fi; " +
+		"printf '%s\t%s\t%s\t%s\n' \"$p\" \"$base\" \"$kind\" \"$size\"; " +
+		"done"
+}
+
 func readCommand(filePath string, maxBytes int) string {
 	if maxBytes <= 0 {
 		maxBytes = 1
@@ -1459,6 +1512,28 @@ func parseListOutput(raw string) []map[string]any {
 		items = append(items, map[string]any{
 			"name": parts[0],
 			"type": parts[1],
+			"size": size,
+		})
+	}
+	return items
+}
+
+func parseSearchOutput(raw string) []map[string]any {
+	lines := strings.Split(strings.TrimSpace(raw), "\n")
+	items := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) != 4 {
+			continue
+		}
+		size, _ := strconv.ParseInt(strings.TrimSpace(parts[3]), 10, 64)
+		items = append(items, map[string]any{
+			"path": parts[0],
+			"name": parts[1],
+			"type": parts[2],
 			"size": size,
 		})
 	}
@@ -1515,6 +1590,11 @@ func validateMessage(message dto.WSMessage) error {
 		return requiredID()
 	case "file.list", "file.read", "file.download", "file.delete", "file.mkdir":
 		return requiredString("path")
+	case "file.search":
+		if err := requiredString("path"); err != nil {
+			return err
+		}
+		return requiredString("query")
 	case "file.write":
 		if err := requiredString("path"); err != nil {
 			return err

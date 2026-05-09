@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { AgentConfigEditModal } from '../../../components/business/agents/AgentConfigEditModal'
 import { DeleteAgentModal } from '../../../components/business/agents/DeleteAgentModal'
 import {
   AgentInstancesTable,
@@ -10,11 +11,14 @@ import {
 import type {
   AgentAccessItem,
   AgentActionItem,
+  AgentBlueprint,
   AgentContract,
   AgentListItem,
   AgentTemplateDefinition,
   ClusterInfo,
 } from '../../../domains/agents/types'
+import { writeBlueprintSettingValue } from '../../../domains/agents/blueprintFields'
+import { createEmptyBlueprint } from '../../../domains/agents/templates'
 import { AgentCapabilityOverlays } from './components/AgentCapabilityOverlays'
 import { AgentHubOverview } from './components/AgentHubOverview'
 import { AgentListHeroEmpty } from './components/AgentListHeroEmpty'
@@ -22,7 +26,7 @@ import { AgentWorkspaceShell } from './components/AgentWorkspaceShell'
 import { useAgentHub } from './hooks/AgentHubControllerContext'
 import { useAgentChat } from './hooks/useAgentChat'
 import { useAgentFiles } from './hooks/useAgentFiles'
-import { buildAgentDetailRouteState } from './lib/navigation'
+import { applyBlueprintPreset, updateBlueprintField } from './lib/blueprint'
 import { openAgentConsoleDesktopWindow } from './lib/consoleWindow'
 
 const MOCK_AGENT_ID_PREFIX = 'mock-agent-'
@@ -433,12 +437,17 @@ export function AgentsListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const controller = useAgentHub()
   const [deleteTarget, setDeleteTarget] = useState<AgentListItem | null>(null)
+  const [configTarget, setConfigTarget] = useState<AgentListItem | null>(null)
+  const [runtimeEditBlueprint, setRuntimeEditBlueprint] =
+    useState<AgentBlueprint>(() => createEmptyBlueprint())
+  const [settingsEditBlueprint, setSettingsEditBlueprint] =
+    useState<AgentBlueprint>(() => createEmptyBlueprint())
   const [sortKey, setSortKey] = useState<AgentListSortKey>('updatedAt')
   const [sortOrder, setSortOrder] = useState<AgentListSortOrder>('desc')
   const [statusFilter, setStatusFilter] = useState<AgentListStatusFilter>(ALL_STATUS_FILTERS)
   const keyword = String(searchParams.get('q') || '')
 
-  const { chatSession, closeChat, sendChatMessage, setChatDraft } =
+  const { chatSession, closeChat, openChat, sendChatMessage, setChatDraft } =
     useAgentChat({
       clusterContext: controller.clusterContext,
       onErrorMessage: controller.setMessage,
@@ -453,6 +462,7 @@ export function AgentsListPage() {
     editEntry,
     filesSession,
     jumpToPath,
+    openFiles,
     openEntry,
     openParentDirectory,
     prefetchDirectory,
@@ -519,6 +529,65 @@ export function AgentsListPage() {
     // mock 数据仅用于样式预览：静默拦截交互，不展示提示横幅
   }
 
+  const handleOpenConfig = (item: AgentListItem) => {
+    if (!item.settingsAvailable) {
+      controller.setMessage('当前实例暂不支持修改配置')
+      return
+    }
+    const blueprint = controller.createBlueprintFromAgentItem(item)
+    setConfigTarget(item)
+    setRuntimeEditBlueprint(blueprint)
+    setSettingsEditBlueprint(blueprint)
+  }
+
+  const handleCloseConfig = () => {
+    setConfigTarget(null)
+    setRuntimeEditBlueprint(createEmptyBlueprint())
+    setSettingsEditBlueprint(createEmptyBlueprint())
+  }
+
+  const handleSubmitConfig = async () => {
+    if (!configTarget) return
+
+    if (isMockAgentItem(configTarget)) {
+      handleCloseConfig()
+      handleMockPreview()
+      return
+    }
+
+    const originalBlueprint = controller.createBlueprintFromAgentItem(configTarget)
+    const runtimeDirty =
+      runtimeEditBlueprint.profile !== originalBlueprint.profile ||
+      runtimeEditBlueprint.cpu !== originalBlueprint.cpu ||
+      runtimeEditBlueprint.memory !== originalBlueprint.memory ||
+      runtimeEditBlueprint.storageLimit !== originalBlueprint.storageLimit
+    const settingsDirty =
+      settingsEditBlueprint.aliasName !== originalBlueprint.aliasName ||
+      settingsEditBlueprint.model !== originalBlueprint.model ||
+      settingsEditBlueprint.modelProvider !== originalBlueprint.modelProvider ||
+      settingsEditBlueprint.modelBaseURL !== originalBlueprint.modelBaseURL ||
+      settingsEditBlueprint.keySource !== originalBlueprint.keySource ||
+      JSON.stringify(settingsEditBlueprint.settingsValues) !==
+        JSON.stringify(originalBlueprint.settingsValues)
+
+    if (!runtimeDirty && !settingsDirty) {
+      handleCloseConfig()
+      return
+    }
+
+    try {
+      if (runtimeDirty) {
+        await controller.updateAgentRuntimeFromBlueprint(configTarget, runtimeEditBlueprint)
+      }
+      if (settingsDirty) {
+        await controller.updateAgentSettingsFromBlueprint(configTarget, settingsEditBlueprint)
+      }
+      handleCloseConfig()
+    } catch (error) {
+      controller.setMessage(error instanceof Error ? error.message : '保存配置失败')
+    }
+  }
+
   const handleDelete = async () => {
     if (!deleteTarget) return
 
@@ -549,6 +618,15 @@ export function AgentsListPage() {
     }
   }
 
+  const handleRenameAlias = async (item: AgentListItem, aliasName: string) => {
+    try {
+      await controller.updateAgentAlias(item, aliasName)
+    } catch (error) {
+      controller.setMessage(error instanceof Error ? error.message : '修改别名失败')
+      throw error
+    }
+  }
+
   const handleOpenTerminal = async (item: AgentListItem) => {
     if (isMockAgentItem(item)) {
       navigate(`/desktop/console?agentName=${encodeURIComponent(item.name)}`)
@@ -568,22 +646,11 @@ export function AgentsListPage() {
       return
     }
 
-    if (!item.webUIAccess?.enabled) {
+    if (!item.webUIAccess?.enabled || !item.webUIAccess.url) {
       controller.setMessage(item.webUIAccess?.reason || '当前模板没有可用的 Web UI 地址')
       return
     }
-    navigate(`/agents/${item.name}?tab=web-ui`, {
-      state: buildAgentDetailRouteState(item, 'list'),
-    })
-  }
-
-  const navigateToAgentTab = (
-    item: AgentListItem,
-    tab: 'chat' | 'files',
-  ) => {
-    navigate(`/agents/${item.name}?tab=${tab}`, {
-      state: buildAgentDetailRouteState(item, 'list'),
-    })
+    window.open(item.webUIAccess.url, '_blank', 'noopener,noreferrer')
   }
 
   return (
@@ -618,19 +685,12 @@ export function AgentsListPage() {
             <AgentInstancesTable
               items={filteredItems}
               onStatusFilterChange={setStatusFilter}
-              onChat={(item) => navigateToAgentTab(item, 'chat')}
+              onChat={openChat}
               onDelete={setDeleteTarget}
-              onEdit={(item) => {
-                navigate(`/agents/${item.name}`, {
-                  state: buildAgentDetailRouteState(item, 'list'),
-                })
-              }}
-              onFiles={(item) => navigateToAgentTab(item, 'files')}
-              onOpenDetail={(item) => {
-                navigate(`/agents/${item.name}`, {
-                  state: buildAgentDetailRouteState(item, 'list'),
-                })
-              }}
+              onEdit={handleOpenConfig}
+              onFiles={openFiles}
+              onOpenDetail={handleOpenConfig}
+              onRenameAlias={handleRenameAlias}
               onTerminal={handleOpenTerminal}
               onToggleState={handleToggleState}
               onToggleNameSort={() => toggleSort('name')}
@@ -643,6 +703,38 @@ export function AgentsListPage() {
           )}
         </main>
       </div>
+
+      {configTarget ? (
+        <AgentConfigEditModal
+          onClose={handleCloseConfig}
+          onRuntimeChange={(field, value) => {
+            setRuntimeEditBlueprint((current) =>
+              updateBlueprintField(current, field, value),
+            )
+          }}
+          onRuntimePreset={(presetId) => {
+            setRuntimeEditBlueprint((current) =>
+              applyBlueprintPreset(current, presetId),
+            )
+          }}
+          onSave={() => void handleSubmitConfig()}
+          onSettingsChange={(field, value) => {
+            setSettingsEditBlueprint((current) =>
+              updateBlueprintField(current, field, value),
+            )
+          }}
+          onSettingsFieldChange={(field, value) => {
+            setSettingsEditBlueprint((current) =>
+              writeBlueprintSettingValue(current, field, value),
+            )
+          }}
+          open={Boolean(configTarget)}
+          runtimeBlueprint={runtimeEditBlueprint}
+          settingsBlueprint={settingsEditBlueprint}
+          submitting={controller.submitting}
+          template={configTarget?.template || null}
+        />
+      ) : null}
 
       <DeleteAgentModal
         item={deleteTarget}

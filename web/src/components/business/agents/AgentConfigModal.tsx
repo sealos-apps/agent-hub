@@ -62,7 +62,7 @@ export function AgentConfigModal({
       }
       onClose={onClose}
       open={open}
-      title={`配置 ${template?.name || "Agent"}`}
+      title={mode === "edit" ? "修改配置" : `配置 ${template?.name || "Agent"}`}
       widthClassName="max-w-4xl"
     >
       <AgentConfigForm

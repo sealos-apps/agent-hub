@@ -3,29 +3,36 @@ import fs from 'node:fs'
 import http from 'node:http'
 import https from 'node:https'
 import path from 'node:path'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { parse as parseYaml } from 'yaml'
 
-if (!process.env.VITE_AGENTHUB_BROWSER_TITLE) {
+const viteEnv = loadEnv(
+  process.env.NODE_ENV === 'production' ? 'production' : 'development',
+  process.cwd(),
+  '',
+)
+const readEnv = (key: string, fallback = '') => process.env[key] || viteEnv[key] || fallback
+
+if (!readEnv('VITE_AGENTHUB_BROWSER_TITLE')) {
   process.env.VITE_AGENTHUB_BROWSER_TITLE = 'Agent Hub Web'
 }
 
-if (!process.env.VITE_AGENTHUB_FAVICON_URL) {
+if (!readEnv('VITE_AGENTHUB_FAVICON_URL')) {
   process.env.VITE_AGENTHUB_FAVICON_URL = '/brand/agent-hub.svg'
 }
 
-const DEFAULT_K8S_SERVER = process.env.VITE_DEFAULT_K8S_SERVER || ''
+const DEFAULT_K8S_SERVER = readEnv('VITE_DEFAULT_K8S_SERVER')
 const FALLBACK_PROXY_TARGET = DEFAULT_K8S_SERVER || 'https://127.0.0.1:6443'
-const BACKEND_PROXY_TARGET = process.env.VITE_AGENTHUB_BACKEND_TARGET || 'http://127.0.0.1:8999'
-const AGENT_HUB_BROWSER_TITLE = process.env.VITE_AGENTHUB_BROWSER_TITLE || 'Agent Hub Web'
-const AGENT_HUB_FAVICON_URL = process.env.VITE_AGENTHUB_FAVICON_URL || '/brand/agent-hub.svg'
+const BACKEND_PROXY_TARGET = readEnv('VITE_AGENTHUB_BACKEND_TARGET', 'http://127.0.0.1:8999')
+const AGENT_HUB_BROWSER_TITLE = readEnv('VITE_AGENTHUB_BROWSER_TITLE', 'Agent Hub Web')
+const AGENT_HUB_FAVICON_URL = readEnv('VITE_AGENTHUB_FAVICON_URL', '/brand/agent-hub.svg')
 const INSECURE_HTTPS_AGENT = new https.Agent({ rejectUnauthorized: false })
 const ENABLE_LOCAL_SESSION =
-  String(process.env.VITE_AGENTHUB_ENABLE_LOCAL_SESSION || '').toLowerCase() === 'true'
+  String(readEnv('VITE_AGENTHUB_ENABLE_LOCAL_SESSION')).toLowerCase() === 'true'
 const LOCAL_KUBECONFIG_PATH =
-  process.env.VITE_AGENTHUB_LOCAL_KUBECONFIG_PATH ||
+  readEnv('VITE_AGENTHUB_LOCAL_KUBECONFIG_PATH') ||
   path.resolve(process.cwd(), '../.local/kubeconfig.yaml')
 
 const toScalar = (value: unknown) => {
