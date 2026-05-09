@@ -5,7 +5,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { APP_LOGO_URL, APP_NAME } from '../../../../branding'
 import { Button } from '../../../../components/ui/Button'
 import { SearchField } from '../../../../components/ui/SearchField'
-import { LanguageSwitch, useI18n } from '../../../../i18n'
+import { useI18n } from '../../../../i18n'
 import { cn } from '../../../../lib/format'
 
 interface AgentWorkspaceShellProps {
@@ -116,9 +116,6 @@ export function AgentWorkspaceShell({
     if (view === 'agents') {
       return (
         <div className="w-full shrink-0 min-[720px]:flex min-[720px]:w-auto min-[720px]:items-center min-[720px]:gap-2 min-[860px]:gap-2.5">
-          <span className="hidden min-[720px]:contents">
-            <LanguageSwitch />
-          </span>
           <Button
             className="h-11 w-full min-w-0 px-4 text-[15px] shadow-[0_10px_20px_rgba(23,23,23,0.18)] active:scale-[0.99] min-[720px]:h-9 min-[720px]:w-auto min-[720px]:px-3 min-[720px]:text-[13px] min-[860px]:h-10 min-[860px]:px-4 min-[860px]:text-[14px]"
             onClick={() => navigate('/agents/templates')}
@@ -183,10 +180,6 @@ export function AgentWorkspaceShell({
                 </div>
                 <span className="hidden h-6 w-px bg-[var(--color-border)] min-[720px]:block" />
               </>
-            ) : null}
-
-            {isAgentsView ? (
-              <LanguageSwitch className="ml-auto min-[720px]:hidden [&>button]:px-2" />
             ) : null}
 
             <div

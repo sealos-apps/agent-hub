@@ -1,6 +1,6 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Languages } from 'lucide-react'
-import { cn } from './lib/format'
+import { addSealosAppEventListener, getSealosLanguage } from './sealosSdk'
 
 export type AppLocale = 'zh-CN' | 'en-US'
 
@@ -14,27 +14,8 @@ interface I18nContextValue {
   t: (key: TranslationKey, values?: TranslationValues) => string
 }
 
-interface LocaleBridge {
-  getLocale?: () => AppLocale | Promise<AppLocale | undefined> | undefined
-  setLocale?: (locale: AppLocale) => void | Promise<void>
-  subscribe?: (listener: (locale: AppLocale) => void) => () => void
-}
-
-declare global {
-  interface Window {
-    AgentHubI18n?: {
-      getLocale: () => AppLocale
-      setLocale: (locale: AppLocale) => void
-      registerBridge: (bridge: LocaleBridge) => void
-    }
-  }
-}
-
-const STORAGE_KEY = 'agenthub.locale'
 const DEFAULT_LOCALE: AppLocale = 'zh-CN'
 let currentLocale: AppLocale = DEFAULT_LOCALE
-let localeBridge: LocaleBridge | null = null
-const listeners = new Set<(locale: AppLocale) => void>()
 
 const zhCN = {
   'language.label': '语言',
@@ -445,41 +426,22 @@ function normalizeLocale(locale: unknown): AppLocale {
   return 'zh-CN'
 }
 
-function readStoredLocale(): AppLocale {
-  if (typeof window === 'undefined') return DEFAULT_LOCALE
-  return normalizeLocale(window.localStorage.getItem(STORAGE_KEY) || DEFAULT_LOCALE)
-}
-
-function persistLocale(locale: AppLocale) {
-  currentLocale = locale
-  if (typeof window !== 'undefined') {
-    window.localStorage.setItem(STORAGE_KEY, locale)
-    window.document.documentElement.lang = locale
-  }
-  listeners.forEach((listener) => listener(locale))
-  void localeBridge?.setLocale?.(locale)
-}
-
 export function getAgentHubLocale() {
   return currentLocale
 }
 
 export function setAgentHubLocale(locale: AppLocale) {
-  persistLocale(normalizeLocale(locale))
+  currentLocale = normalizeLocale(locale)
+  if (typeof window !== 'undefined') {
+    window.document.documentElement.lang = currentLocale
+  }
 }
 
-export function registerAgentHubLocaleBridge(bridge: LocaleBridge) {
-  localeBridge = bridge
-  const maybeLocale = bridge.getLocale?.()
-  if (maybeLocale && typeof (maybeLocale as Promise<AppLocale>).then === 'function') {
-    void (maybeLocale as Promise<AppLocale | undefined>).then((locale) => {
-      if (locale) persistLocale(normalizeLocale(locale))
-    })
-  } else if (maybeLocale) {
-    persistLocale(normalizeLocale(maybeLocale))
-  }
-
-  return bridge.subscribe?.((locale) => persistLocale(normalizeLocale(locale)))
+function extractDesktopLocale(payload: unknown): AppLocale {
+  if (typeof payload === 'string') return normalizeLocale(payload)
+  if (!payload || typeof payload !== 'object') return DEFAULT_LOCALE
+  const record = payload as { currentLanguage?: unknown; lng?: unknown }
+  return normalizeLocale(record.currentLanguage || record.lng)
 }
 
 export function translate(locale: AppLocale, key: TranslationKey, values?: TranslationValues) {
@@ -534,36 +496,46 @@ export function translateTemplateAccessLabel(key: string, fallback: string, t: T
 const I18nContext = createContext<I18nContextValue | null>(null)
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<AppLocale>(() => readStoredLocale())
-
-  useEffect(() => {
-    currentLocale = locale
-    if (typeof window !== 'undefined') {
-      window.document.documentElement.lang = locale
-      window.AgentHubI18n = {
-        getLocale: getAgentHubLocale,
-        setLocale: setAgentHubLocale,
-        registerBridge: registerAgentHubLocaleBridge,
-      }
-    }
-
-    const listener = (nextLocale: AppLocale) => setLocaleState(nextLocale)
-    listeners.add(listener)
-    return () => {
-      listeners.delete(listener)
-    }
-  }, [locale])
-
-  useEffect(() => {
-    const unsubscribe = localeBridge?.subscribe?.((nextLocale) => persistLocale(normalizeLocale(nextLocale)))
-    return () => {
-      unsubscribe?.()
-    }
-  }, [])
+  const [locale, setLocaleState] = useState<AppLocale>(DEFAULT_LOCALE)
 
   const setLocale = useCallback((nextLocale: AppLocale) => {
-    persistLocale(normalizeLocale(nextLocale))
+    const normalizedLocale = normalizeLocale(nextLocale)
+    currentLocale = normalizedLocale
+    if (typeof window !== 'undefined') {
+      window.document.documentElement.lang = normalizedLocale
+    }
+    setLocaleState((current) => (current === normalizedLocale ? current : normalizedLocale))
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    void getSealosLanguage()
+      .then((result) => {
+        if (cancelled) return
+        setLocale(extractDesktopLocale(result))
+      })
+      .catch((error) => {
+        console.warn('[i18n] get Sealos Desktop language failed, fallback to zh-CN:', error)
+      })
+
+    let unsubscribe: (() => void) | undefined
+    try {
+      const result = addSealosAppEventListener('change_i18n', (payload: unknown) => {
+        setLocale(extractDesktopLocale(payload))
+      })
+      if (typeof result === 'function') {
+        unsubscribe = () => result()
+      }
+    } catch (error) {
+      console.warn('[i18n] listen Sealos Desktop language failed:', error)
+    }
+
+    return () => {
+      cancelled = true
+      unsubscribe?.()
+    }
+  }, [setLocale])
 
   const value = useMemo<I18nContextValue>(() => ({
     locale,
@@ -584,30 +556,4 @@ export function useI18n() {
     }
   }
   return context
-}
-
-export function LanguageSwitch({ className }: { className?: string }) {
-  const { locale, setLocale, t } = useI18n()
-  return (
-    <div
-      aria-label={t('language.label')}
-      className={cn('inline-flex h-10 shrink-0 items-center gap-1 rounded-[10px] border border-zinc-200 bg-white p-1 text-[13px] font-medium text-zinc-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)]', className)}
-      role="group"
-    >
-      <Languages className="ml-1 h-4 w-4 text-zinc-400" />
-      {(['zh-CN', 'en-US'] as const).map((item) => (
-        <button
-          className={cn(
-            'h-8 rounded-[8px] px-2.5 transition',
-            locale === item ? 'bg-zinc-950 text-white' : 'hover:bg-zinc-100 hover:text-zinc-900',
-          )}
-          key={item}
-          onClick={() => setLocale(item)}
-          type="button"
-        >
-          {item === 'zh-CN' ? t('language.zh') : t('language.en')}
-        </button>
-      ))}
-    </div>
-  )
 }
