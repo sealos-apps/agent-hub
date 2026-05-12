@@ -84,7 +84,7 @@ export const openAgentConsoleDesktopWindow = async (item: AgentListItem) => {
         agentName,
         aliasName: item.aliasName || item.name,
       },
-      appSize: 'normal',
+      appSize: 'windowed',
     })
   } catch (error) {
     if (import.meta.env.DEV) {

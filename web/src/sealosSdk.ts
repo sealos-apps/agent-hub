@@ -17,6 +17,7 @@ type SealosSdkClient = {
   getHostConfig?: SealosSdkMethod
   addAppEventListen?: SealosSdkMethod
   runEvents?: SealosSdkMethod
+  openApp?: SealosSdkMethod
 }
 
 export interface OpenSealosDesktopAppOptions {
@@ -24,7 +25,7 @@ export interface OpenSealosDesktopAppOptions {
   pathname: string
   query?: Record<string, string>
   messageData?: Record<string, unknown>
-  appSize?: 'minimize' | 'normal' | 'maximize'
+  appSize?: 'minimized' | 'windowed' | 'maximized'
 }
 
 type SealosEventResult = {
@@ -147,9 +148,9 @@ export const openSealosDesktopApp = async ({
   pathname,
   query = {},
   messageData = {},
-  appSize = 'normal',
+  appSize = 'maximized',
 }: OpenSealosDesktopAppOptions) =>
-  runSealosEvent('openDesktopApp', {
+  requireSdkMethod('openApp')({
     appKey,
     pathname,
     query,
@@ -167,14 +168,15 @@ export const getSealosSdkDebugInfo = () => {
   return {
     sdkAvailable: Boolean(client),
     methods: client
-        ? {
-          getSession: typeof client.getSession === 'function',
-          getLanguage: typeof client.getLanguage === 'function',
-          getWorkspaceQuota: typeof client.getWorkspaceQuota === 'function',
-          getHostConfig: typeof client.getHostConfig === 'function',
-          addAppEventListen: typeof client.addAppEventListen === 'function',
-          runEvents: typeof client.runEvents === 'function',
-        }
+      ? {
+        getSession: typeof client.getSession === 'function',
+        getLanguage: typeof client.getLanguage === 'function',
+        getWorkspaceQuota: typeof client.getWorkspaceQuota === 'function',
+        getHostConfig: typeof client.getHostConfig === 'function',
+        addAppEventListen: typeof client.addAppEventListen === 'function',
+        runEvents: typeof client.runEvents === 'function',
+        openApp: typeof client.openApp === 'function',
+      }
       : null,
     isBrowser,
     location: isBrowser ? window.location.href : '',
