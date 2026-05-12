@@ -30,7 +30,12 @@ import { applyBlueprintPreset, updateBlueprintField } from './lib/blueprint'
 import { openAgentConsoleDesktopWindow } from './lib/consoleWindow'
 
 const MOCK_AGENT_ID_PREFIX = 'mock-agent-'
-const ALL_STATUS_FILTERS: AgentListStatusFilter = ['running', 'creating', 'stopped', 'error']
+const ALL_STATUS_FILTERS: AgentListStatusFilter = [
+  'running',
+  'creating',
+  'stopped',
+  'error',
+]
 const ENABLE_MOCK_AGENTS =
   import.meta.env.DEV &&
   String(import.meta.env.VITE_ENABLE_MOCK_AGENTS || '').toLowerCase() === 'true'
@@ -283,7 +288,11 @@ function createMockAgentItem({
   bootstrapMessage?: string
 }): AgentListItem {
   const rawStatus =
-    status === 'running' ? 'Running' : status === 'stopped' ? 'Paused' : 'Creating'
+    status === 'running'
+      ? 'Running'
+      : status === 'stopped'
+        ? 'Paused'
+        : 'Creating'
   const contract = buildMockContract({
     name,
     aliasName,
@@ -340,7 +349,8 @@ function createMockAgentItem({
     chatAvailable: status === 'running',
     chatDisabledReason: status === 'running' ? '' : '实例未运行，暂不可对话',
     terminalAvailable: status === 'running',
-    terminalDisabledReason: status === 'running' ? '' : '实例未运行，暂不可进入终端',
+    terminalDisabledReason:
+      status === 'running' ? '' : '实例未运行，暂不可进入终端',
     settingsAvailable: true,
     webUIAvailable: true,
     sshAvailable: true,
@@ -368,7 +378,8 @@ function buildMockAgentItems(
   const owner = clusterInfo?.operator || 'Sealos'
   const fallbackTemplate = templates[0]
   const hermesTemplate =
-    templates.find((template) => template.id === 'hermes-agent') || fallbackTemplate
+    templates.find((template) => template.id === 'hermes-agent') ||
+    fallbackTemplate
   const openclawTemplate =
     templates.find((template) => template.id === 'openclaw') || fallbackTemplate
 
@@ -444,7 +455,8 @@ export function AgentsListPage() {
     useState<AgentBlueprint>(() => createEmptyBlueprint())
   const [sortKey, setSortKey] = useState<AgentListSortKey>('updatedAt')
   const [sortOrder, setSortOrder] = useState<AgentListSortOrder>('desc')
-  const [statusFilter, setStatusFilter] = useState<AgentListStatusFilter>(ALL_STATUS_FILTERS)
+  const [statusFilter, setStatusFilter] =
+    useState<AgentListStatusFilter>(ALL_STATUS_FILTERS)
   const keyword = String(searchParams.get('q') || '')
 
   const { chatSession, closeChat, openChat, sendChatMessage, setChatDraft } =
@@ -489,11 +501,17 @@ export function AgentsListPage() {
     const normalized = keyword.trim().toLowerCase()
     const keywordMatched = normalized
       ? previewItems.filter((item) =>
-        [item.name, item.aliasName, item.namespace, item.template.name, item.model]
-          .join(' ')
-          .toLowerCase()
-          .includes(normalized),
-      )
+          [
+            item.name,
+            item.aliasName,
+            item.namespace,
+            item.template.name,
+            item.model,
+          ]
+            .join(' ')
+            .toLowerCase()
+            .includes(normalized),
+        )
       : previewItems
 
     const statusMatched =
@@ -555,7 +573,8 @@ export function AgentsListPage() {
       return
     }
 
-    const originalBlueprint = controller.createBlueprintFromAgentItem(configTarget)
+    const originalBlueprint =
+      controller.createBlueprintFromAgentItem(configTarget)
     const runtimeDirty =
       runtimeEditBlueprint.profile !== originalBlueprint.profile ||
       runtimeEditBlueprint.cpu !== originalBlueprint.cpu ||
@@ -577,14 +596,22 @@ export function AgentsListPage() {
 
     try {
       if (runtimeDirty) {
-        await controller.updateAgentRuntimeFromBlueprint(configTarget, runtimeEditBlueprint)
+        await controller.updateAgentRuntimeFromBlueprint(
+          configTarget,
+          runtimeEditBlueprint,
+        )
       }
       if (settingsDirty) {
-        await controller.updateAgentSettingsFromBlueprint(configTarget, settingsEditBlueprint)
+        await controller.updateAgentSettingsFromBlueprint(
+          configTarget,
+          settingsEditBlueprint,
+        )
       }
       handleCloseConfig()
     } catch (error) {
-      controller.setMessage(error instanceof Error ? error.message : '保存配置失败')
+      controller.setMessage(
+        error instanceof Error ? error.message : '保存配置失败',
+      )
     }
   }
 
@@ -614,7 +641,9 @@ export function AgentsListPage() {
     try {
       await controller.toggleItemState(item)
     } catch (error) {
-      controller.setMessage(error instanceof Error ? error.message : '切换运行状态失败')
+      controller.setMessage(
+        error instanceof Error ? error.message : '切换运行状态失败',
+      )
     }
   }
 
@@ -622,7 +651,9 @@ export function AgentsListPage() {
     try {
       await controller.updateAgentAlias(item, aliasName)
     } catch (error) {
-      controller.setMessage(error instanceof Error ? error.message : '修改别名失败')
+      controller.setMessage(
+        error instanceof Error ? error.message : '修改别名失败',
+      )
       throw error
     }
   }
@@ -636,7 +667,9 @@ export function AgentsListPage() {
     try {
       await openAgentConsoleDesktopWindow(item)
     } catch (error) {
-      controller.setMessage(error instanceof Error ? error.message : '打开控制台窗口失败')
+      controller.setMessage(
+        error instanceof Error ? error.message : '打开控制台窗口失败',
+      )
     }
   }
 
@@ -647,7 +680,9 @@ export function AgentsListPage() {
     }
 
     if (!item.webUIAccess?.enabled || !item.webUIAccess.url) {
-      controller.setMessage(item.webUIAccess?.reason || '当前模板没有可用的 Web UI 地址')
+      controller.setMessage(
+        item.webUIAccess?.reason || '当前模板没有可用的 Web UI 地址',
+      )
       return
     }
     window.open(item.webUIAccess.url, '_blank', 'noopener,noreferrer')
@@ -656,10 +691,10 @@ export function AgentsListPage() {
   return (
     <AgentWorkspaceShell>
       <div className="flex h-full w-full min-w-0 flex-col">
-        <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-0 pt-6 sm:px-5 min-[960px]:px-6 lg:px-12">
+        <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-0 pt-6 sm:px-5 min-[960px]:px-2 lg:px-8">
           <AgentHubOverview
             message={controller.message}
-            onClose={() => controller.setMessage("")}
+            onClose={() => controller.setMessage('')}
           />
 
           {controller.loading ? (

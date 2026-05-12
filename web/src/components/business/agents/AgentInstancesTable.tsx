@@ -325,7 +325,7 @@ export function AgentInstancesTable({
         ? translateStatus(statusFilter[0], t)
         : t('agent.selectedCount', { count: statusFilter.length })
   const tableGridClassName =
-    'grid min-w-[936px] grid-cols-[minmax(188px,1.5fr)_minmax(124px,0.82fr)_minmax(160px,1fr)_minmax(136px,0.86fr)_minmax(232px,1fr)] items-center gap-4'
+    'grid min-w-[976px] grid-cols-[minmax(188px,1.5fr)_minmax(124px,0.82fr)_minmax(160px,1fr)_minmax(136px,0.86fr)_minmax(272px,1fr)] items-center gap-4'
 
   if (!items.length) {
     return null
@@ -378,7 +378,7 @@ export function AgentInstancesTable({
         </Card>
 
         <div className="mt-3 min-h-0 flex-1 overflow-x-auto">
-          <div className="flex min-h-full min-w-[936px] flex-col gap-3.5">
+          <div className="flex min-h-full min-w-[976px] flex-col gap-3.5">
             {items.map((item) => (
               <Card
                 className={`${tableGridClassName} group min-h-[84px] rounded-[14px] border-zinc-200/90 px-5 py-4 transition-colors hover:bg-zinc-50 lg:px-6`}

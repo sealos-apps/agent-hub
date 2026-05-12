@@ -161,7 +161,7 @@ export function AgentActionsCell({
         'relative whitespace-nowrap',
         isMobileCardLayout
           ? 'grid w-full min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px] items-center gap-2'
-          : 'inline-flex min-w-[232px] flex-nowrap items-center justify-start gap-2',
+          : 'inline-flex min-w-[272px] flex-nowrap items-center justify-start gap-3 pr-2',
       )}
     >
       <button
@@ -180,7 +180,7 @@ export function AgentActionsCell({
       <Button
         className={cn(
           'h-10 rounded-[8px] border-0 bg-zinc-100 px-4 py-2 text-[14px]/5 font-semibold text-zinc-900 shadow-none hover:bg-zinc-200/60',
-          isMobileCardLayout ? 'w-full min-w-0' : 'min-w-[72px] shrink-0',
+          isMobileCardLayout ? 'w-full min-w-0' : 'min-w-[108px] shrink-0',
         )}
         disabled={!canEdit}
         onClick={() => onEdit(item)}
