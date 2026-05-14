@@ -8,17 +8,18 @@ import (
 )
 
 type Config struct {
-	Port                string
-	IngressSuffix       string
-	SSHDomain           string
-	APIServerImage      string
-	AgentTemplateDir    string
-	WebDistDir          string
-	AIProxyBaseURL      string
-	AIProxyModelBaseURL string
-	Region              string
-	K8sProxyAllowHosts  []string
-	WSAllowedOrigins    string
+	Port                    string
+	IngressSuffix           string
+	SSHDomain               string
+	APIServerImage          string
+	AgentTemplateDir        string
+	WebDistDir              string
+	AIProxyBaseURL          string
+	AIProxyModelBaseURL     string
+	AIProxyModelCatalogPath string
+	Region                  string
+	K8sProxyAllowHosts      []string
+	WSAllowedOrigins        string
 }
 
 func Load() Config {
@@ -30,17 +31,18 @@ func Load() Config {
 	}
 
 	return Config{
-		Port:                getenv("PORT", "8999"),
-		IngressSuffix:       getenv("INGRESS_SUFFIX", "agent.usw-1.sealos.app"),
-		SSHDomain:           strings.TrimSpace(os.Getenv("SSH_DOMAIN")),
-		APIServerImage:      getenv("AGENT_IMAGE", "nousresearch/hermes-agent:latest"),
-		AgentTemplateDir:    getenv("AGENT_MANIFEST_TEMPLATE_DIR", ""),
-		WebDistDir:          getenv("WEB_DIST_DIR", ""),
-		AIProxyBaseURL:      aiProxyManagerBaseURL,
-		AIProxyModelBaseURL: strings.TrimSpace(os.Getenv("AIPROXY_MODEL_BASE_URL")),
-		Region:              resolveRegion(),
-		K8sProxyAllowHosts:  parseCSV(getenv("K8S_PROXY_ALLOWED_HOSTS", ".sealos.io,.sealos.run")),
-		WSAllowedOrigins:    getenv("WS_ALLOWED_ORIGINS", ""),
+		Port:                    getenv("PORT", "8999"),
+		IngressSuffix:           getenv("INGRESS_SUFFIX", "agent.usw-1.sealos.app"),
+		SSHDomain:               strings.TrimSpace(os.Getenv("SSH_DOMAIN")),
+		APIServerImage:          getenv("AGENT_IMAGE", "nousresearch/hermes-agent:latest"),
+		AgentTemplateDir:        getenv("AGENT_MANIFEST_TEMPLATE_DIR", ""),
+		WebDistDir:              getenv("WEB_DIST_DIR", ""),
+		AIProxyBaseURL:          aiProxyManagerBaseURL,
+		AIProxyModelBaseURL:     strings.TrimSpace(os.Getenv("AIPROXY_MODEL_BASE_URL")),
+		AIProxyModelCatalogPath: strings.TrimSpace(os.Getenv("AIPROXY_MODEL_CATALOG_PATH")),
+		Region:                  resolveRegion(),
+		K8sProxyAllowHosts:      parseCSV(getenv("K8S_PROXY_ALLOWED_HOSTS", ".sealos.io,.sealos.run")),
+		WSAllowedOrigins:        getenv("WS_ALLOWED_ORIGINS", ""),
 	}
 }
 

@@ -121,6 +121,12 @@ const templateCatalog: AgentTemplateCatalogItem[] = [
         apiMode: "chat.completions",
       },
     ],
+    modelSwitch: {
+      enabled: false,
+      client: "",
+      apiKeyEnv: "",
+      supportedModelTypes: [],
+    },
   },
   {
     id: "openclaw",
@@ -229,6 +235,12 @@ const templateCatalog: AgentTemplateCatalogItem[] = [
         apiMode: "chat.completions",
       },
     ],
+    modelSwitch: {
+      enabled: false,
+      client: "",
+      apiKeyEnv: "",
+      supportedModelTypes: [],
+    },
   },
 ];
 

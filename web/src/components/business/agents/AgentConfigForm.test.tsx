@@ -29,7 +29,7 @@ function createBlueprint(): AgentBlueprint {
     user: 'hermes',
     workingDir: '/opt/hermes',
     argsText: 'gateway run',
-    modelProvider: 'custom:aiproxy-responses',
+    modelProvider: 'aiproxy',
     modelBaseURL: 'https://aiproxy.example.com/v1',
     model: 'gpt-5.4-mini',
     hasModelAPIKey: true,
@@ -45,16 +45,16 @@ describe('AgentConfigForm', () => {
         {
           value: 'gpt-5.4-mini',
           label: 'GPT-5.4 Mini',
-          helper: 'OpenAI',
-          provider: 'custom:aiproxy-responses',
-          apiMode: 'codex_responses',
+          helper: 'AI Proxy · openai-responses',
+          provider: 'aiproxy',
+          apiMode: 'openai-responses',
         },
         {
           value: 'glm-4.6',
           label: 'GLM-4.6',
-          helper: 'GLM',
-          provider: 'custom:aiproxy-chat',
-          apiMode: 'chat_completions',
+          helper: 'AI Proxy · openai-chat-completions',
+          provider: 'aiproxy',
+          apiMode: 'openai-chat-completions',
         },
       ],
     })
@@ -76,13 +76,13 @@ describe('AgentConfigForm', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'GPT-5.4 Mini · OpenAI' }))
-    expect(screen.getAllByText('GPT-5.4 Mini · OpenAI').length).toBeGreaterThan(0)
-    expect(screen.getByText('GLM-4.6 · GLM')).toBeInTheDocument()
-    fireEvent.click(screen.getByText('GLM-4.6 · GLM'))
+    fireEvent.click(screen.getByRole('button', { name: 'GPT-5.4 Mini · AI Proxy · openai-responses' }))
+    expect(screen.getAllByText('GPT-5.4 Mini · AI Proxy · openai-responses').length).toBeGreaterThan(0)
+    expect(screen.getByText('GLM-4.6 · AI Proxy · openai-chat-completions')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('GLM-4.6 · AI Proxy · openai-chat-completions'))
 
     expect(settingCalls).toContainEqual(['model', 'glm-4.6'])
-    expect(settingCalls).toContainEqual(['provider', 'custom:aiproxy-chat'])
+    expect(settingCalls).toContainEqual(['provider', 'aiproxy'])
   })
 
   it('only renders the catalog options passed from the current regional template snapshot', () => {
@@ -91,9 +91,9 @@ describe('AgentConfigForm', () => {
         {
           value: 'glm-4.6',
           label: 'GLM-4.6',
-          helper: 'GLM',
-          provider: 'custom:aiproxy-chat',
-          apiMode: 'chat_completions',
+          helper: 'AI Proxy · openai-chat-completions',
+          provider: 'aiproxy',
+          apiMode: 'openai-chat-completions',
         },
       ],
     })
@@ -113,7 +113,7 @@ describe('AgentConfigForm', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: '请选择模型' }))
-    expect(screen.getByText('GLM-4.6 · GLM')).toBeInTheDocument()
-    expect(screen.queryByText('GPT-5.4 Mini · OpenAI')).not.toBeInTheDocument()
+    expect(screen.getByText('GLM-4.6 · AI Proxy · openai-chat-completions')).toBeInTheDocument()
+    expect(screen.queryByText('GPT-5.4 Mini · AI Proxy · openai-responses')).not.toBeInTheDocument()
   })
 })

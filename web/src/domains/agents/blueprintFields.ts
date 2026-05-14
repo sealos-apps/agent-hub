@@ -1,4 +1,4 @@
-import type { AgentBlueprint, AgentSettingField } from "./types";
+import type { AgentBlueprint, AgentModelCurrent, AgentSettingField } from "./types";
 
 const trimBindingKind = (field: AgentSettingField) =>
   String(field.binding?.kind || "").trim();
@@ -57,6 +57,22 @@ export const writeBlueprintSettingValue = (
       ...blueprint.settingsValues,
       [field.key]: value,
     },
+  };
+};
+
+export const applyCurrentModelToBlueprint = (
+  blueprint: AgentBlueprint,
+  current: AgentModelCurrent,
+): AgentBlueprint => {
+  const providerId = String(current.providerId || "").trim();
+  const modelId = String(current.modelId || "").trim();
+  const baseURL = String(current.baseURL || "").trim();
+
+  return {
+    ...blueprint,
+    modelProvider: providerId || blueprint.modelProvider,
+    model: modelId || blueprint.model,
+    modelBaseURL: baseURL || blueprint.modelBaseURL,
   };
 };
 

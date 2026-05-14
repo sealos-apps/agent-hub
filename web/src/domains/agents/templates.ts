@@ -1,6 +1,7 @@
 import hermesAgentLogo from "../../assets/hermes-agent-logo.png?inline";
 import openclawLogo from "../../assets/openclaw-logo.jpg?inline";
 import type {
+  AIProxyModelCatalog,
   AgentBlueprint,
   AgentHubRegion,
   AgentTemplateCatalogItem,
@@ -70,6 +71,26 @@ export const hydrateTemplateCatalog = (
   templates: AgentTemplateCatalogItem[] = [],
 ) => templates.map(hydrateTemplateCatalogItem);
 
+export const mapAIProxyCatalogToModelOptions = (
+  catalog: AIProxyModelCatalog,
+): TemplateModelOption[] =>
+  (catalog.models || []).map((model) => ({
+    value: model.id,
+    label: model.label,
+    helper: [model.providerName, model.requestFormat].filter(Boolean).join(" · "),
+    provider: model.providerId,
+    apiMode: model.requestFormat,
+  }));
+
+export const applyAIProxyCatalogToTemplate = (
+  template: AgentTemplateDefinition,
+  catalog: AIProxyModelCatalog,
+): AgentTemplateDefinition => ({
+  ...template,
+  modelOptions: mapAIProxyCatalogToModelOptions(catalog),
+  modelCatalog: catalog,
+});
+
 export const indexTemplatesById = (templates: AgentTemplateDefinition[] = []) =>
   Object.fromEntries(
     templates.map((template) => [template.id, template]),
@@ -83,6 +104,19 @@ export const findTemplateById = (
 export const getDefaultModelOption = (
   template?: Pick<AgentTemplateDefinition, "modelOptions"> | null,
 ) => template?.modelOptions?.[0] || null;
+
+export const getCatalogDefaultModelOption = (
+  template?: Pick<AgentTemplateDefinition, "modelOptions" | "modelCatalog"> | null,
+): TemplateModelOption | null => {
+  const defaultModel = String(template?.modelCatalog?.defaultModel || "").trim();
+  if (!defaultModel) {
+    return null;
+  }
+  return (
+    template?.modelOptions?.find((option) => option.value === defaultModel) ||
+    null
+  );
+};
 
 export const getModelOptionByValue = (
   template: Pick<AgentTemplateDefinition, "modelOptions"> | null | undefined,

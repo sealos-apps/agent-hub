@@ -17,7 +17,10 @@ import type {
   AgentTemplateDefinition,
   ClusterInfo,
 } from '../../../domains/agents/types'
-import { writeBlueprintSettingValue } from '../../../domains/agents/blueprintFields'
+import {
+  applyCurrentModelToBlueprint,
+  writeBlueprintSettingValue,
+} from '../../../domains/agents/blueprintFields'
 import { createEmptyBlueprint } from '../../../domains/agents/templates'
 import { AgentCapabilityOverlays } from './components/AgentCapabilityOverlays'
 import { AgentHubOverview } from './components/AgentHubOverview'
@@ -547,15 +550,27 @@ export function AgentsListPage() {
     // mock 数据仅用于样式预览：静默拦截交互，不展示提示横幅
   }
 
-  const handleOpenConfig = (item: AgentListItem) => {
+  const handleOpenConfig = async (item: AgentListItem) => {
     if (!item.settingsAvailable) {
       controller.setMessage('当前实例暂不支持修改配置')
       return
     }
-    const blueprint = controller.createBlueprintFromAgentItem(item)
-    setConfigTarget(item)
-    setRuntimeEditBlueprint(blueprint)
-    setSettingsEditBlueprint(blueprint)
+    try {
+      const currentModel = await controller.readAgentCurrentModel(item)
+      const blueprint = currentModel
+        ? applyCurrentModelToBlueprint(
+            controller.createBlueprintFromAgentItem(item),
+            currentModel,
+          )
+        : controller.createBlueprintFromAgentItem(item)
+      setConfigTarget(item)
+      setRuntimeEditBlueprint(blueprint)
+      setSettingsEditBlueprint(blueprint)
+    } catch (error) {
+      controller.setMessage(
+        error instanceof Error ? error.message : '读取当前模型失败',
+      )
+    }
   }
 
   const handleCloseConfig = () => {
@@ -722,9 +737,9 @@ export function AgentsListPage() {
               onStatusFilterChange={setStatusFilter}
               onChat={openChat}
               onDelete={setDeleteTarget}
-              onEdit={handleOpenConfig}
+              onEdit={(item) => void handleOpenConfig(item)}
               onFiles={openFiles}
-              onOpenDetail={handleOpenConfig}
+              onOpenDetail={(item) => void handleOpenConfig(item)}
               onRenameAlias={handleRenameAlias}
               onTerminal={handleOpenTerminal}
               onToggleState={handleToggleState}

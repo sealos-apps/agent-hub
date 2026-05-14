@@ -47,3 +47,15 @@ type AgentKeyRotateResponse struct {
 	AgentName string `json:"agentName"`
 	Rotated   bool   `json:"rotated"`
 }
+
+type AgentModelCurrentResponse struct {
+	AgentName     string `json:"agentName"`
+	Client        string `json:"client"`
+	ProviderID    string `json:"providerId,omitempty"`
+	ProviderName  string `json:"providerName,omitempty"`
+	ModelType     string `json:"modelType,omitempty"`
+	RequestFormat string `json:"requestFormat,omitempty"`
+	BaseURL       string `json:"baseURL,omitempty"`
+	ModelID       string `json:"modelId,omitempty"`
+	ConfigPath    string `json:"configPath,omitempty"`
+}

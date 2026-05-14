@@ -24,10 +24,12 @@ func New(cfg config.Config) *gin.Engine {
 	{
 		v1.GET("/system/config", handler.GetSystemConfig)
 		v1.GET("/templates", handler.ListTemplates)
+		v1.GET("/aiproxy/models", handler.ListAIProxyModels)
 		v1.POST("/aiproxy/token/ensure", handler.EnsureAIProxyToken)
 		v1.GET("/agents", handler.ListAgents)
 		v1.POST("/agents", handler.CreateAgent)
 		v1.GET("/agents/:agentName", handler.GetAgent)
+		v1.GET("/agents/:agentName/model", handler.GetAgentModelCurrent)
 		v1.GET("/agents/:agentName/console", handler.GetAgentConsole)
 		v1.GET("/agents/:agentName/access/ssh", handler.GetAgentSSHAccess)
 		v1.PATCH("/agents/:agentName/runtime", handler.UpdateAgentRuntime)

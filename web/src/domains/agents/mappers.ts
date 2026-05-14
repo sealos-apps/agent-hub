@@ -1,4 +1,4 @@
-import { getDefaultModelOption, resolveResourcePreset } from "./templates";
+import { getCatalogDefaultModelOption, getDefaultModelOption, resolveResourcePreset } from "./templates";
 import type {
   AgentAccessItem,
   AgentActionItem,
@@ -136,7 +136,9 @@ export const createBlueprintFromAgentItem = (
   item: AgentListItem,
 ): AgentBlueprint => {
   const apiAccess = getAccessItem(item, "api");
-  const defaultModelOption = getDefaultModelOption(item.template);
+  const defaultModelOption = item.template.modelSwitch?.enabled
+    ? getCatalogDefaultModelOption(item.template)
+    : getDefaultModelOption(item.template);
 
   return {
     appName: item.name,

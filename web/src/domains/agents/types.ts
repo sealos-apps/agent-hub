@@ -70,6 +70,29 @@ export interface TemplateModelOption {
   apiMode: string;
 }
 
+export interface TemplateModelSwitch {
+  enabled: boolean;
+  client?: string;
+  apiKeyEnv?: string;
+  supportedModelTypes?: string[];
+}
+
+export interface AIProxyModelOption {
+  id: string;
+  label: string;
+  providerId: string;
+  providerName: string;
+  modelType: string;
+  requestFormat: string;
+}
+
+export interface AIProxyModelCatalog {
+  region: AgentHubRegion;
+  baseURL: string;
+  defaultModel?: string;
+  models: AIProxyModelOption[];
+}
+
 export interface TemplateSettingsSchema {
   runtime: AgentSettingField[];
   agent: AgentSettingField[];
@@ -93,6 +116,7 @@ export interface AgentTemplateCatalogItem {
   actions: TemplateActionItem[];
   settings: TemplateSettingsSchema;
   modelOptions: TemplateModelOption[];
+  modelSwitch: TemplateModelSwitch;
 }
 
 export interface AgentTemplateDefinition extends AgentTemplateCatalogItem {
@@ -100,6 +124,7 @@ export interface AgentTemplateDefinition extends AgentTemplateCatalogItem {
   brandColor: string;
   docsLabel: string;
   defaultWorkingDirectory: string;
+  modelCatalog?: AIProxyModelCatalog;
 }
 
 export interface AgentCoreContract {
@@ -233,6 +258,18 @@ export interface WorkspaceAIProxyToken {
   key: string;
   status: number;
   existed: boolean;
+}
+
+export interface AgentModelCurrent {
+  agentName: string;
+  client: string;
+  providerId?: string;
+  providerName?: string;
+  modelType?: string;
+  requestFormat?: string;
+  baseURL?: string;
+  modelId?: string;
+  configPath?: string;
 }
 
 export interface ResourceItem {

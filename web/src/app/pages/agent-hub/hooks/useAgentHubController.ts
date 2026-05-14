@@ -5,9 +5,11 @@ import {
   deleteAgent,
   deriveAIProxyModelBaseURL,
   ensureAIProxyToken,
+  fetchAIProxyModels,
   getAgent,
   getClusterInfo,
   getCreateBlueprint,
+  getAgentModelCurrent,
   getSystemConfig,
   listAgentTemplates,
   listAgents,
@@ -28,7 +30,8 @@ import {
 import {
   createEmptyBlueprint,
   findTemplateById,
-  getDefaultModelOption,
+  applyAIProxyCatalogToTemplate,
+  getCatalogDefaultModelOption,
   hydrateTemplateCatalog,
   indexTemplatesById,
 } from "../../../../domains/agents/templates";
@@ -65,6 +68,22 @@ type LoadedSnapshot = {
   templates: AgentTemplateDefinition[];
   items: AgentListItem[];
   systemConfig: SystemConfig;
+};
+
+const hydrateTemplatesWithModelCatalogs = async (
+  items: AgentTemplateDefinition[],
+) => {
+  const hydrated = [...items];
+  await Promise.all(
+    hydrated.map(async (template, index) => {
+      if (!template.modelSwitch?.enabled) {
+        return;
+      }
+      const catalog = await fetchAIProxyModels(template.id);
+      hydrated[index] = applyAIProxyCatalogToTemplate(template, catalog);
+    }),
+  );
+  return hydrated;
 };
 
 const isSameClusterContext = (
@@ -263,7 +282,9 @@ export function useAgentHubController() {
           console.warn("[agent-hub] list agents failed", agentsError);
         }
 
-        const nextTemplates = hydrateTemplateCatalog(templatePayload.items);
+        const nextTemplates = await hydrateTemplatesWithModelCatalogs(
+          hydrateTemplateCatalog(templatePayload.items),
+        );
         const nextItems = mapBackendAgentsToListItems(
           agentsPayload?.items || [],
           nextTemplates,
@@ -339,7 +360,9 @@ export function useAgentHubController() {
       const nextTemplates =
         templates.length > 0
           ? templates
-          : hydrateTemplateCatalog((await listAgentTemplates()).items);
+          : await hydrateTemplatesWithModelCatalogs(
+              hydrateTemplateCatalog((await listAgentTemplates()).items),
+            );
       const agentsPayload = await listAgents(nextClusterContext);
       const nextItems = mapBackendAgentsToListItems(
         agentsPayload?.items || [],
@@ -436,8 +459,11 @@ export function useAgentHubController() {
       }
 
       const seed = getCreateBlueprint(currentContext, undefined, []);
-      const defaultModelOption = getDefaultModelOption(template);
+      const defaultModelOption = template.modelSwitch?.enabled
+        ? getCatalogDefaultModelOption(template)
+        : template.modelOptions[0] || null;
       const modelBaseURL =
+        template.modelCatalog?.baseURL ||
         workspaceAIProxyModelBaseURL ||
         deriveAIProxyModelBaseURL(currentContext.server);
 
@@ -1073,6 +1099,20 @@ export function useAgentHubController() {
     ],
   );
 
+  const readAgentCurrentModel = useCallback(
+    async (item: AgentListItem) => {
+      if (mockMode) {
+        return null;
+      }
+      if (!item.template.modelSwitch?.enabled) {
+        return null;
+      }
+      const currentContext = await resolveClusterContext();
+      return getAgentModelCurrent(item.name, currentContext);
+    },
+    [mockMode, resolveClusterContext],
+  );
+
   const findLoadedTemplateById = useCallback(
     (templateId: string) => findTemplateById(templates, templateId),
     [templates],
@@ -1105,6 +1145,7 @@ export function useAgentHubController() {
     ensureWorkspaceTokenReady,
     findItemByName,
     fetchAgentByName,
+    readAgentCurrentModel,
     findTemplateById: findLoadedTemplateById,
     primeItem,
     createBlueprintFromAgentItem,

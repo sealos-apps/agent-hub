@@ -26,6 +26,7 @@ import (
 
 	"github.com/nightwhite/Agent-Hub/internal/agent"
 	"github.com/nightwhite/Agent-Hub/internal/agenttemplate"
+	"github.com/nightwhite/Agent-Hub/internal/aiproxycatalog"
 	"github.com/nightwhite/Agent-Hub/internal/config"
 	"github.com/nightwhite/Agent-Hub/internal/dto"
 	"github.com/nightwhite/Agent-Hub/internal/kube"
@@ -273,7 +274,18 @@ func CreateAgent(c *gin.Context) {
 		writeAppError(c, http.StatusInternalServerError, regionErr)
 		return
 	}
-	req = normalizeCreateRequestSettings(req, templateDef, cfg, region)
+	var catalogRegion aiproxycatalog.Region
+	var catalogModel aiproxycatalog.Model
+	if templateDef.ModelSwitch.Enabled {
+		resolvedRegion, resolvedModel, catalogErr := resolveCatalogModelForTemplate(cfg, templateDef, requestedCreateModel(req))
+		if catalogErr != nil {
+			writeCatalogModelError(c, catalogErr)
+			return
+		}
+		catalogRegion = resolvedRegion
+		catalogModel = resolvedModel
+	}
+	req = normalizeCreateRequestSettings(req, templateDef, cfg, region, catalogRegion, catalogModel)
 	if err := validateCreateRequest(req, templateDef, region); err != nil {
 		writeValidationError(c, err)
 		return
@@ -340,20 +352,10 @@ func CreateAgent(c *gin.Context) {
 		)
 		cancelModelAccess()
 		if accessErr != nil {
-			fallbackAccess, fallbackErr := resolveManagedModelAccessWithoutToken(
-				cfg,
-				factory,
-				strings.TrimSpace(*mappedSettings.ModelProvider),
-				strings.TrimSpace(*mappedSettings.ModelBaseURL),
-			)
-			if fallbackErr != nil {
-				writeAppError(c, http.StatusBadGateway, appErr.New(appErr.CodeAIProxyOperation, "failed to prepare managed model access").WithDetails(map[string]any{
-					"reason": fallbackErr.Error(),
-				}))
-				return
-			}
-			log.Printf("aiproxy token unavailable during agent create; continuing without model api key: provider=%s baseURL=%s err=%v", fallbackAccess.Provider, fallbackAccess.BaseURL, accessErr)
-			modelAccess = fallbackAccess
+			writeAppError(c, http.StatusBadGateway, appErr.New(appErr.CodeAIProxyOperation, "failed to prepare managed model access").WithDetails(map[string]any{
+				"reason": accessErr.Error(),
+			}))
+			return
 		}
 		mappedSettings.ModelProvider = stringPtr(modelAccess.Provider)
 		mappedSettings.ModelBaseURL = stringPtr(modelAccess.BaseURL)
@@ -1353,6 +1355,8 @@ func normalizeCreateRequestSettings(
 	templateDef agenttemplate.Definition,
 	cfg config.Config,
 	region string,
+	catalogRegion aiproxycatalog.Region,
+	catalogModel aiproxycatalog.Model,
 ) dto.CreateAgentRequest {
 	settings := map[string]any{}
 	allowedSettingKeys := map[string]bool{}
@@ -1403,22 +1407,17 @@ func normalizeCreateRequestSettings(
 	if provider == "" {
 		provider = strings.TrimSpace(stringValue(req.ModelProvider))
 	}
-	if provider == "" && model != "" {
-		for _, preset := range templateDef.RegionModelPresets[region] {
-			if strings.TrimSpace(preset.Value) != model {
-				continue
-			}
-			provider = strings.TrimSpace(preset.Provider)
-			if provider != "" {
-				break
-			}
-		}
+	if strings.TrimSpace(catalogModel.ProviderID) != "" {
+		provider = strings.TrimSpace(catalogModel.ProviderID)
 	}
 	setSetting("provider", provider)
 
 	baseURL := readSetting("baseURL")
 	if baseURL == "" {
 		baseURL = strings.TrimSpace(stringValue(req.ModelBaseURL))
+	}
+	if strings.TrimSpace(catalogRegion.BaseURL) != "" {
+		baseURL = strings.TrimSpace(catalogRegion.BaseURL)
 	}
 	if baseURL == "" && strings.TrimSpace(cfg.AIProxyModelBaseURL) != "" {
 		baseURL = strings.TrimSpace(cfg.AIProxyModelBaseURL)
@@ -1427,6 +1426,15 @@ func normalizeCreateRequestSettings(
 
 	req.Settings = settings
 	return req
+}
+
+func requestedCreateModel(req dto.CreateAgentRequest) string {
+	if raw, ok := req.Settings["model"]; ok {
+		if text, typed := raw.(string); typed && strings.TrimSpace(text) != "" {
+			return strings.TrimSpace(text)
+		}
+	}
+	return stringValue(req.Model)
 }
 
 func applyUpdateToDevbox(devbox *unstructured.Unstructured, req dto.UpdateAgentRequest) {
@@ -1483,30 +1491,8 @@ func applyUpdateToDevbox(devbox *unstructured.Unstructured, req dto.UpdateAgentR
 }
 
 func syncDevboxModelAccessEnv(devbox *unstructured.Unstructured) {
-	modelProvider := strings.TrimSpace(devbox.GetAnnotations()["agent.sealos.io/model-provider"])
-	if modelProvider == "" {
-		modelProvider = readDevboxEnvValue(devbox, "AGENT_MODEL_PROVIDER")
-	}
-
-	modelBaseURL := readDevboxEnvValue(devbox, "AGENT_MODEL_BASEURL")
-	if modelBaseURL == "" {
-		modelBaseURL = strings.TrimSpace(devbox.GetAnnotations()["agent.sealos.io/model-baseurl"])
-	}
-
 	apiKey := readDevboxEnvValue(devbox, "AGENT_MODEL_APIKEY")
-	hermesProvider := normalizeHermesProvider(modelProvider)
-	_ = kube.SetEnvValue(devbox, "HERMES_INFERENCE_PROVIDER", hermesProvider)
-
-	if isAIProxyHermesProvider(hermesProvider) {
-		_ = kube.SetEnvValue(devbox, "OPENAI_BASE_URL", "")
-		_ = kube.SetEnvValue(devbox, "OPENAI_API_KEY", "")
-		_ = kube.SetEnvValue(devbox, "AIPROXY_API_KEY", apiKey)
-		return
-	}
-
-	_ = kube.SetEnvValue(devbox, "OPENAI_BASE_URL", modelBaseURL)
-	_ = kube.SetEnvValue(devbox, "OPENAI_API_KEY", apiKey)
-	_ = kube.SetEnvValue(devbox, "AIPROXY_API_KEY", "")
+	_ = kube.SetEnvValue(devbox, "AIPROXY_API_KEY", apiKey)
 }
 
 func readDevboxEnvValue(devbox *unstructured.Unstructured, name string) string {
@@ -1614,15 +1600,15 @@ func normalizeUpdatedModelBaseURL(value, currentProvider string, requestedProvid
 		provider = strings.TrimSpace(*requestedProvider)
 	}
 
-	if isAIProxyHermesProvider(provider) {
-		return resolveAIProxyProviderBaseURL(modelBaseURL, "", provider)
-	}
-
-	if strings.EqualFold(provider, "custom") {
+	if strings.EqualFold(provider, "custom") || isAIProxyCatalogProvider(provider) {
 		return normalizeAIProxyModelBaseURL(modelBaseURL)
 	}
 
 	return modelBaseURL
+}
+
+func isAIProxyCatalogProvider(provider string) bool {
+	return strings.EqualFold(strings.TrimSpace(provider), "aiproxy")
 }
 
 func changeAgentState(c *gin.Context, targetState string) {

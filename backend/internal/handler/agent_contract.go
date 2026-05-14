@@ -350,7 +350,8 @@ func keySource(spec agent.Agent) string {
 	if strings.TrimSpace(spec.ModelAPIKey) == "" {
 		return "unset"
 	}
-	if isAIProxyHermesProvider(spec.ModelProvider) {
+	provider := strings.ToLower(strings.TrimSpace(spec.ModelProvider))
+	if provider == "aiproxy" || strings.HasPrefix(provider, "aiproxy-") {
 		return "workspace-aiproxy"
 	}
 	return "custom"

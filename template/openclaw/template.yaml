@@ -67,3 +67,13 @@ settings:
 regionModelPresets:
   us: []
   cn: []
+modelSwitch:
+  enabled: true
+  client: openclaw
+  apiKeyEnv: AIPROXY_API_KEY
+  supportedModelTypes:
+    - openai-responses
+    - openai-chat-compatible
+    - anthropic
+    - gemini
+    - ollama
