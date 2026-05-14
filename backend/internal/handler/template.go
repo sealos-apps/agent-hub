@@ -75,6 +75,7 @@ func toTemplateCatalogItem(definition agenttemplate.Definition, region string) d
 		Actions:      toTemplateActionItems(definition.Actions),
 		Settings:     toTemplateSettings(definition, region),
 		ModelOptions: toTemplateModelOptions(definition.RegionModelPresets[region]),
+		ModelSwitch:  toTemplateModelSwitch(definition.ModelSwitch),
 	}
 }
 
@@ -134,6 +135,15 @@ func toTemplateModelOptions(items []agenttemplate.ModelPreset) []dto.TemplateMod
 		})
 	}
 	return result
+}
+
+func toTemplateModelSwitch(modelSwitch agenttemplate.ModelSwitch) dto.TemplateModelSwitch {
+	return dto.TemplateModelSwitch{
+		Enabled:             modelSwitch.Enabled,
+		Client:              modelSwitch.Client,
+		APIKeyEnv:           modelSwitch.APIKeyEnv,
+		SupportedModelTypes: append([]string(nil), modelSwitch.SupportedModelTypes...),
+	}
 }
 
 func toSettingFields(

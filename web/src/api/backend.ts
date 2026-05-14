@@ -3,8 +3,10 @@ import type {
   AgentConsoleBootstrap,
   AgentContract,
   AgentHubRegion,
+  AgentModelCurrent,
   AgentSSHAccessPayload,
   AgentTemplateCatalogItem,
+  AIProxyModelCatalog,
   ClusterContext,
   SystemConfig,
 } from "../domains/agents/types";
@@ -175,6 +177,17 @@ export const listAgentTemplates = async (): Promise<{
   };
 };
 
+export const fetchAIProxyModels = async (
+  templateId: string,
+): Promise<AIProxyModelCatalog> => {
+  const payload = await requestBackend<AIProxyModelCatalog>(
+    `/api/v1/aiproxy/models?templateId=${encodeURIComponent(templateId)}`,
+    null,
+    { method: "GET" },
+  );
+  return expectData(payload, "AIProxy 模型目录响应为空。");
+};
+
 export const getSystemConfig = async (): Promise<SystemConfig> => {
   const payload = await requestBackend<{
     region: AgentHubRegion;
@@ -216,6 +229,21 @@ export const getAgentConsole = async (
       },
     ),
     "Agent 控制台响应为空。",
+  );
+
+export const getAgentModelCurrent = async (
+  agentName: string,
+  clusterContext: ClusterContext,
+): Promise<AgentModelCurrent> =>
+  expectData(
+    await requestBackend<AgentModelCurrent>(
+      `/api/v1/agents/${encodeURIComponent(agentName)}/model`,
+      clusterContext,
+      {
+        method: "GET",
+      },
+    ),
+    "Agent 当前模型响应为空。",
   );
 
 export const createAgent = async (

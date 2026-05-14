@@ -76,6 +76,9 @@ func validateTemplateSettingValue(
 		if trimmed == "" {
 			return validationFieldError(fieldPath, "cannot_be_empty", value)
 		}
+		if templateDef.ModelSwitch.Enabled && isModelSwitchManagedBinding(field) {
+			return nil
+		}
 		for _, option := range resolvedTemplateSettingOptions(field, templateDef, region) {
 			if strings.TrimSpace(option.Value) == trimmed {
 				return nil
@@ -103,6 +106,15 @@ func validateTemplateSettingValue(
 			return validationFieldError(fieldPath, "cannot_be_empty", value)
 		}
 		return nil
+	}
+}
+
+func isModelSwitchManagedBinding(field agenttemplate.SettingField) bool {
+	switch strings.TrimSpace(field.Binding.Key) {
+	case "model", "modelProvider":
+		return true
+	default:
+		return false
 	}
 }
 

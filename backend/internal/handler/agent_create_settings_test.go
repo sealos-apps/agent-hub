@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/nightwhite/Agent-Hub/internal/agenttemplate"
+	"github.com/nightwhite/Agent-Hub/internal/aiproxycatalog"
 	"github.com/nightwhite/Agent-Hub/internal/config"
 	"github.com/nightwhite/Agent-Hub/internal/dto"
 	corev1 "k8s.io/api/core/v1"
@@ -34,6 +35,8 @@ func TestNormalizeCreateRequestSettingsSkipsEmptySettingKeys(t *testing.T) {
 		templateDef,
 		config.Config{AIProxyModelBaseURL: "https://aiproxy.usw-1.sealos.io/v1"},
 		"us",
+		aiproxycatalog.Region{},
+		aiproxycatalog.Model{},
 	)
 
 	if _, exists := normalized.Settings[""]; exists {
@@ -53,7 +56,7 @@ func TestNormalizeCreateRequestSettingsSkipsUndeclaredAutofillSettings(t *testin
 	}
 
 	model := "gpt-5.4-mini"
-	provider := "custom:aiproxy-responses"
+	provider := "aiproxy"
 	baseURL := "https://aiproxy.usw-1.sealos.io/v1"
 	req := dto.CreateAgentRequest{
 		Model:         &model,
@@ -66,6 +69,8 @@ func TestNormalizeCreateRequestSettingsSkipsUndeclaredAutofillSettings(t *testin
 		templateDef,
 		config.Config{AIProxyModelBaseURL: "https://aiproxy.usw-1.sealos.io/v1"},
 		"us",
+		aiproxycatalog.Region{},
+		aiproxycatalog.Model{},
 	)
 
 	if len(normalized.Settings) != 0 {

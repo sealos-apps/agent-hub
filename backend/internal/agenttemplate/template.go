@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/nightwhite/Agent-Hub/internal/aiproxycatalog"
 	"sigs.k8s.io/yaml"
 )
 
@@ -32,6 +33,7 @@ type Definition struct {
 	Actions              []ActionDefinition       `yaml:"actions"`
 	Settings             SettingsSchema           `yaml:"settings"`
 	RegionModelPresets   map[string][]ModelPreset `yaml:"regionModelPresets"`
+	ModelSwitch          ModelSwitch              `yaml:"modelSwitch"`
 	Bootstrap            ScriptSpec               `yaml:"bootstrap"`
 	Healthcheck          ScriptSpec               `yaml:"healthcheck"`
 	rootDir              string
@@ -103,6 +105,13 @@ type ModelPreset struct {
 	Helper   string `yaml:"helper"`
 	Provider string `yaml:"provider"`
 	APIMode  string `yaml:"apiMode"`
+}
+
+type ModelSwitch struct {
+	Enabled             bool     `yaml:"enabled" json:"enabled"`
+	Client              string   `yaml:"client" json:"client"`
+	APIKeyEnv           string   `yaml:"apiKeyEnv" json:"apiKeyEnv"`
+	SupportedModelTypes []string `yaml:"supportedModelTypes" json:"supportedModelTypes"`
 }
 
 func Resolve(templateID, override string) (Definition, error) {
@@ -389,6 +398,9 @@ func validateDefinition(definition Definition) error {
 			return err
 		}
 	}
+	if err := validateModelSwitch(definition.ModelSwitch); err != nil {
+		return err
+	}
 
 	if definition.BackendSupported {
 		if strings.TrimSpace(definition.ManifestDir) == "" {
@@ -403,6 +415,49 @@ func validateDefinition(definition Definition) error {
 	}
 
 	return nil
+}
+
+func validateModelSwitch(modelSwitch ModelSwitch) error {
+	if !modelSwitch.Enabled {
+		return nil
+	}
+	if strings.TrimSpace(modelSwitch.Client) == "" {
+		return fmt.Errorf("modelSwitch.client is required")
+	}
+	if !isSupportedModelSwitchClient(modelSwitch.Client) {
+		return fmt.Errorf("modelSwitch.client %q is not supported", strings.TrimSpace(modelSwitch.Client))
+	}
+	if strings.TrimSpace(modelSwitch.APIKeyEnv) == "" {
+		return fmt.Errorf("modelSwitch.apiKeyEnv is required")
+	}
+	if len(modelSwitch.SupportedModelTypes) == 0 {
+		return fmt.Errorf("modelSwitch.supportedModelTypes is required")
+	}
+
+	seen := map[string]struct{}{}
+	for _, modelType := range modelSwitch.SupportedModelTypes {
+		normalized := strings.TrimSpace(modelType)
+		if normalized == "" {
+			return fmt.Errorf("modelSwitch.supportedModelTypes contains empty value")
+		}
+		if _, exists := seen[normalized]; exists {
+			return fmt.Errorf("modelSwitch.supportedModelTypes contains duplicate value %q", normalized)
+		}
+		if !aiproxycatalog.ModelTypeSupported(normalized) {
+			return fmt.Errorf("modelSwitch.supportedModelTypes contains unsupported model type %q", normalized)
+		}
+		seen[normalized] = struct{}{}
+	}
+	return nil
+}
+
+func isSupportedModelSwitchClient(client string) bool {
+	switch strings.TrimSpace(client) {
+	case "hermes", "openclaw", "cowagent":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateSettingField(field SettingField, scope string) error {

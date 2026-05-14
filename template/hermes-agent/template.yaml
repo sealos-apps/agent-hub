@@ -92,12 +92,8 @@ settings:
         key: modelProvider
       rebootstrap: true
       options:
-        - value: custom:aiproxy-chat
-          label: AI-Proxy · Chat Completions
-        - value: custom:aiproxy-responses
-          label: AI-Proxy · Responses API
-        - value: custom:aiproxy-anthropic
-          label: AI-Proxy · Anthropic Messages
+        - value: aiproxy
+          label: AI Proxy
     - key: model
       label: 模型
       type: select
@@ -125,60 +121,69 @@ regionModelPresets:
   us:
     - value: gpt-5.4
       label: GPT-5.4
-      helper: OpenAI
-      provider: custom:aiproxy-responses
-      apiMode: codex_responses
+      helper: AI Proxy · openai-responses
+      provider: aiproxy
+      apiMode: openai-responses
     - value: gpt-5.4-mini
       label: GPT-5.4 Mini
-      helper: OpenAI
-      provider: custom:aiproxy-responses
-      apiMode: codex_responses
+      helper: AI Proxy · openai-responses
+      provider: aiproxy
+      apiMode: openai-responses
     - value: gpt-5-mini
       label: GPT-5 Mini
-      helper: OpenAI
-      provider: custom:aiproxy-responses
-      apiMode: codex_responses
+      helper: AI Proxy · openai-responses
+      provider: aiproxy
+      apiMode: openai-responses
     - value: claude-sonnet-4.6
       label: Claude Sonnet 4.6
-      helper: Anthropic
-      provider: custom:aiproxy-anthropic
-      apiMode: anthropic_messages
+      helper: AI Proxy · anthropic-messages
+      provider: aiproxy
+      apiMode: anthropic-messages
     - value: claude-sonnet-4.5
       label: Claude Sonnet 4.5
-      helper: Anthropic
-      provider: custom:aiproxy-anthropic
-      apiMode: anthropic_messages
+      helper: AI Proxy · anthropic-messages
+      provider: aiproxy
+      apiMode: anthropic-messages
     - value: glm-4.6
       label: GLM-4.6
-      helper: GLM
-      provider: custom:aiproxy-chat
-      apiMode: chat_completions
+      helper: AI Proxy · openai-chat-completions
+      provider: aiproxy
+      apiMode: openai-chat-completions
     - value: MiniMax-M2.5
       label: MiniMax M2.5
-      helper: MiniMax
-      provider: custom:aiproxy-chat
-      apiMode: chat_completions
+      helper: AI Proxy · openai-chat-completions
+      provider: aiproxy
+      apiMode: openai-chat-completions
     - value: qwen3-coder-plus
       label: Qwen3 Coder Plus
-      helper: Qwen
-      provider: custom:aiproxy-chat
-      apiMode: chat_completions
+      helper: AI Proxy · openai-chat-completions
+      provider: aiproxy
+      apiMode: openai-chat-completions
   cn:
     - value: glm-4.6
       label: GLM-4.6
-      helper: GLM
-      provider: custom:aiproxy-chat
-      apiMode: chat_completions
+      helper: AI Proxy · openai-chat-completions
+      provider: aiproxy
+      apiMode: openai-chat-completions
     - value: MiniMax-M2.5
       label: MiniMax M2.5
-      helper: MiniMax
-      provider: custom:aiproxy-chat
-      apiMode: chat_completions
+      helper: AI Proxy · openai-chat-completions
+      provider: aiproxy
+      apiMode: openai-chat-completions
     - value: qwen3-coder-plus
       label: Qwen3 Coder Plus
-      helper: Qwen
-      provider: custom:aiproxy-chat
-      apiMode: chat_completions
+      helper: AI Proxy · openai-chat-completions
+      provider: aiproxy
+      apiMode: openai-chat-completions
+modelSwitch:
+  enabled: true
+  client: hermes
+  apiKeyEnv: AIPROXY_API_KEY
+  supportedModelTypes:
+    - openai-responses
+    - openai-chat-compatible
+    - anthropic
+    - gemini
 bootstrap:
   script: bootstrap.sh
   shell: bash

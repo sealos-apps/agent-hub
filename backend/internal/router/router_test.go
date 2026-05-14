@@ -138,24 +138,81 @@ func TestListTemplatesReturnsRegionalCatalogWithoutAuthorization(t *testing.T) {
 		}
 		foundHermes = true
 
-		modelOptions, ok := item["modelOptions"].([]any)
-		if !ok || len(modelOptions) == 0 {
-			t.Fatalf("hermes-agent modelOptions = %#v, want regional presets", item["modelOptions"])
+		modelSwitch, ok := item["modelSwitch"].(map[string]any)
+		if !ok {
+			t.Fatalf("hermes-agent modelSwitch = %#v, want map", item["modelSwitch"])
 		}
-
-		for _, optionRaw := range modelOptions {
-			option, ok := optionRaw.(map[string]any)
-			if !ok {
-				t.Fatalf("hermes-agent model option = %#v, want map", optionRaw)
-			}
-			if option["value"] == "gpt-5.4-mini" {
-				t.Fatalf("cn catalog should not expose us-only model gpt-5.4-mini: %#v", modelOptions)
-			}
+		if modelSwitch["enabled"] != true || modelSwitch["client"] != "hermes" {
+			t.Fatalf("hermes-agent modelSwitch = %#v, want enabled hermes", modelSwitch)
 		}
 	}
 
 	if !foundHermes {
 		t.Fatal("GET /api/v1/templates did not return hermes-agent")
+	}
+}
+
+func TestListAIProxyModelsReturnsCatalogFilteredByTemplate(t *testing.T) {
+	t.Parallel()
+
+	recorder := performRequestWithConfig(t, config.Config{
+		Port:                "8080",
+		IngressSuffix:       "agent.usw-1.sealos.app",
+		APIServerImage:      "nousresearch/hermes-agent:latest",
+		AIProxyModelBaseURL: "https://aiproxy.example.com/v1",
+		Region:              "cn",
+	}, http.MethodGet, "/api/v1/aiproxy/models", "", "templateId=hermes-agent", nil)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/aiproxy/models status = %d, want %d: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	body := decodeEnvelope(t, recorder)
+	if body.Code != 0 || body.Message != "ok" {
+		t.Fatalf("GET /api/v1/aiproxy/models envelope = %#v, want code=0 message=ok", body)
+	}
+	if body.Data["region"] != "cn" {
+		t.Fatalf("GET /api/v1/aiproxy/models data.region = %#v, want cn", body.Data["region"])
+	}
+	if body.Data["baseURL"] != "https://aiproxy.hzh.sealos.run/v1" {
+		t.Fatalf("GET /api/v1/aiproxy/models data.baseURL = %#v, want cn aiproxy baseURL", body.Data["baseURL"])
+	}
+	if body.Data["defaultModel"] != "glm-4.6" {
+		t.Fatalf("GET /api/v1/aiproxy/models data.defaultModel = %#v, want glm-4.6", body.Data["defaultModel"])
+	}
+
+	models, ok := body.Data["models"].([]any)
+	if !ok || len(models) == 0 {
+		t.Fatalf("GET /api/v1/aiproxy/models data.models = %#v, want non-empty list", body.Data["models"])
+	}
+	for _, raw := range models {
+		model, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("model = %#v, want map", raw)
+		}
+		if model["id"] == "gpt-5.4-mini" {
+			t.Fatalf("cn catalog should not expose us-only model gpt-5.4-mini: %#v", models)
+		}
+		if strings.TrimSpace(model["modelType"].(string)) == "" || strings.TrimSpace(model["requestFormat"].(string)) == "" {
+			t.Fatalf("model missing modelType/requestFormat: %#v", model)
+		}
+	}
+}
+
+func TestListAIProxyModelsRejectsMissingTemplateID(t *testing.T) {
+	t.Parallel()
+
+	recorder := performRequest(t, http.MethodGet, "/api/v1/aiproxy/models", "", "", nil)
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("GET /api/v1/aiproxy/models missing templateId status = %d, want %d", recorder.Code, http.StatusUnprocessableEntity)
+	}
+
+	body := decodeEnvelope(t, recorder)
+	if body.Code != 42200 {
+		t.Fatalf("GET /api/v1/aiproxy/models missing templateId code = %d, want 42200", body.Code)
+	}
+	if body.Error == nil || body.Error.Details["field"] != "templateId" {
+		t.Fatalf("GET /api/v1/aiproxy/models missing templateId error = %#v, want templateId", body.Error)
 	}
 }
 

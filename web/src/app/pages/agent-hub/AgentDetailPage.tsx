@@ -13,6 +13,7 @@ import { Button } from "../../../components/ui/Button";
 import { Modal } from "../../../components/ui/Modal";
 import { SelectMenu } from "../../../components/ui/SelectMenu";
 import {
+  applyCurrentModelToBlueprint,
   readBlueprintSettingValue,
   writeBlueprintSettingValue,
 } from "../../../domains/agents/blueprintFields";
@@ -716,14 +717,26 @@ export function AgentDetailPage() {
     }
   };
 
-  const openConfigModal = () => {
+  const openConfigModal = async () => {
     if (!item) return;
-    const blueprint = createBlueprintFromAgentItem(item);
-    setRuntimeEditingItem(item);
-    setSettingsEditingItem(item);
-    setRuntimeEditBlueprint(blueprint);
-    setSettingsEditBlueprint(blueprint);
-    setConfigModalOpen(true);
+    try {
+      const currentModel = await controller.readAgentCurrentModel(item);
+      const blueprint = currentModel
+        ? applyCurrentModelToBlueprint(
+            createBlueprintFromAgentItem(item),
+            currentModel,
+          )
+        : createBlueprintFromAgentItem(item);
+      setRuntimeEditingItem(item);
+      setSettingsEditingItem(item);
+      setRuntimeEditBlueprint(blueprint);
+      setSettingsEditBlueprint(blueprint);
+      setConfigModalOpen(true);
+    } catch (error) {
+      controller.setMessage(
+        error instanceof Error ? error.message : "读取当前模型失败",
+      );
+    }
   };
 
   const closeConfigModal = () => {
@@ -1060,7 +1073,7 @@ export function AgentDetailPage() {
             }}
             configActionDisabled={controller.submitting}
             configEditing={false}
-            onOpenConfig={openConfigModal}
+            onOpenConfig={() => void openConfigModal()}
             onOpenTerminalWindow={() => void handleOpenTerminalWindow()}
             onToggleState={handleToggleState}
           />

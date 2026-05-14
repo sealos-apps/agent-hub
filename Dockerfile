@@ -22,10 +22,12 @@ WORKDIR /app
 ENV PORT=8999
 ENV WEB_DIST_DIR=/app/web/dist
 ENV AGENT_MANIFEST_TEMPLATE_DIR=/app/template
+ENV AIPROXY_MODEL_CATALOG_PATH=/app/config/aiproxy-models.yaml
 
 COPY --from=go-build /out/agenthub /app/agenthub
 COPY --from=web-build /src/web/dist /app/web/dist
 COPY template/ /app/template/
+COPY config/ /app/config/
 
 EXPOSE 8999
 

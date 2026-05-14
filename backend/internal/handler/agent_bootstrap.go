@@ -74,10 +74,19 @@ func runAgentBootstrapLifecycle(
 	}
 
 	if err := executeTemplateScript(ctx, clientset, factory, spec.Name, templateDef.Bootstrap.Script, templateDef.BootstrapScriptPath(), templateDef.Bootstrap.TimeoutSeconds); err != nil {
-		if fallbackErr := runBootstrapFallback(ctx, factory, spec, err); fallbackErr != nil {
-			message := truncateBootstrapMessage(fallbackErr.Error())
+		message := truncateBootstrapMessage(err.Error())
+		_ = persistBootstrapStatus(context.Background(), repo, spec.Name, kube.BootstrapPhaseFailed, message)
+		return err
+	}
+
+	if templateDef.ModelSwitch.Enabled && strings.TrimSpace(spec.Model) != "" {
+		if err := persistBootstrapStatus(ctx, repo, spec.Name, kube.BootstrapPhaseRunning, "初始化模型配置"); err != nil {
+			return err
+		}
+		if _, err := runAgentHubModelInit(ctx, clientset, factory, cfg, templateDef, spec); err != nil {
+			message := truncateBootstrapMessage(err.Error())
 			_ = persistBootstrapStatus(context.Background(), repo, spec.Name, kube.BootstrapPhaseFailed, message)
-			return fallbackErr
+			return err
 		}
 	}
 
@@ -98,17 +107,27 @@ func runAgentBootstrapLifecycle(
 	return nil
 }
 
-func runBootstrapFallback(ctx context.Context, factory *kube.Factory, spec agent.Agent, bootstrapErr error) error {
-	if strings.TrimSpace(spec.TemplateID) != "hermes-agent" {
-		return fmt.Errorf("template bootstrap failed: %w", bootstrapErr)
-	}
+func waitForAgentPod(ctx context.Context, clientset kubernetes.Interface, factory *kube.Factory, agentName string) (kube.PodRef, error) {
+	ticker := time.NewTicker(bootstrapPollInterval)
+	defer ticker.Stop()
 
-	if err := configureHermesModel(ctx, factory, spec); err != nil {
-		return fmt.Errorf("template bootstrap failed: %w; hermes fallback failed: %v", bootstrapErr, err)
-	}
+	var lastErr error
+	for {
+		pod, err := kube.ResolveAgentPod(ctx, clientset, factory.Namespace(), agentName)
+		if err == nil {
+			return pod, nil
+		}
+		lastErr = err
 
-	log.Printf("template bootstrap failed for %s/%s, recovered via Hermes fallback: %v", factory.Namespace(), spec.Name, bootstrapErr)
-	return nil
+		select {
+		case <-ctx.Done():
+			if lastErr != nil {
+				return kube.PodRef{}, lastErr
+			}
+			return kube.PodRef{}, ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 func waitForTemplateHealthcheck(

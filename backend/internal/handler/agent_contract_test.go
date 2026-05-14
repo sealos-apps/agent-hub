@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nightwhite/Agent-Hub/internal/agent"
 )
 
 func TestGenerateSSHAccessTokenUsesOneHourTTL(t *testing.T) {
@@ -46,3 +48,15 @@ func TestGenerateSSHAccessTokenUsesOneHourTTL(t *testing.T) {
 	}
 }
 
+func TestKeySourceRecognizesWorkspaceAIProxyProvider(t *testing.T) {
+	t.Parallel()
+
+	got := keySource(agent.Agent{
+		ModelProvider: "aiproxy",
+		ModelAPIKey:   "sk-workspace",
+	})
+
+	if got != "workspace-aiproxy" {
+		t.Fatalf("keySource() = %q, want workspace-aiproxy", got)
+	}
+}

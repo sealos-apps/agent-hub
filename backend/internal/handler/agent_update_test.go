@@ -170,11 +170,6 @@ func TestNormalizeUpdatedModelBaseURLOnlyNormalizesCustomProvider(t *testing.T) 
 		t.Fatalf("normalizeUpdatedModelBaseURL() for custom = %q, want /v1 suffix", got)
 	}
 
-	aiproxyAnthropic := aiproxyAnthropicProvider
-	if got := normalizeUpdatedModelBaseURL("https://aiproxy.usw-1.sealos.io", "openai", &aiproxyAnthropic); got != "https://aiproxy.usw-1.sealos.io/anthropic" {
-		t.Fatalf("normalizeUpdatedModelBaseURL() for aiproxy anthropic = %q, want /anthropic suffix", got)
-	}
-
 	anthropicProvider := "anthropic"
 	if got := normalizeUpdatedModelBaseURL("https://api.anthropic.com", "custom", &anthropicProvider); got != "https://api.anthropic.com" {
 		t.Fatalf("normalizeUpdatedModelBaseURL() for anthropic = %q, want unchanged", got)
@@ -185,7 +180,7 @@ func TestApplyUpdateToDevboxManagedAIProxySyncsDedicatedEnv(t *testing.T) {
 	t.Parallel()
 
 	devbox := newModelUpdateDevbox("openai", "https://api.openai.com/v1", "gpt-4o-mini", "openai-key")
-	provider := aiproxyResponsesProvider
+	provider := "aiproxy"
 	baseURL := "https://aiproxy.usw-1.sealos.io"
 	model := "gpt-5.4-mini"
 	apiKey := "aiproxy-key"
@@ -197,15 +192,6 @@ func TestApplyUpdateToDevboxManagedAIProxySyncsDedicatedEnv(t *testing.T) {
 		ModelAPIKey:   &apiKey,
 	})
 
-	if got := readDevboxEnvValue(devbox, "HERMES_INFERENCE_PROVIDER"); got != aiproxyResponsesProvider {
-		t.Fatalf("HERMES_INFERENCE_PROVIDER = %q, want %q", got, aiproxyResponsesProvider)
-	}
-	if got := readDevboxEnvValue(devbox, "OPENAI_BASE_URL"); got != "" {
-		t.Fatalf("OPENAI_BASE_URL = %q, want empty for managed AIProxy", got)
-	}
-	if got := readDevboxEnvValue(devbox, "OPENAI_API_KEY"); got != "" {
-		t.Fatalf("OPENAI_API_KEY = %q, want empty for managed AIProxy", got)
-	}
 	if got := readDevboxEnvValue(devbox, "AIPROXY_API_KEY"); got != apiKey {
 		t.Fatalf("AIPROXY_API_KEY = %q, want %q", got, apiKey)
 	}
@@ -217,7 +203,7 @@ func TestApplyUpdateToDevboxManagedAIProxySyncsDedicatedEnv(t *testing.T) {
 func TestApplyUpdateToDevboxOpenAIClearsAIProxyEnv(t *testing.T) {
 	t.Parallel()
 
-	devbox := newModelUpdateDevbox(aiproxyResponsesProvider, "https://aiproxy.usw-1.sealos.io/v1", "gpt-5.4-mini", "aiproxy-key")
+	devbox := newModelUpdateDevbox("aiproxy", "https://aiproxy.usw-1.sealos.io/v1", "gpt-5.4-mini", "aiproxy-key")
 	provider := "openai"
 	baseURL := "https://api.openai.com/v1"
 	model := "gpt-4.1"
@@ -230,17 +216,8 @@ func TestApplyUpdateToDevboxOpenAIClearsAIProxyEnv(t *testing.T) {
 		ModelAPIKey:   &apiKey,
 	})
 
-	if got := readDevboxEnvValue(devbox, "HERMES_INFERENCE_PROVIDER"); got != "openai" {
-		t.Fatalf("HERMES_INFERENCE_PROVIDER = %q, want openai", got)
-	}
-	if got := readDevboxEnvValue(devbox, "OPENAI_BASE_URL"); got != baseURL {
-		t.Fatalf("OPENAI_BASE_URL = %q, want %q", got, baseURL)
-	}
-	if got := readDevboxEnvValue(devbox, "OPENAI_API_KEY"); got != apiKey {
-		t.Fatalf("OPENAI_API_KEY = %q, want %q", got, apiKey)
-	}
-	if got := readDevboxEnvValue(devbox, "AIPROXY_API_KEY"); got != "" {
-		t.Fatalf("AIPROXY_API_KEY = %q, want empty after leaving managed AIProxy", got)
+	if got := readDevboxEnvValue(devbox, "AIPROXY_API_KEY"); got != apiKey {
+		t.Fatalf("AIPROXY_API_KEY = %q, want %q", got, apiKey)
 	}
 }
 

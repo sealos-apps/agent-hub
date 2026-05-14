@@ -1,0 +1,76 @@
+version: 1
+regions:
+  us:
+    baseURL: https://aiproxy.usw-1.sealos.io/v1
+    defaultModel: claude-sonnet-4.6
+    models:
+      - id: gpt-5.4
+        label: GPT-5.4
+        providerId: aiproxy
+        providerName: AI Proxy
+        modelType: openai-responses
+        requestFormat: openai-responses
+      - id: gpt-5.4-mini
+        label: GPT-5.4 Mini
+        providerId: aiproxy
+        providerName: AI Proxy
+        modelType: openai-responses
+        requestFormat: openai-responses
+      - id: gpt-5-mini
+        label: GPT-5 Mini
+        providerId: aiproxy
+        providerName: AI Proxy
+        modelType: openai-responses
+        requestFormat: openai-responses
+      - id: claude-sonnet-4.6
+        label: Claude Sonnet 4.6
+        providerId: aiproxy
+        providerName: AI Proxy
+        modelType: anthropic
+        requestFormat: anthropic-messages
+      - id: claude-sonnet-4.5
+        label: Claude Sonnet 4.5
+        providerId: aiproxy
+        providerName: AI Proxy
+        modelType: anthropic
+        requestFormat: anthropic-messages
+      - id: glm-4.6
+        label: GLM-4.6
+        providerId: aiproxy
+        providerName: AI Proxy
+        modelType: openai-chat-compatible
+        requestFormat: openai-chat-completions
+      - id: MiniMax-M2.5
+        label: MiniMax M2.5
+        providerId: aiproxy
+        providerName: AI Proxy
+        modelType: openai-chat-compatible
+        requestFormat: openai-chat-completions
+      - id: qwen3-coder-plus
+        label: Qwen3 Coder Plus
+        providerId: aiproxy
+        providerName: AI Proxy
+        modelType: openai-chat-compatible
+        requestFormat: openai-chat-completions
+  cn:
+    baseURL: https://aiproxy.hzh.sealos.run/v1
+    defaultModel: glm-4.6
+    models:
+      - id: glm-4.6
+        label: GLM-4.6
+        providerId: aiproxy
+        providerName: AI Proxy
+        modelType: openai-chat-compatible
+        requestFormat: openai-chat-completions
+      - id: MiniMax-M2.5
+        label: MiniMax M2.5
+        providerId: aiproxy
+        providerName: AI Proxy
+        modelType: openai-chat-compatible
+        requestFormat: openai-chat-completions
+      - id: qwen3-coder-plus
+        label: Qwen3 Coder Plus
+        providerId: aiproxy
+        providerName: AI Proxy
+        modelType: openai-chat-compatible
+        requestFormat: openai-chat-completions

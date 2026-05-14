@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/nightwhite/Agent-Hub/internal/agenttemplate"
+	"github.com/nightwhite/Agent-Hub/internal/aiproxycatalog"
 	"github.com/nightwhite/Agent-Hub/internal/dto"
 	appErr "github.com/nightwhite/Agent-Hub/pkg/errors"
 )
@@ -56,6 +57,20 @@ func UpdateAgentSettings(c *gin.Context) {
 		writeValidationError(c, err)
 		return
 	}
+	var catalogRegion aiproxycatalog.Region
+	var catalogModel aiproxycatalog.Model
+	if templateDef.ModelSwitch.Enabled {
+		if requestedModel := requestedSettingsModel(req.Settings); requestedModel != "" {
+			resolvedRegion, resolvedModel, catalogErr := resolveCatalogModelForTemplate(cfg, templateDef, requestedModel)
+			if catalogErr != nil {
+				writeCatalogModelError(c, catalogErr)
+				return
+			}
+			catalogRegion = resolvedRegion
+			catalogModel = resolvedModel
+			req.Settings = applyCatalogModelSettings(req.Settings, catalogRegion, catalogModel, templateDef.Settings.Agent)
+		}
+	}
 
 	mapped, err := buildSettingsUpdateRequest(req, templateDef)
 	if err != nil {
@@ -101,6 +116,13 @@ func validateSettingsUpdateRequest(
 	if req.AgentAliasName != nil && strings.TrimSpace(*req.AgentAliasName) == "" {
 		return validationFieldError("agent-alias-name", "cannot_be_empty", *req.AgentAliasName)
 	}
+	if templateDef.ModelSwitch.Enabled && requestedSettingsModel(req.Settings) == "" {
+		for _, key := range []string{"provider", "baseURL"} {
+			if _, ok := req.Settings[key]; ok {
+				return validationFieldError("settings."+key, "read_only", "")
+			}
+		}
+	}
 	return validateTemplateSettingsPayload(req.Settings, templateDef.Settings.Agent, templateDef, region, false, "settings.")
 }
 
@@ -114,4 +136,36 @@ func buildSettingsUpdateRequest(
 	}
 	mapped.AgentAliasName = req.AgentAliasName
 	return mapped, nil
+}
+
+func requestedSettingsModel(settings map[string]any) string {
+	if raw, ok := settings["model"]; ok {
+		if text, typed := raw.(string); typed {
+			return strings.TrimSpace(text)
+		}
+	}
+	return ""
+}
+
+func applyCatalogModelSettings(
+	settings map[string]any,
+	catalogRegion aiproxycatalog.Region,
+	catalogModel aiproxycatalog.Model,
+	fields []agenttemplate.SettingField,
+) map[string]any {
+	next := make(map[string]any, len(settings)+2)
+	for key, value := range settings {
+		next[key] = value
+	}
+	allowed := map[string]bool{}
+	for _, field := range fields {
+		allowed[strings.TrimSpace(field.Key)] = true
+	}
+	if allowed["provider"] {
+		next["provider"] = strings.TrimSpace(catalogModel.ProviderID)
+	}
+	if allowed["baseURL"] {
+		next["baseURL"] = strings.TrimSpace(catalogRegion.BaseURL)
+	}
+	return next
 }

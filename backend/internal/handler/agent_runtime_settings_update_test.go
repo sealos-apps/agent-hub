@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/nightwhite/Agent-Hub/internal/agenttemplate"
+	"github.com/nightwhite/Agent-Hub/internal/config"
 	"github.com/nightwhite/Agent-Hub/internal/dto"
 )
 
@@ -51,7 +52,7 @@ func TestValidateSettingsUpdateRequestAcceptsHermesRegionalModel(t *testing.T) {
 
 	req := dto.UpdateAgentSettingsRequest{
 		Settings: map[string]any{
-			"provider": "custom:aiproxy-chat",
+			"provider": "aiproxy",
 			"model":    "glm-4.6",
 			"baseURL":  "https://aiproxy.example.com/v1",
 		},
@@ -70,21 +71,15 @@ func TestValidateSettingsUpdateRequestRejectsModelOutsideRegionCatalog(t *testin
 		t.Fatalf("Resolve() error = %v", err)
 	}
 
-	validationErr := validateSettingsUpdateRequest(dto.UpdateAgentSettingsRequest{
-		Settings: map[string]any{
-			"provider": "custom:aiproxy-responses",
-			"model":    "gpt-5.4-mini",
-			"baseURL":  "https://aiproxy.example.com/v1",
-		},
-	}, templateDef, "cn")
+	_, _, validationErr := resolveCatalogModelForTemplate(config.Config{Region: "cn"}, templateDef, "gpt-5.4-mini")
 	if validationErr == nil {
-		t.Fatal("validateSettingsUpdateRequest() error = nil, want regional validation error")
+		t.Fatal("resolveCatalogModelForTemplate() error = nil, want regional validation error")
 	}
 	if got := validationErr.Details()["field"]; got != "settings.model" {
-		t.Fatalf("validateSettingsUpdateRequest() field = %#v, want settings.model", got)
+		t.Fatalf("resolveCatalogModelForTemplate() field = %#v, want settings.model", got)
 	}
 	if got := validationErr.Details()["reason"]; got != "unsupported_field" {
-		t.Fatalf("validateSettingsUpdateRequest() reason = %#v, want unsupported_field", got)
+		t.Fatalf("resolveCatalogModelForTemplate() reason = %#v, want unsupported_field", got)
 	}
 }
 
@@ -98,7 +93,7 @@ func TestBuildSettingsUpdateRequestMapsSupportedFields(t *testing.T) {
 
 	req := dto.UpdateAgentSettingsRequest{
 		Settings: map[string]any{
-			"provider": "custom:aiproxy-chat",
+			"provider": "aiproxy",
 			"model":    "glm-4.6",
 			"baseURL":  "https://aiproxy.example.com/v1",
 		},
@@ -108,8 +103,8 @@ func TestBuildSettingsUpdateRequestMapsSupportedFields(t *testing.T) {
 	if validationErr != nil {
 		t.Fatalf("buildSettingsUpdateRequest() error = %v, want nil", validationErr)
 	}
-	if mapped.ModelProvider == nil || *mapped.ModelProvider != "custom:aiproxy-chat" {
-		t.Fatalf("mapped.ModelProvider = %#v, want custom:aiproxy-chat", mapped.ModelProvider)
+	if mapped.ModelProvider == nil || *mapped.ModelProvider != "aiproxy" {
+		t.Fatalf("mapped.ModelProvider = %#v, want aiproxy", mapped.ModelProvider)
 	}
 	if mapped.Model == nil || *mapped.Model != "glm-4.6" {
 		t.Fatalf("mapped.Model = %#v, want glm-4.6", mapped.Model)

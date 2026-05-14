@@ -91,11 +91,7 @@ func resolveModelAPIKey(devbox *unstructured.Unstructured, modelProvider string)
 		return primary
 	}
 
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelProvider)), "custom:aiproxy-") {
-		return strings.TrimSpace(envValue(devbox, "AIPROXY_API_KEY"))
-	}
-
-	return strings.TrimSpace(envValue(devbox, "OPENAI_API_KEY"))
+	return strings.TrimSpace(envValue(devbox, "AIPROXY_API_KEY"))
 }
 
 func IngressDomain(ingress *networkingv1.Ingress) string {

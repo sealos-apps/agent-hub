@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/nightwhite/Agent-Hub/internal/aiproxy"
 	"github.com/nightwhite/Agent-Hub/internal/config"
@@ -25,11 +26,14 @@ func ensureManagedModelAccess(
 	explicitBaseURL string,
 ) (resolvedModelAccess, error) {
 	managerBaseURL := resolveAIProxyBaseURL(cfg.AIProxyBaseURL, factory.ClusterServer())
-	profile, err := resolveAIProxyHermesProvider(requestedProvider)
-	if err != nil {
-		return resolvedModelAccess{}, err
+	provider := strings.TrimSpace(requestedProvider)
+	if provider == "" {
+		return resolvedModelAccess{}, fmt.Errorf("model provider is required")
 	}
-	modelBaseURL := resolveAIProxyProviderBaseURL(firstNonEmpty(explicitBaseURL, cfg.AIProxyModelBaseURL), factory.ClusterServer(), profile.Provider)
+	modelBaseURL := normalizeAIProxyModelBaseURL(firstNonEmpty(explicitBaseURL, cfg.AIProxyModelBaseURL))
+	if strings.TrimSpace(modelBaseURL) == "" {
+		return resolvedModelAccess{}, fmt.Errorf("model base url is required")
+	}
 
 	client, err := aiproxy.NewClient(managerBaseURL, nil)
 	if err != nil {
@@ -48,26 +52,9 @@ func ensureManagedModelAccess(
 	}
 
 	return resolvedModelAccess{
-		Provider:  profile.Provider,
+		Provider:  provider,
 		BaseURL:   modelBaseURL,
 		APIKey:    token.Key,
 		TokenName: tokenName,
-	}, nil
-}
-
-func resolveManagedModelAccessWithoutToken(
-	cfg config.Config,
-	factory *kube.Factory,
-	requestedProvider string,
-	explicitBaseURL string,
-) (resolvedModelAccess, error) {
-	profile, err := resolveAIProxyHermesProvider(requestedProvider)
-	if err != nil {
-		return resolvedModelAccess{}, err
-	}
-
-	return resolvedModelAccess{
-		Provider: profile.Provider,
-		BaseURL:  resolveAIProxyProviderBaseURL(firstNonEmpty(explicitBaseURL, cfg.AIProxyModelBaseURL), factory.ClusterServer(), profile.Provider),
 	}, nil
 }

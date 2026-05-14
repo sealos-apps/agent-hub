@@ -18,6 +18,7 @@ type TemplateCatalogItem struct {
 	Actions              []TemplateActionItem    `json:"actions"`
 	Settings             TemplateSettingsSchema  `json:"settings"`
 	ModelOptions         []TemplateModelOption   `json:"modelOptions"`
+	ModelSwitch          TemplateModelSwitch     `json:"modelSwitch"`
 }
 
 type TemplatePresentation struct {
@@ -56,6 +57,13 @@ type TemplateModelOption struct {
 	Helper   string `json:"helper,omitempty"`
 	Provider string `json:"provider"`
 	APIMode  string `json:"apiMode"`
+}
+
+type TemplateModelSwitch struct {
+	Enabled             bool     `json:"enabled"`
+	Client              string   `json:"client,omitempty"`
+	APIKeyEnv           string   `json:"apiKeyEnv,omitempty"`
+	SupportedModelTypes []string `json:"supportedModelTypes,omitempty"`
 }
 
 type TemplateCatalogResponse struct {

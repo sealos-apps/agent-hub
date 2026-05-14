@@ -23,7 +23,7 @@ func TestResolveModelAPIKeyPrefersAgentModelAPIKey(t *testing.T) {
 		},
 	}
 
-	got := resolveModelAPIKey(devbox, "custom:aiproxy-chat")
+	got := resolveModelAPIKey(devbox, "aiproxy")
 	if got != "agent-key" {
 		t.Fatalf("resolveModelAPIKey() = %q, want agent-key", got)
 	}
@@ -45,13 +45,13 @@ func TestResolveModelAPIKeyUsesAIProxyKeyForManagedProvider(t *testing.T) {
 		},
 	}
 
-	got := resolveModelAPIKey(devbox, "custom:aiproxy-responses")
+	got := resolveModelAPIKey(devbox, "aiproxy")
 	if got != "aiproxy-key" {
 		t.Fatalf("resolveModelAPIKey() = %q, want aiproxy-key", got)
 	}
 }
 
-func TestResolveModelAPIKeyUsesOpenAIKeyForNonManagedProvider(t *testing.T) {
+func TestResolveModelAPIKeyUsesAIProxyKeyForCatalogProvider(t *testing.T) {
 	t.Parallel()
 
 	devbox := &unstructured.Unstructured{
@@ -68,7 +68,7 @@ func TestResolveModelAPIKeyUsesOpenAIKeyForNonManagedProvider(t *testing.T) {
 	}
 
 	got := resolveModelAPIKey(devbox, "openai")
-	if got != "openai-key" {
-		t.Fatalf("resolveModelAPIKey() = %q, want openai-key", got)
+	if got != "aiproxy-key" {
+		t.Fatalf("resolveModelAPIKey() = %q, want aiproxy-key", got)
 	}
 }
