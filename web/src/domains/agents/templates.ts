@@ -1,3 +1,4 @@
+import cowagentLogo from "../../assets/cowagent-logo.png?inline";
 import hermesAgentLogo from "../../assets/hermes-agent-logo.png?inline";
 import openclawLogo from "../../assets/openclaw-logo.jpg?inline";
 import type {
@@ -41,6 +42,7 @@ export const RESOURCE_PRESETS: ResourcePreset[] = [
 ];
 
 const TEMPLATE_LOGOS: Record<string, string> = {
+  cowagent: cowagentLogo,
   "hermes-agent": hermesAgentLogo,
   openclaw: openclawLogo,
 };
