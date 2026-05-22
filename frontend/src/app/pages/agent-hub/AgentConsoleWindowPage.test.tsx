@@ -330,6 +330,48 @@ describe('AgentConsoleWindowPage helpers', () => {
     await waitFor(() => expect(createAgentPreview).toHaveBeenCalledTimes(1))
   })
 
+  it('keeps inactive web tab iframes out of keyboard and screen reader navigation', async () => {
+    window.history.replaceState({}, '', '/console?agentName=ympp868f')
+    vi.mocked(createClusterContext).mockReturnValue(clusterContext)
+    vi.mocked(getClusterInfo).mockResolvedValue({
+      cluster: 'sealos',
+      namespace: 'ns-test',
+      kc: 'apiVersion: v1',
+      server: 'https://k8s.example.com',
+      operator: 'night',
+      updatedAt: '2026-05-22T00:00:00Z',
+    })
+    vi.mocked(listAgentTemplates).mockResolvedValue({
+      items: [template],
+      region: 'us',
+    })
+    vi.mocked(getAgentConsole).mockResolvedValue({
+      agent: agentContract,
+      workspaceRoot: '/workspace',
+      webSocketPath: '/api/v1/agents/ympp868f/ws',
+      services: [],
+    })
+    vi.mocked(createAgentPreview).mockResolvedValue({
+      id: 'p_3000',
+      port: 3000,
+      url: '/__preview/p_3000/',
+    })
+
+    renderConsoleWindowPage()
+
+    await screen.findAllByText('Hermes Agent')
+    const addTerminalButtons = screen.getAllByRole('button', { name: '添加终端' })
+    fireEvent.click(addTerminalButtons[addTerminalButtons.length - 1])
+    await screen.findByText('mock terminal workspace')
+
+    fireEvent.click(screen.getByRole('button', { name: 'open preview 3000' }))
+    const previewFrame = await screen.findByTitle('预览 3000')
+    fireEvent.click(screen.getByRole('button', { name: /终端 1/ }))
+
+    await waitFor(() => expect(previewFrame.closest('div')).toHaveAttribute('aria-hidden', 'true'))
+    expect(previewFrame).toHaveAttribute('tabindex', '-1')
+  })
+
   it('does not create duplicate backend previews while the preview tab ref is stale', async () => {
     window.history.replaceState({}, '', '/console?agentName=ympp868f')
     vi.mocked(createClusterContext).mockReturnValue(clusterContext)

@@ -314,15 +314,18 @@ function TerminalTabPane({
 function WebTabPane({ isVisible, tab }: { isVisible: boolean; tab: WebTab }) {
   return (
     <div
+      aria-hidden={isVisible ? undefined : true}
       className={[
         'absolute inset-0 h-full min-h-0 bg-white transition-opacity duration-75',
         isVisible ? 'z-10 opacity-100 pointer-events-auto' : 'z-0 opacity-0 pointer-events-none',
       ].join(' ')}
+      inert={isVisible ? undefined : true}
     >
       <iframe
         className="h-full w-full border-0 bg-white"
         key={`${tab.id}-${tab.refreshKey}`}
         src={tab.url}
+        tabIndex={isVisible ? undefined : -1}
         title={tab.title}
       />
     </div>
