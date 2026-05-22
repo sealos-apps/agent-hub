@@ -1,10 +1,10 @@
 package kube
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -48,6 +48,38 @@ func (t *PodPortForwardTunnel) Close() {
 	})
 }
 
+type limitedBuffer struct {
+	limit int
+	data  []byte
+}
+
+func newLimitedBuffer(limit int) *limitedBuffer {
+	return &limitedBuffer{limit: limit}
+}
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	if b == nil || b.limit <= 0 {
+		return len(p), nil
+	}
+	if len(p) >= b.limit {
+		b.data = append(b.data[:0], p[len(p)-b.limit:]...)
+		return len(p), nil
+	}
+	b.data = append(b.data, p...)
+	if overflow := len(b.data) - b.limit; overflow > 0 {
+		copy(b.data, b.data[overflow:])
+		b.data = b.data[:b.limit]
+	}
+	return len(p), nil
+}
+
+func (b *limitedBuffer) String() string {
+	if b == nil {
+		return ""
+	}
+	return string(b.data)
+}
+
 func StartPodPortForward(ctx context.Context, options PodPortForwardOptions) (*PodPortForwardTunnel, error) {
 	if options.Clientset == nil {
 		return nil, errors.New("kubernetes clientset is required")
@@ -82,15 +114,14 @@ func StartPodPortForward(ctx context.Context, options PodPortForwardOptions) (*P
 
 	stopChan := make(chan struct{})
 	readyChan := make(chan struct{})
-	out := &bytes.Buffer{}
-	errOut := &bytes.Buffer{}
+	errOut := newLimitedBuffer(8 * 1024)
 	forwarder, err := portforward.NewOnAddresses(
 		dialer,
 		[]string{"127.0.0.1"},
 		[]string{fmt.Sprintf(":%d", options.Port)},
 		stopChan,
 		readyChan,
-		out,
+		io.Discard,
 		errOut,
 	)
 	if err != nil {

@@ -76,6 +76,22 @@ func TestPreviewManagerCreatesCleanPreviewURL(t *testing.T) {
 	}
 }
 
+func TestPreviewSecretsEqual(t *testing.T) {
+	t.Parallel()
+
+	if !previewSecretsEqual("secret", "secret") {
+		t.Fatal("previewSecretsEqual() = false, want true for matching non-empty secrets")
+	}
+	for _, candidate := range []string{"", "secret ", "secre", "other"} {
+		if previewSecretsEqual(candidate, "secret") {
+			t.Fatalf("previewSecretsEqual(%q, secret) = true, want false", candidate)
+		}
+	}
+	if previewSecretsEqual("", "") {
+		t.Fatal("previewSecretsEqual(empty, empty) = true, want false")
+	}
+}
+
 func TestNewPreviewIDRequiresRandomBytes(t *testing.T) {
 	t.Parallel()
 
@@ -248,6 +264,51 @@ func TestPreviewProxyPreservesPathAndQuery(t *testing.T) {
 	}
 	if body := strings.TrimSpace(recorder.Body.String()); body != "preview ok" {
 		t.Fatalf("proxy body = %q, want preview ok", body)
+	}
+}
+
+func TestPreviewProxyRequestsIdentityEncoding(t *testing.T) {
+	t.Parallel()
+
+	seenAcceptEncoding := make(chan string, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenAcceptEncoding <- r.Header.Get("Accept-Encoding")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<script src="/@vite/client"></script>`))
+	}))
+	defer upstream.Close()
+
+	manager := newPreviewManager(previewManagerOptions{
+		basePath: "/__preview",
+		starter: previewTunnelStarterFunc(func(context.Context, previewTunnelTarget) (previewTunnel, error) {
+			return &fakePreviewTunnel{target: upstream.URL}, nil
+		}),
+	})
+	session, err := manager.create(context.Background(), previewCreateOptions{
+		agentName: "demo-agent",
+		namespace: "ns-test",
+		podName:   "demo-pod",
+		port:      3000,
+	})
+	if err != nil {
+		t.Fatalf("manager.create() error = %v, want nil", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/__preview/"+session.ID+"/", nil)
+	request.Header.Set("Accept-Encoding", "gzip, br")
+	request.AddCookie(&http.Cookie{Name: session.cookieName(), Value: session.Secret})
+	recorder := httptest.NewRecorder()
+
+	manager.proxy(recorder, request, session.ID, "/")
+
+	if got := <-seenAcceptEncoding; got != "identity" {
+		t.Fatalf("upstream Accept-Encoding = %q, want identity", got)
+	}
+	if strings.Contains(recorder.Header().Get("Content-Encoding"), "gzip") {
+		t.Fatalf("proxy Content-Encoding = %q, want uncompressed HTML response", recorder.Header().Get("Content-Encoding"))
+	}
+	if body := recorder.Body.String(); !strings.Contains(body, `src="/__preview/`+session.ID+`/@vite/client"`) {
+		t.Fatalf("proxy html body = %q, want rewritten root asset path", body)
 	}
 }
 
@@ -424,6 +485,9 @@ func TestCreateAgentPreviewReturnsSessionPayload(t *testing.T) {
 	cookie := recorder.Result().Cookies()[0]
 	if cookie.Path != "/__preview/"+envelope.Data.ID {
 		t.Fatalf("preview cookie path = %q, want /__preview/%s", cookie.Path, envelope.Data.ID)
+	}
+	if cookie.SameSite != http.SameSiteStrictMode {
+		t.Fatalf("preview cookie SameSite = %v, want Strict", cookie.SameSite)
 	}
 	if strings.Contains(recorder.Body.String(), cookie.Value) {
 		t.Fatal("preview response body leaked session cookie secret")

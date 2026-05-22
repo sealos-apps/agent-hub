@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -442,6 +443,7 @@ func (m *previewManager) proxy(writer http.ResponseWriter, request *http.Request
 			}
 			req.URL.RawQuery = request.URL.RawQuery
 			req.Host = targetURL.Host
+			req.Header.Set("Accept-Encoding", "identity")
 		},
 		ModifyResponse: func(resp *http.Response) error {
 			return rewritePreviewHTMLResponse(resp, basePath)
@@ -474,7 +476,7 @@ func (m *previewManager) markRequest(id, secret string) *previewSession {
 	defer m.mu.Unlock()
 
 	session := m.sessions[strings.TrimSpace(id)]
-	if session == nil || session.Secret == "" || secret != session.Secret {
+	if session == nil || !previewSecretsEqual(secret, session.Secret) {
 		return nil
 	}
 	session.lastRequest = m.now()
@@ -571,7 +573,7 @@ func previewSessionCookie(request *http.Request, session *previewSession, value 
 		Value:    value,
 		Path:     pathValue,
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   maxAge,
 	}
 	if request != nil && (request.TLS != nil || strings.EqualFold(request.Header.Get("X-Forwarded-Proto"), "https")) {
@@ -589,6 +591,13 @@ func previewCookieValue(request *http.Request, id string) string {
 		return ""
 	}
 	return cookie.Value
+}
+
+func previewSecretsEqual(candidate, expected string) bool {
+	if candidate == "" || expected == "" || len(candidate) != len(expected) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(candidate), []byte(expected)) == 1
 }
 
 func rewritePreviewHTMLResponse(resp *http.Response, basePath string) error {
