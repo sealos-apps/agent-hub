@@ -55,8 +55,8 @@ sequenceDiagram
 
 | adr_id | title | date | status | affected_modules | details |
 |--------|-------|------|--------|------------------|---------|
-| ADR-20260418-01 | Agent Hub 页面改为共享 controller + 导航快照 | 2026-04-18 | ✅已采纳 | web/app/pages/agent-hub | 通过 Provider 与 route state 降低重复请求与状态滞后 |
-| ADR-20260418-02 | Agent Hub 切换到 Template Catalog + Agent Contract V1 | 2026-04-18 | ✅已采纳 | backend/internal/handler, web/src/domains/agents | 模板能力、模型预设、访问平面和动作入口全部显式化，删除前端推断链 |
-| ADR-20260418-03 | Agent Hub 工作区与设置字段改为模板 schema 显式绑定 | 2026-04-18 | ✅已采纳 | backend/internal/agenttemplate, backend/internal/handler, web/src/app/pages/agent-hub | 通过 `workspaces + settings.binding` 让工作区和设置写入都回到模板目录单一路径 |
-| ADR-20260423-01 | Agent Console Stream V2 与高压背压策略 | 2026-04-23 | ✅已采纳 | backend/internal/ws, web/src/app/pages/agent-hub, web/src/components/business/terminal | WS 改为 Binary V2，后端单写队列 + 最旧流式数据淘汰并附带 dropped 标记，前端终端调度与文件缓存链路同步升级 |
-| ADR-20260424-01 | 控制台深层性能与稳定性治理（文件 QoS + Ready Gate + 目录锚点） | 2026-04-24 | ✅已采纳 | backend/internal/ws, web/src/app/pages/agent-hub, web/src/components/business/terminal | 文件链路改为事件驱动就绪门控并补齐请求回收，后端按读/写分级队列与超时策略，目录树默认锚定工作目录且保留根目录切换，隐藏终端标签进入降压调度 |
+| ADR-20260418-01 | Agent Hub 页面改为共享 controller + 导航快照 | 2026-04-18 | ✅已采纳 | frontend/app/pages/agent-hub | 通过 Provider 与 route state 降低重复请求与状态滞后 |
+| ADR-20260418-02 | Agent Hub 切换到 Template Catalog + Agent Contract V1 | 2026-04-18 | ✅已采纳 | backend/internal/handler, frontend/src/domains/agents | 模板能力、模型预设、访问平面和动作入口全部显式化，删除前端推断链 |
+| ADR-20260418-03 | Agent Hub 工作区与设置字段改为模板 schema 显式绑定 | 2026-04-18 | ✅已采纳 | backend/internal/agenttemplate, backend/internal/handler, frontend/src/app/pages/agent-hub | 通过 `workspaces + settings.binding` 让工作区和设置写入都回到模板目录单一路径 |
+| ADR-20260423-01 | Agent Console Stream V2 与高压背压策略 | 2026-04-23 | ✅已采纳 | backend/internal/ws, frontend/src/app/pages/agent-hub, frontend/src/components/business/terminal | WS 改为 Binary V2，后端单写队列 + 最旧流式数据淘汰并附带 dropped 标记，前端终端调度与文件缓存链路同步升级 |
+| ADR-20260424-01 | 控制台深层性能与稳定性治理（文件 QoS + Ready Gate + 目录锚点） | 2026-04-24 | ✅已采纳 | backend/internal/ws, frontend/src/app/pages/agent-hub, frontend/src/components/business/terminal | 文件链路改为事件驱动就绪门控并补齐请求回收，后端按读/写分级队列与超时策略，目录树默认锚定工作目录且保留根目录切换，隐藏终端标签进入降压调度 |

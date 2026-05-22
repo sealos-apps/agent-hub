@@ -4,14 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 
 	"sigs.k8s.io/yaml"
 )
-
-const templateRootDir = "template"
 
 type Definition struct {
 	ID                   string                   `yaml:"id"`
@@ -32,6 +29,7 @@ type Definition struct {
 	Actions              []ActionDefinition       `yaml:"actions"`
 	Settings             SettingsSchema           `yaml:"settings"`
 	RegionModelPresets   map[string][]ModelPreset `yaml:"regionModelPresets"`
+	RegionModelTypes     map[string][]ModelType   `yaml:"regionModelTypes"`
 	Bootstrap            ScriptSpec               `yaml:"bootstrap"`
 	Healthcheck          ScriptSpec               `yaml:"healthcheck"`
 	rootDir              string
@@ -98,46 +96,66 @@ type SettingOption struct {
 }
 
 type ModelPreset struct {
-	Value    string `yaml:"value"`
-	Label    string `yaml:"label"`
-	Helper   string `yaml:"helper"`
-	Provider string `yaml:"provider"`
-	APIMode  string `yaml:"apiMode"`
+	Value            string   `yaml:"value"`
+	Label            string   `yaml:"label"`
+	Helper           string   `yaml:"helper"`
+	Provider         string   `yaml:"provider"`
+	APIMode          string   `yaml:"apiMode"`
+	Category         string   `yaml:"category"`
+	Capabilities     []string `yaml:"capabilities"`
+	InputModalities  []string `yaml:"inputModalities"`
+	OutputModalities []string `yaml:"outputModalities"`
+}
+
+type ModelType struct {
+	Key         string        `yaml:"key"`
+	Label       string        `yaml:"label"`
+	Description string        `yaml:"description"`
+	Models      []ModelPreset `yaml:"models"`
+	Options     []ModelPreset `yaml:"options"`
 }
 
 func Resolve(templateID, override string) (Definition, error) {
+	return ResolveFromSource(templateID, Source{Dir: override})
+}
+
+func ResolveFromSource(templateID string, source Source) (Definition, error) {
 	id := strings.TrimSpace(templateID)
 	if id == "" {
 		return Definition{}, fmt.Errorf("template id is required")
 	}
 
-	rootDir, err := resolveTemplateRootDir(id, override)
+	rootDir, err := source.ResolvedRootDir(id)
 	if err != nil {
 		return Definition{}, err
 	}
 
-	raw, err := os.ReadFile(filepath.Join(rootDir, "template.yaml"))
+	definition, err := readDefinition(rootDir)
 	if err != nil {
-		return Definition{}, fmt.Errorf("read template metadata: %w", err)
+		return Definition{}, err
 	}
-
-	var definition Definition
-	if err := yaml.Unmarshal(raw, &definition); err != nil {
-		return Definition{}, fmt.Errorf("parse template metadata: %w", err)
+	if strings.TrimSpace(definition.ID) != id {
+		return Definition{}, fmt.Errorf("template %q not found in %s", id, rootDir)
 	}
-
-	if err := validateDefinition(definition); err != nil {
-		return Definition{}, fmt.Errorf("invalid template metadata: %w", err)
-	}
-	definition.rootDir = rootDir
-
 	return definition, nil
 }
 
 func List(override string) ([]Definition, error) {
-	baseDir, err := resolveTemplateBaseDir(override)
+	return ListFromSource(Source{Dir: override})
+}
+
+func ListFromSource(source Source) ([]Definition, error) {
+	baseDir, err := source.ResolvedBaseDir()
 	if err != nil {
 		return nil, err
+	}
+
+	if hasTemplateMetadata(baseDir) {
+		definition, err := readDefinition(baseDir)
+		if err != nil {
+			return nil, err
+		}
+		return []Definition{definition}, nil
 	}
 
 	entries, err := os.ReadDir(baseDir)
@@ -150,6 +168,9 @@ func List(override string) ([]Definition, error) {
 		if !entry.IsDir() {
 			continue
 		}
+		if strings.HasPrefix(entry.Name(), "_") || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
 
 		rootDir := filepath.Join(baseDir, entry.Name())
 		raw, readErr := os.ReadFile(filepath.Join(rootDir, "template.yaml"))
@@ -157,14 +178,10 @@ func List(override string) ([]Definition, error) {
 			continue
 		}
 
-		var definition Definition
-		if err := yaml.Unmarshal(raw, &definition); err != nil {
-			return nil, fmt.Errorf("parse template metadata %s: %w", entry.Name(), err)
+		definition, err := parseDefinition(raw, rootDir)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", entry.Name(), err)
 		}
-		if err := validateDefinition(definition); err != nil {
-			return nil, fmt.Errorf("invalid template metadata %s: %w", entry.Name(), err)
-		}
-		definition.rootDir = rootDir
 		definitions = append(definitions, definition)
 	}
 
@@ -186,100 +203,6 @@ func (d Definition) HealthcheckScriptPath() string {
 	return filepath.Join(d.rootDir, d.Healthcheck.Script)
 }
 
-func resolveTemplateRootDir(templateID, override string) (string, error) {
-	candidates := []string{}
-
-	if trimmed := strings.TrimSpace(override); trimmed != "" {
-		candidates = append(candidates, filepath.Join(trimmed, templateID))
-		candidates = append(candidates, trimmed)
-	}
-
-	if cwd, err := os.Getwd(); err == nil {
-		relatives := []string{
-			filepath.Join(templateRootDir, templateID),
-			filepath.Join("..", templateRootDir, templateID),
-			filepath.Join("..", "..", templateRootDir, templateID),
-			filepath.Join("..", "..", "..", templateRootDir, templateID),
-			filepath.Join("..", "..", "..", "..", templateRootDir, templateID),
-		}
-		for _, relative := range relatives {
-			candidates = append(candidates, filepath.Join(cwd, relative))
-		}
-	}
-
-	if _, file, _, ok := runtime.Caller(0); ok {
-		candidates = append(candidates, filepath.Join(filepath.Dir(file), "..", "..", "..", templateRootDir, templateID))
-	}
-
-	seen := map[string]struct{}{}
-	attempted := []string{}
-	for _, candidate := range candidates {
-		root := normalizeTemplateRootCandidate(candidate)
-		if root == "" {
-			continue
-		}
-		if _, exists := seen[root]; exists {
-			continue
-		}
-		seen[root] = struct{}{}
-		attempted = append(attempted, root)
-
-		info, err := os.Stat(filepath.Join(root, "template.yaml"))
-		if err == nil && !info.IsDir() {
-			return root, nil
-		}
-	}
-
-	sort.Strings(attempted)
-	return "", fmt.Errorf("template %q not found under %s", templateID, strings.Join(attempted, ", "))
-}
-
-func resolveTemplateBaseDir(override string) (string, error) {
-	candidates := []string{}
-	if trimmed := strings.TrimSpace(override); trimmed != "" {
-		candidates = append(candidates, trimmed)
-	}
-
-	if cwd, err := os.Getwd(); err == nil {
-		relatives := []string{
-			templateRootDir,
-			filepath.Join("..", templateRootDir),
-			filepath.Join("..", "..", templateRootDir),
-			filepath.Join("..", "..", "..", templateRootDir),
-			filepath.Join("..", "..", "..", "..", templateRootDir),
-		}
-		for _, relative := range relatives {
-			candidates = append(candidates, filepath.Join(cwd, relative))
-		}
-	}
-
-	if _, file, _, ok := runtime.Caller(0); ok {
-		candidates = append(candidates, filepath.Join(filepath.Dir(file), "..", "..", "..", templateRootDir))
-	}
-
-	seen := map[string]struct{}{}
-	attempted := []string{}
-	for _, candidate := range candidates {
-		baseDir := normalizeTemplateBaseCandidate(candidate)
-		if baseDir == "" {
-			continue
-		}
-		if _, exists := seen[baseDir]; exists {
-			continue
-		}
-		seen[baseDir] = struct{}{}
-		attempted = append(attempted, baseDir)
-
-		info, err := os.Stat(baseDir)
-		if err == nil && info.IsDir() {
-			return baseDir, nil
-		}
-	}
-
-	sort.Strings(attempted)
-	return "", fmt.Errorf("template base directory not found under %s", strings.Join(attempted, ", "))
-}
-
 func normalizeTemplateRootCandidate(candidate string) string {
 	if strings.TrimSpace(candidate) == "" {
 		return ""
@@ -298,6 +221,27 @@ func normalizeTemplateRootCandidate(candidate string) string {
 	return cleaned
 }
 
+func readDefinition(rootDir string) (Definition, error) {
+	raw, err := os.ReadFile(filepath.Join(rootDir, "template.yaml"))
+	if err != nil {
+		return Definition{}, fmt.Errorf("read template metadata: %w", err)
+	}
+	return parseDefinition(raw, rootDir)
+}
+
+func parseDefinition(raw []byte, rootDir string) (Definition, error) {
+	var definition Definition
+	if err := yaml.Unmarshal(raw, &definition); err != nil {
+		return Definition{}, fmt.Errorf("parse template metadata: %w", err)
+	}
+	normalizeDefinitionModels(&definition)
+	if err := validateDefinition(definition); err != nil {
+		return Definition{}, fmt.Errorf("invalid template metadata: %w", err)
+	}
+	definition.rootDir = rootDir
+	return definition, nil
+}
+
 func normalizeTemplateBaseCandidate(candidate string) string {
 	if strings.TrimSpace(candidate) == "" {
 		return ""
@@ -313,7 +257,45 @@ func normalizeTemplateBaseCandidate(candidate string) string {
 		return filepath.Dir(cleaned)
 	}
 
+	if baseDir := findTemplateBaseCandidate(cleaned); baseDir != "" {
+		return baseDir
+	}
+
 	return cleaned
+}
+
+func findTemplateBaseCandidate(rootDir string) string {
+	for _, candidate := range append([]string{rootDir}, templateCollectionDirsUnder(rootDir)...) {
+		if hasTemplateMetadata(candidate) {
+			return filepath.Dir(candidate)
+		}
+		entries, err := os.ReadDir(candidate)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() || strings.HasPrefix(entry.Name(), "_") || strings.HasPrefix(entry.Name(), ".") {
+				continue
+			}
+			if hasTemplateMetadata(filepath.Join(candidate, entry.Name())) {
+				return candidate
+			}
+		}
+	}
+	return ""
+}
+
+func templateCollectionDirs() []string {
+	return []string{templateRootDir, "agents"}
+}
+
+func templateCollectionDirsUnder(rootDir string) []string {
+	dirs := templateCollectionDirs()
+	result := make([]string, 0, len(dirs))
+	for _, dir := range dirs {
+		result = append(result, filepath.Join(rootDir, dir))
+	}
+	return result
 }
 
 func validateDefinition(definition Definition) error {
@@ -394,15 +376,203 @@ func validateDefinition(definition Definition) error {
 		if strings.TrimSpace(definition.ManifestDir) == "" {
 			return fmt.Errorf("manifestDir is required for backendSupported template")
 		}
-		if strings.TrimSpace(definition.Bootstrap.Script) == "" || strings.TrimSpace(definition.Bootstrap.Shell) == "" || definition.Bootstrap.TimeoutSeconds <= 0 {
+		if HasScriptSpec(definition.Bootstrap) && !isCompleteScriptSpec(definition.Bootstrap) {
 			return fmt.Errorf("bootstrap is incomplete")
 		}
-		if strings.TrimSpace(definition.Healthcheck.Script) == "" || strings.TrimSpace(definition.Healthcheck.Shell) == "" || definition.Healthcheck.TimeoutSeconds <= 0 {
+		if HasScriptSpec(definition.Healthcheck) && !isCompleteScriptSpec(definition.Healthcheck) {
 			return fmt.Errorf("healthcheck is incomplete")
 		}
 	}
 
 	return nil
+}
+
+func normalizeDefinitionModels(definition *Definition) {
+	if definition == nil {
+		return
+	}
+
+	if len(definition.RegionModelTypes) > 0 {
+		if definition.RegionModelPresets == nil {
+			definition.RegionModelPresets = map[string][]ModelPreset{}
+		}
+		for region, modelTypes := range definition.RegionModelTypes {
+			normalizedTypes, flattened := normalizeModelTypes(modelTypes)
+			definition.RegionModelTypes[region] = normalizedTypes
+			definition.RegionModelPresets[region] = flattened
+		}
+	}
+
+	if len(definition.RegionModelPresets) > 0 {
+		if definition.RegionModelTypes == nil {
+			definition.RegionModelTypes = map[string][]ModelType{}
+		}
+		for region, presets := range definition.RegionModelPresets {
+			if _, ok := definition.RegionModelTypes[region]; ok {
+				continue
+			}
+			definition.RegionModelTypes[region] = groupModelPresetsByType(presets)
+		}
+	}
+}
+
+func normalizeModelTypes(modelTypes []ModelType) ([]ModelType, []ModelPreset) {
+	normalized := make([]ModelType, 0, len(modelTypes))
+	flattened := []ModelPreset{}
+	for _, modelType := range modelTypes {
+		key := normalizeModelTypeKey(modelType.Key)
+		models := append([]ModelPreset(nil), modelType.Models...)
+		models = append(models, modelType.Options...)
+		if key == "" {
+			key = inferModelPresetCategory(firstModelPreset(models))
+		}
+		if key == "" {
+			key = "other"
+		}
+
+		items := make([]ModelPreset, 0, len(models))
+		for _, model := range models {
+			if strings.TrimSpace(model.Category) == "" {
+				model.Category = key
+			}
+			items = append(items, model)
+			flattened = append(flattened, model)
+		}
+		if len(items) == 0 {
+			continue
+		}
+
+		normalized = append(normalized, ModelType{
+			Key:         key,
+			Label:       firstNonEmptyString(modelType.Label, defaultModelTypeLabel(key)),
+			Description: strings.TrimSpace(modelType.Description),
+			Models:      items,
+		})
+	}
+	return normalized, flattened
+}
+
+func groupModelPresetsByType(presets []ModelPreset) []ModelType {
+	order := []string{}
+	groups := map[string][]ModelPreset{}
+	for _, preset := range presets {
+		key := inferModelPresetCategory(preset)
+		if key == "" {
+			key = "text"
+		}
+		if strings.TrimSpace(preset.Category) == "" {
+			preset.Category = key
+		}
+		if _, ok := groups[key]; !ok {
+			order = append(order, key)
+		}
+		groups[key] = append(groups[key], preset)
+	}
+
+	result := make([]ModelType, 0, len(order))
+	for _, key := range order {
+		result = append(result, ModelType{
+			Key:    key,
+			Label:  defaultModelTypeLabel(key),
+			Models: groups[key],
+		})
+	}
+	return result
+}
+
+func firstModelPreset(items []ModelPreset) ModelPreset {
+	if len(items) == 0 {
+		return ModelPreset{}
+	}
+	return items[0]
+}
+
+func inferModelPresetCategory(preset ModelPreset) string {
+	if category := normalizeModelTypeKey(preset.Category); category != "" {
+		return category
+	}
+
+	tokens := make([]string, 0, len(preset.Capabilities)+len(preset.InputModalities)+len(preset.OutputModalities)+1)
+	tokens = append(tokens, preset.Capabilities...)
+	tokens = append(tokens, preset.InputModalities...)
+	tokens = append(tokens, preset.OutputModalities...)
+	tokens = append(tokens, preset.APIMode)
+
+	normalized := map[string]struct{}{}
+	for _, token := range tokens {
+		value := normalizeModelTypeKey(token)
+		if value == "" {
+			continue
+		}
+		normalized[value] = struct{}{}
+	}
+
+	if _, ok := normalized["image_generation"]; ok {
+		return "image"
+	}
+	if _, ok := normalized["image"]; ok {
+		if presetOutputsImage(preset) {
+			return "image"
+		}
+		return "multimodal"
+	}
+	if _, ok := normalized["vision"]; ok {
+		return "multimodal"
+	}
+	if _, ok := normalized["multimodal"]; ok {
+		return "multimodal"
+	}
+	if _, ok := normalized["audio"]; ok {
+		return "audio"
+	}
+	return "text"
+}
+
+func presetOutputsImage(preset ModelPreset) bool {
+	for _, value := range preset.OutputModalities {
+		if normalizeModelTypeKey(value) == "image" {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeModelTypeKey(value string) string {
+	return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(value)), "-", "_")
+}
+
+func defaultModelTypeLabel(key string) string {
+	switch normalizeModelTypeKey(key) {
+	case "text":
+		return "普通模型"
+	case "multimodal":
+		return "多模态模型"
+	case "image", "image_generation":
+		return "生图模型"
+	case "audio":
+		return "音频模型"
+	case "embedding":
+		return "向量模型"
+	default:
+		return "其他模型"
+	}
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func HasScriptSpec(spec ScriptSpec) bool {
+	return strings.TrimSpace(spec.Script) != "" || strings.TrimSpace(spec.Shell) != "" || spec.TimeoutSeconds > 0
+}
+
+func isCompleteScriptSpec(spec ScriptSpec) bool {
+	return strings.TrimSpace(spec.Script) != "" && strings.TrimSpace(spec.Shell) != "" && spec.TimeoutSeconds > 0
 }
 
 func validateSettingField(field SettingField, scope string) error {

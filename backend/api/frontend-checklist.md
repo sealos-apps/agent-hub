@@ -20,7 +20,7 @@ REGION=us INGRESS_SUFFIX=agent.usw-1.sealos.app AGENT_IMAGE=nousresearch/hermes-
 服务地址：
 
 ```text
-http://127.0.0.1:8999
+http://127.0.0.1:8888
 ```
 
 ## 2. 准备 Authorization

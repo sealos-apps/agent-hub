@@ -1,7 +1,7 @@
 # Agent Hub 安全检查
 
 ## 范围
-- 前端：`web/src/app/pages/agent-hub/`、`web/src/domains/agents/`
+- 前端：`frontend/src/app/pages/agent-hub/`、`frontend/src/domains/agents/`
 - 后端：`backend/internal/router/`、`backend/internal/handler/`
 - 文档：`backend/api/frontend-checklist.md`
 

@@ -148,10 +148,14 @@ REGION=us INGRESS_SUFFIX=agent.usw-1.sealos.app AGENT_IMAGE=nousresearch/hermes-
 - `api/frontend-live-examples.md`
 
 默认配置来自环境变量：
-- `PORT`：默认 `8999`
+- `PORT`：默认 `8888`
 - `INGRESS_SUFFIX`：默认 `agent.usw-1.sealos.app`
 - `AGENT_IMAGE`：默认 `nousresearch/hermes-agent:latest`
-- `AGENT_MANIFEST_TEMPLATE_DIR`：模板目录根路径（容器建议值 `/app/template`，本地默认自动探测仓库内 `template/`）
+- `AGENT_TEMPLATE_GITHUB_URL`：模板仓库或目录 URL。支持 `https://github.com/<owner>/<repo>`、`https://github.com/<owner>/<repo>/tree/<ref>/<path>`，默认 `https://github.com/gitlayzer/Agent-Hub-Template`。
+- `AGENT_TEMPLATE_GITHUB_TOKEN`：可选，私有 GitHub 仓库访问 token。
+- `AGENT_TEMPLATE_CACHE_DIR`：可选，GitHub 模板下载缓存目录，默认系统临时目录下的 `agenthub-template-cache`。
+- `AGENT_MANIFEST_TEMPLATE_DIR`：本地模板目录根路径，仅用于本地开发或测试兜底；只在 `AGENT_TEMPLATE_GITHUB_URL` 为空时使用。
+- `FRONTEND_DIST_DIR`：前端静态产物目录；兼容旧的 `WEB_DIST_DIR`。
 - `AIPROXY_BASE_URL`：AIProxy token 管理地址，默认 `https://aiproxy-web.hzh.sealos.run`
 - `K8S_PROXY_ALLOWED_HOSTS`：K8s API 反向代理允许的目标主机白名单（逗号分隔，支持精确主机或 `.suffix` 后缀规则），默认 `.sealos.io,.sealos.run`
 - `REGION`：模型预设区域，支持 `us` / `cn`，必须显式配置
@@ -165,11 +169,38 @@ REGION=us INGRESS_SUFFIX=agent.usw-1.sealos.app AGENT_IMAGE=nousresearch/hermes-
 - 当前前后端会根据集群地址自动推导模型地址，例如 `https://usw-1.sealos.io:6443` 会推导为 `https://aiproxy.usw-1.sealos.io/v1`
 - 推荐值：海外工作区统一使用 `REGION=us`
 
+模板 YAML 支持按模型类型分组。推荐使用 `regionModelTypes`，前端会先渲染模型类型，再渲染该类型下的模型；旧的 `regionModelPresets` 平铺结构仍会自动兼容分组。
+
+```yaml
+regionModelTypes:
+  us:
+    - key: text
+      label: 普通模型
+      models:
+        - value: gpt-5.4-mini
+          label: GPT-5.4 Mini
+          helper: OpenAI
+          provider: custom:aiproxy-responses
+          apiMode: codex_responses
+          inputModalities: [text]
+          outputModalities: [text]
+    - key: image
+      label: 生图模型
+      models:
+        - value: gpt-image-2
+          label: GPT Image 2
+          helper: OpenAI
+          provider: custom:aiproxy-responses
+          apiMode: image_generation
+          inputModalities: [text, image]
+          outputModalities: [image]
+```
+
 健康检查：
 
 ```bash
-curl http://127.0.0.1:8999/healthz
-curl http://127.0.0.1:8999/readyz
+curl http://127.0.0.1:8888/healthz
+curl http://127.0.0.1:8888/readyz
 ```
 
 ## Current endpoint status
@@ -203,7 +234,7 @@ curl http://127.0.0.1:8999/readyz
 本地开发默认：
 
 ```text
-http://127.0.0.1:8999
+http://127.0.0.1:8888
 ```
 
 ### 统一响应格式
@@ -730,7 +761,7 @@ PY
 ```bash
 curl -s \
   -H "Authorization: $KCFG_ENCODED" \
-  http://127.0.0.1:8999/api/v1/agents
+  http://127.0.0.1:8888/api/v1/agents
 ```
 
 ### 3. Create
@@ -739,7 +770,7 @@ curl -s \
 curl -s -X POST \
   -H "Authorization: $KCFG_ENCODED" \
   -H "Content-Type: application/json" \
-  http://127.0.0.1:8999/api/v1/agents \
+  http://127.0.0.1:8888/api/v1/agents \
   -d '{
     "agent-name": "demo-agent",
     "agent-cpu": "1000m",
@@ -758,7 +789,7 @@ curl -s -X POST \
 ```bash
 curl -s \
   -H "Authorization: $KCFG_ENCODED" \
-  http://127.0.0.1:8999/api/v1/agents/demo-agent
+  http://127.0.0.1:8888/api/v1/agents/demo-agent
 ```
 
 ### 5. Update
@@ -767,7 +798,7 @@ curl -s \
 curl -s -X PATCH \
   -H "Authorization: $KCFG_ENCODED" \
   -H "Content-Type: application/json" \
-  http://127.0.0.1:8999/api/v1/agents/demo-agent \
+  http://127.0.0.1:8888/api/v1/agents/demo-agent \
   -d '{
     "agent-cpu": "2000m",
     "agent-memory": "4Gi",
@@ -780,7 +811,7 @@ curl -s -X PATCH \
 ```bash
 curl -s \
   -H "Authorization: $KCFG_ENCODED" \
-  http://127.0.0.1:8999/api/v1/agents/demo-agent/key
+  http://127.0.0.1:8888/api/v1/agents/demo-agent/key
 ```
 
 说明：
@@ -792,7 +823,7 @@ curl -s \
 ```bash
 curl -s -X POST \
   -H "Authorization: $KCFG_ENCODED" \
-  http://127.0.0.1:8999/api/v1/agents/demo-agent/key/rotate
+  http://127.0.0.1:8888/api/v1/agents/demo-agent/key/rotate
 ```
 
 ### 8. Stop
@@ -800,7 +831,7 @@ curl -s -X POST \
 ```bash
 curl -s -X POST \
   -H "Authorization: $KCFG_ENCODED" \
-  http://127.0.0.1:8999/api/v1/agents/demo-agent/pause
+  http://127.0.0.1:8888/api/v1/agents/demo-agent/pause
 ```
 
 ### 9. Start
@@ -808,7 +839,7 @@ curl -s -X POST \
 ```bash
 curl -s -X POST \
   -H "Authorization: $KCFG_ENCODED" \
-  http://127.0.0.1:8999/api/v1/agents/demo-agent/run
+  http://127.0.0.1:8888/api/v1/agents/demo-agent/run
 ```
 
 ### 10. Delete
@@ -816,7 +847,7 @@ curl -s -X POST \
 ```bash
 curl -s -X DELETE \
   -H "Authorization: $KCFG_ENCODED" \
-  http://127.0.0.1:8999/api/v1/agents/demo-agent
+  http://127.0.0.1:8888/api/v1/agents/demo-agent
 ```
 
 ## Known notes

@@ -11,7 +11,7 @@
 ## Base URL
 
 ```text
-http://127.0.0.1:8999
+http://127.0.0.1:8888
 ```
 
 ## HTTP examples
@@ -22,7 +22,7 @@ http://127.0.0.1:8999
 
 ```bash
 curl -sS -w '\nHTTP %{http_code}\n' \
-  http://127.0.0.1:8999/healthz
+  http://127.0.0.1:8888/healthz
 ```
 
 响应：
@@ -43,7 +43,7 @@ HTTP：
 
 ```bash
 curl -sS -w '\nHTTP %{http_code}\n' \
-  http://127.0.0.1:8999/readyz
+  http://127.0.0.1:8888/readyz
 ```
 
 响应：
@@ -65,7 +65,7 @@ HTTP：
 ```bash
 curl -sS -w '\nHTTP %{http_code}\n' \
   -H "Authorization: <url-encoded-kubeconfig>" \
-  http://127.0.0.1:8999/api/v1/agents
+  http://127.0.0.1:8888/api/v1/agents
 ```
 
 响应示例：
@@ -88,7 +88,7 @@ HTTP：
 curl -sS -w '\nHTTP %{http_code}\n' -X POST \
   -H "Authorization: <url-encoded-kubeconfig>" \
   -H "Content-Type: application/json" \
-  http://127.0.0.1:8999/api/v1/agents \
+  http://127.0.0.1:8888/api/v1/agents \
   -d '{
     "agent-name": "demo-agent",
     "agent-cpu": "1000m",
@@ -121,7 +121,7 @@ HTTP：
 ```bash
 curl -sS -w '\nHTTP %{http_code}\n' \
   -H "Authorization: <url-encoded-kubeconfig>" \
-  http://127.0.0.1:8999/api/v1/agents/fullcap-4gcjexv8
+  http://127.0.0.1:8888/api/v1/agents/fullcap-4gcjexv8
 ```
 
 响应：
@@ -144,7 +144,7 @@ HTTP：
 curl -sS -w '\nHTTP %{http_code}\n' -X PATCH \
   -H "Authorization: <url-encoded-kubeconfig>" \
   -H "Content-Type: application/json" \
-  http://127.0.0.1:8999/api/v1/agents/fullcap-4gcjexv8 \
+  http://127.0.0.1:8888/api/v1/agents/fullcap-4gcjexv8 \
   -d '{
     "agent-memory": "4Gi",
     "agent-model": "gpt-4.1",
@@ -171,7 +171,7 @@ HTTP：
 ```bash
 curl -sS -w '\nHTTP %{http_code}\n' \
   -H "Authorization: <url-encoded-kubeconfig>" \
-  http://127.0.0.1:8999/api/v1/agents/fullcap-4gcjexv8/key
+  http://127.0.0.1:8888/api/v1/agents/fullcap-4gcjexv8/key
 ```
 
 响应：
@@ -193,7 +193,7 @@ HTTP：
 ```bash
 curl -sS -w '\nHTTP %{http_code}\n' -X POST \
   -H "Authorization: <url-encoded-kubeconfig>" \
-  http://127.0.0.1:8999/api/v1/agents/fullcap-4gcjexv8/key/rotate
+  http://127.0.0.1:8888/api/v1/agents/fullcap-4gcjexv8/key/rotate
 ```
 
 响应：
@@ -215,7 +215,7 @@ HTTP：
 ```bash
 curl -sS -w '\nHTTP %{http_code}\n' -X POST \
   -H "Authorization: <url-encoded-kubeconfig>" \
-  http://127.0.0.1:8999/api/v1/agents/fullcap-4gcjexv8/pause
+  http://127.0.0.1:8888/api/v1/agents/fullcap-4gcjexv8/pause
 ```
 
 响应：
@@ -237,7 +237,7 @@ HTTP：
 ```bash
 curl -sS -w '\nHTTP %{http_code}\n' -X POST \
   -H "Authorization: <url-encoded-kubeconfig>" \
-  http://127.0.0.1:8999/api/v1/agents/fullcap-4gcjexv8/run
+  http://127.0.0.1:8888/api/v1/agents/fullcap-4gcjexv8/run
 ```
 
 响应：
@@ -259,7 +259,7 @@ HTTP：
 ```bash
 curl -sS -w '\nHTTP %{http_code}\n' -X DELETE \
   -H "Authorization: <url-encoded-kubeconfig>" \
-  http://127.0.0.1:8999/api/v1/agents/fullcap-4gcjexv8
+  http://127.0.0.1:8888/api/v1/agents/fullcap-4gcjexv8
 ```
 
 响应：

@@ -97,6 +97,125 @@ func TestResolveAgentRuntimeStatusTreatsFailedPodSyncAsFailed(t *testing.T) {
 	}
 }
 
+func TestResolveAgentRuntimeStatusUsesRunningPodOverFailedBootstrap(t *testing.T) {
+	t.Parallel()
+
+	devbox := newDevboxForStatusTest("Running")
+	devbox.SetAnnotations(map[string]string{
+		"agent.sealos.io/bootstrap-phase":   "failed",
+		"agent.sealos.io/bootstrap-message": "历史初始化失败",
+	})
+	clientset := fake.NewSimpleClientset(&corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "hermes",
+			Namespace: "ns-test",
+			Labels: map[string]string{
+				"agent.sealos.io/name":       "hermes",
+				"agent.sealos.io/managed-by": "agent-hub-backend",
+			},
+		},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name:  "hermes",
+				Ready: true,
+			}},
+		},
+	})
+
+	got := resolveAgentRuntimeStatus(context.Background(), clientset, devbox, "ns-test", "hermes")
+	if got != agent.StatusRunning {
+		t.Fatalf("resolveAgentRuntimeStatus() = %q, want %q", got, agent.StatusRunning)
+	}
+}
+
+func TestResolveAgentRuntimeStatusUsesRunningDevboxOverFailedBootstrap(t *testing.T) {
+	t.Parallel()
+
+	devbox := newDevboxForStatusTest("Running")
+	devbox.SetAnnotations(map[string]string{
+		"agent.sealos.io/bootstrap-phase":   "failed",
+		"agent.sealos.io/bootstrap-message": "历史初始化失败",
+	})
+	devbox.Object["status"] = map[string]any{
+		"phase": "Running",
+	}
+	clientset := fake.NewSimpleClientset()
+
+	got := resolveAgentRuntimeStatus(context.Background(), clientset, devbox, "ns-test", "hermes")
+	if got != agent.StatusRunning {
+		t.Fatalf("resolveAgentRuntimeStatus() = %q, want %q", got, agent.StatusRunning)
+	}
+}
+
+func TestResolveAgentRuntimeStatusUsesDesiredRunningOverFailedBootstrap(t *testing.T) {
+	t.Parallel()
+
+	devbox := newDevboxForStatusTest("Running")
+	devbox.SetAnnotations(map[string]string{
+		"agent.sealos.io/bootstrap-phase":   "failed",
+		"agent.sealos.io/bootstrap-message": "实例未在超时内进入可执行状态",
+	})
+	clientset := fake.NewSimpleClientset()
+
+	got := resolveAgentRuntimeStatus(context.Background(), clientset, devbox, "ns-test", "hermes")
+	if got != agent.StatusRunning {
+		t.Fatalf("resolveAgentRuntimeStatus() = %q, want %q", got, agent.StatusRunning)
+	}
+}
+
+func TestEnrichAgentRuntimeStatusClearsFailedBootstrapForRunningAgent(t *testing.T) {
+	t.Parallel()
+
+	devbox := newDevboxForStatusTest("Running")
+	devbox.SetAnnotations(map[string]string{
+		"agent.sealos.io/bootstrap-phase":   "failed",
+		"agent.sealos.io/bootstrap-message": "实例未在超时内进入可执行状态",
+	})
+	clientset := fake.NewSimpleClientset(&corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "hermes",
+			Namespace: "ns-test",
+			Labels: map[string]string{
+				"agent.sealos.io/name":       "hermes",
+				"agent.sealos.io/managed-by": "agent-hub-backend",
+			},
+		},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name:  "hermes",
+				Ready: true,
+			}},
+		},
+	})
+	view := kube.AgentView{
+		Agent: agent.Agent{
+			Name:             "hermes",
+			Namespace:        "ns-test",
+			Status:           agent.StatusFailed,
+			Ready:            false,
+			BootstrapPhase:   kube.BootstrapPhaseFailed,
+			BootstrapMessage: "实例未在超时内进入可执行状态",
+		},
+	}
+
+	enrichAgentRuntimeStatus(context.Background(), clientset, devbox, &view)
+
+	if view.Agent.Status != agent.StatusRunning {
+		t.Fatalf("status = %q, want %q", view.Agent.Status, agent.StatusRunning)
+	}
+	if !view.Agent.Ready {
+		t.Fatalf("ready = false, want true")
+	}
+	if view.Agent.BootstrapPhase != kube.BootstrapPhaseReady {
+		t.Fatalf("bootstrapPhase = %q, want %q", view.Agent.BootstrapPhase, kube.BootstrapPhaseReady)
+	}
+	if view.Agent.BootstrapMessage != "" {
+		t.Fatalf("bootstrapMessage = %q, want empty", view.Agent.BootstrapMessage)
+	}
+}
+
 func TestResolveAgentRuntimeStatusRespectsPausedState(t *testing.T) {
 	t.Parallel()
 

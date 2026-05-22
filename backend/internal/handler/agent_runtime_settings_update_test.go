@@ -104,7 +104,7 @@ func TestBuildSettingsUpdateRequestMapsSupportedFields(t *testing.T) {
 		},
 	}
 
-	mapped, validationErr := buildSettingsUpdateRequest(req, templateDef)
+	mapped, validationErr := buildSettingsUpdateRequest(req, templateDef, "cn")
 	if validationErr != nil {
 		t.Fatalf("buildSettingsUpdateRequest() error = %v, want nil", validationErr)
 	}
@@ -116,5 +116,33 @@ func TestBuildSettingsUpdateRequestMapsSupportedFields(t *testing.T) {
 	}
 	if mapped.ModelBaseURL == nil || *mapped.ModelBaseURL != "https://aiproxy.example.com/v1" {
 		t.Fatalf("mapped.ModelBaseURL = %#v, want https://aiproxy.example.com/v1", mapped.ModelBaseURL)
+	}
+	if mapped.ModelAPIMode == nil || *mapped.ModelAPIMode != "chat_completions" {
+		t.Fatalf("mapped.ModelAPIMode = %#v, want chat_completions", mapped.ModelAPIMode)
+	}
+}
+
+func TestBuildSettingsUpdateRequestMapsImageGenerationAPIMode(t *testing.T) {
+	t.Parallel()
+
+	templateDef, err := agenttemplate.Resolve("hermes-agent", "")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+
+	req := dto.UpdateAgentSettingsRequest{
+		Settings: map[string]any{
+			"provider": "custom:aiproxy-responses",
+			"model":    "cogview-4",
+			"baseURL":  "https://aiproxy.example.com/v1",
+		},
+	}
+
+	mapped, validationErr := buildSettingsUpdateRequest(req, templateDef, "cn")
+	if validationErr != nil {
+		t.Fatalf("buildSettingsUpdateRequest() error = %v, want nil", validationErr)
+	}
+	if mapped.ModelAPIMode == nil || *mapped.ModelAPIMode != "image_generation" {
+		t.Fatalf("mapped.ModelAPIMode = %#v, want image_generation", mapped.ModelAPIMode)
 	}
 }

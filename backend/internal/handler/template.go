@@ -21,7 +21,7 @@ func ListTemplates(c *gin.Context) {
 		return
 	}
 
-	definitions, err := agenttemplate.List(cfg.AgentTemplateDir)
+	definitions, err := agenttemplate.ListFromSource(templateSourceFromConfig(cfg))
 	if err != nil {
 		writeAppError(c, http.StatusInternalServerError, appErr.New(appErr.CodeKubernetesOperation, err.Error()))
 		return
@@ -75,6 +75,7 @@ func toTemplateCatalogItem(definition agenttemplate.Definition, region string) d
 		Actions:      toTemplateActionItems(definition.Actions),
 		Settings:     toTemplateSettings(definition, region),
 		ModelOptions: toTemplateModelOptions(definition.RegionModelPresets[region]),
+		ModelTypes:   toTemplateModelTypes(definition.RegionModelTypes[region]),
 	}
 }
 
@@ -125,15 +126,36 @@ func toTemplateSettings(definition agenttemplate.Definition, region string) dto.
 func toTemplateModelOptions(items []agenttemplate.ModelPreset) []dto.TemplateModelOption {
 	result := make([]dto.TemplateModelOption, 0, len(items))
 	for _, item := range items {
-		result = append(result, dto.TemplateModelOption{
-			Value:    item.Value,
-			Label:    item.Label,
-			Helper:   item.Helper,
-			Provider: item.Provider,
-			APIMode:  item.APIMode,
+		result = append(result, toTemplateModelOption(item))
+	}
+	return result
+}
+
+func toTemplateModelTypes(items []agenttemplate.ModelType) []dto.TemplateModelType {
+	result := make([]dto.TemplateModelType, 0, len(items))
+	for _, item := range items {
+		result = append(result, dto.TemplateModelType{
+			Key:         item.Key,
+			Label:       item.Label,
+			Description: item.Description,
+			Models:      toTemplateModelOptions(item.Models),
 		})
 	}
 	return result
+}
+
+func toTemplateModelOption(item agenttemplate.ModelPreset) dto.TemplateModelOption {
+	return dto.TemplateModelOption{
+		Value:            item.Value,
+		Label:            item.Label,
+		Helper:           item.Helper,
+		Provider:         item.Provider,
+		APIMode:          item.APIMode,
+		Category:         item.Category,
+		Capabilities:     append([]string(nil), item.Capabilities...),
+		InputModalities:  append([]string(nil), item.InputModalities...),
+		OutputModalities: append([]string(nil), item.OutputModalities...),
+	}
 }
 
 func toSettingFields(

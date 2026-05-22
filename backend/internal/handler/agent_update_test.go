@@ -189,11 +189,13 @@ func TestApplyUpdateToDevboxManagedAIProxySyncsDedicatedEnv(t *testing.T) {
 	baseURL := "https://aiproxy.usw-1.sealos.io"
 	model := "gpt-5.4-mini"
 	apiKey := "aiproxy-key"
+	apiMode := "codex_responses"
 
 	applyUpdateToDevbox(devbox, dto.UpdateAgentRequest{
 		ModelProvider: &provider,
 		ModelBaseURL:  &baseURL,
 		Model:         &model,
+		ModelAPIMode:  &apiMode,
 		ModelAPIKey:   &apiKey,
 	})
 
@@ -212,6 +214,12 @@ func TestApplyUpdateToDevboxManagedAIProxySyncsDedicatedEnv(t *testing.T) {
 	if got := readDevboxEnvValue(devbox, "AGENT_MODEL_BASEURL"); got != "https://aiproxy.usw-1.sealos.io/v1" {
 		t.Fatalf("AGENT_MODEL_BASEURL = %q, want normalized /v1 suffix", got)
 	}
+	if got := readDevboxEnvValue(devbox, "AGENT_MODEL_API_MODE"); got != apiMode {
+		t.Fatalf("AGENT_MODEL_API_MODE = %q, want %q", got, apiMode)
+	}
+	if got := devbox.GetAnnotations()["agent.sealos.io/model-api-mode"]; got != apiMode {
+		t.Fatalf("model-api-mode annotation = %q, want %q", got, apiMode)
+	}
 }
 
 func TestApplyUpdateToDevboxOpenAIClearsAIProxyEnv(t *testing.T) {
@@ -222,11 +230,13 @@ func TestApplyUpdateToDevboxOpenAIClearsAIProxyEnv(t *testing.T) {
 	baseURL := "https://api.openai.com/v1"
 	model := "gpt-4.1"
 	apiKey := "openai-key"
+	apiMode := "chat_completions"
 
 	applyUpdateToDevbox(devbox, dto.UpdateAgentRequest{
 		ModelProvider: &provider,
 		ModelBaseURL:  &baseURL,
 		Model:         &model,
+		ModelAPIMode:  &apiMode,
 		ModelAPIKey:   &apiKey,
 	})
 

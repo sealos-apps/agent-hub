@@ -13,6 +13,7 @@ const (
 	annotationModelProvider    = "agent.sealos.io/model-provider"
 	annotationModelBaseURL     = "agent.sealos.io/model-baseurl"
 	annotationModel            = "agent.sealos.io/model"
+	annotationModelAPIMode     = "agent.sealos.io/model-api-mode"
 	annotationTemplateID       = "agent.sealos.io/template-id"
 	annotationBootstrapPhase   = "agent.sealos.io/bootstrap-phase"
 	annotationBootstrapMessage = "agent.sealos.io/bootstrap-message"
@@ -45,6 +46,7 @@ func Annotations(spec agent.Agent) map[string]string {
 		annotationModelProvider:  strings.TrimSpace(spec.ModelProvider),
 		annotationModelBaseURL:   strings.TrimSpace(spec.ModelBaseURL),
 		annotationModel:          strings.TrimSpace(spec.Model),
+		annotationModelAPIMode:   strings.TrimSpace(spec.ModelAPIMode),
 		annotationTemplateID:     strings.TrimSpace(spec.TemplateID),
 		annotationBootstrapPhase: normalizeBootstrapPhase(spec.BootstrapPhase),
 	}

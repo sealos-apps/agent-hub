@@ -6,7 +6,7 @@
 
 前端统一品牌名入口：
 
-- [branding.ts](../web/src/branding.ts)
+- [branding.ts](../frontend/src/branding.ts)
 
 当前默认值：
 
@@ -29,7 +29,7 @@ VITE_AGENTHUB_BRAND_NAME="Agent Hub"
 
 前端页面品牌 logo 入口：
 
-- [branding.ts](../web/src/branding.ts)
+- [branding.ts](../frontend/src/branding.ts)
 
 当前默认值：
 
@@ -40,7 +40,7 @@ APP_LOGO_URL = '/brand/agent-hub.svg'
 也就是说，最简单的方式有两种：
 
 1. 直接替换：
-   - [agent-hub.svg](../web/public/brand/agent-hub.svg)
+   - [agent-hub.svg](../frontend/public/brand/agent-hub.svg)
 2. 用环境变量指定新的 SVG 路径：
 
 ```bash
@@ -49,11 +49,11 @@ VITE_AGENTHUB_LOGO_URL="/brand/agent-hub.svg"
 
 当前仓库已经落了一份默认 SVG：
 
-- [agent-hub.svg](../web/public/brand/agent-hub.svg)
+- [agent-hub.svg](../frontend/public/brand/agent-hub.svg)
 
 推荐做法：
 
-- 直接替换 `web/public/brand/agent-hub.svg`
+- 直接替换 `frontend/public/brand/agent-hub.svg`
 - 或者再设置 `VITE_AGENTHUB_LOGO_URL=/brand/agent-hub.svg`
 
 原因：
@@ -65,8 +65,8 @@ VITE_AGENTHUB_LOGO_URL="/brand/agent-hub.svg"
 
 浏览器页签标题和 favicon 现在也支持配置：
 
-- [index.html](../web/index.html)
-- [vite.config.ts](../web/vite.config.ts)
+- [index.html](../frontend/index.html)
+- [vite.config.ts](../frontend/vite.config.ts)
 
 可用环境变量：
 
@@ -130,7 +130,7 @@ https://example.com/agent-hub.svg
 
 如果你现在就要把品牌收口，建议按这个顺序：
 
-1. 把最终 SVG 放到 `web/public/brand/agent-hub.svg`
+1. 把最终 SVG 放到 `frontend/public/brand/agent-hub.svg`
 2. 设置：
    - `VITE_AGENTHUB_LOGO_URL=/brand/agent-hub.svg`
    - `VITE_AGENTHUB_FAVICON_URL=/brand/agent-hub.svg`

@@ -177,6 +177,8 @@ func TestResolveTerminalPathAllowsHermesRuntimeRoots(t *testing.T) {
 		"/opt/data/logs",
 		"/opt/hermes",
 		"/opt/hermes/.venv/bin",
+		"/workspace",
+		"/workspace/project",
 	}
 
 	for _, input := range cases {

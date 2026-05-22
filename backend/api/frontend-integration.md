@@ -25,14 +25,14 @@ REGION=us INGRESS_SUFFIX=agent.usw-1.sealos.app AGENT_IMAGE=nousresearch/hermes-
 启动成功后默认监听：
 
 ```text
-http://127.0.0.1:8999
+http://127.0.0.1:8888
 ```
 
 健康检查：
 
 ```bash
-curl http://127.0.0.1:8999/healthz
-curl http://127.0.0.1:8999/readyz
+curl http://127.0.0.1:8888/healthz
+curl http://127.0.0.1:8888/readyz
 ```
 
 说明：
@@ -226,7 +226,7 @@ export KCFG_ENCODED=...
 ```bash
 curl -s \
   -H "Authorization: $KCFG_ENCODED" \
-  http://127.0.0.1:8999/api/v1/agents
+  http://127.0.0.1:8888/api/v1/agents
 ```
 
 ### 7.2 创建
@@ -235,7 +235,7 @@ curl -s \
 curl -s -X POST \
   -H "Authorization: $KCFG_ENCODED" \
   -H "Content-Type: application/json" \
-  http://127.0.0.1:8999/api/v1/agents \
+  http://127.0.0.1:8888/api/v1/agents \
   -d '{
     "agent-name": "demo-agent",
     "agent-cpu": "1000m",
@@ -254,7 +254,7 @@ curl -s -X POST \
 ```bash
 curl -s \
   -H "Authorization: $KCFG_ENCODED" \
-  http://127.0.0.1:8999/api/v1/agents/demo-agent
+  http://127.0.0.1:8888/api/v1/agents/demo-agent
 ```
 
 ### 7.4 更新
@@ -263,7 +263,7 @@ curl -s \
 curl -s -X PATCH \
   -H "Authorization: $KCFG_ENCODED" \
   -H "Content-Type: application/json" \
-  http://127.0.0.1:8999/api/v1/agents/demo-agent \
+  http://127.0.0.1:8888/api/v1/agents/demo-agent \
   -d '{
     "agent-memory": "4Gi",
     "agent-model": "gpt-4.1",
@@ -276,7 +276,7 @@ curl -s -X PATCH \
 ```bash
 curl -s -X POST \
   -H "Authorization: $KCFG_ENCODED" \
-  http://127.0.0.1:8999/api/v1/agents/demo-agent/pause
+  http://127.0.0.1:8888/api/v1/agents/demo-agent/pause
 ```
 
 ### 7.6 恢复运行
@@ -284,7 +284,7 @@ curl -s -X POST \
 ```bash
 curl -s -X POST \
   -H "Authorization: $KCFG_ENCODED" \
-  http://127.0.0.1:8999/api/v1/agents/demo-agent/run
+  http://127.0.0.1:8888/api/v1/agents/demo-agent/run
 ```
 
 ### 7.7 轮换 key
@@ -292,7 +292,7 @@ curl -s -X POST \
 ```bash
 curl -s -X POST \
   -H "Authorization: $KCFG_ENCODED" \
-  http://127.0.0.1:8999/api/v1/agents/demo-agent/key/rotate
+  http://127.0.0.1:8888/api/v1/agents/demo-agent/key/rotate
 ```
 
 返回只表示轮换成功，不会回显真实 key。
@@ -304,7 +304,7 @@ curl -s -X POST \
 ```bash
 curl -s \
   -H "Authorization: $KCFG_ENCODED" \
-  http://127.0.0.1:8999/api/v1/agents/demo-agent/key
+  http://127.0.0.1:8888/api/v1/agents/demo-agent/key
 ```
 
 实际会返回：
@@ -330,7 +330,7 @@ curl -s \
 ```bash
 curl -s -X DELETE \
   -H "Authorization: $KCFG_ENCODED" \
-  http://127.0.0.1:8999/api/v1/agents/demo-agent
+  http://127.0.0.1:8888/api/v1/agents/demo-agent
 ```
 
 ## 8. 真实联调结论

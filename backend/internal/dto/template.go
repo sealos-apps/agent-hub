@@ -18,6 +18,7 @@ type TemplateCatalogItem struct {
 	Actions              []TemplateActionItem    `json:"actions"`
 	Settings             TemplateSettingsSchema  `json:"settings"`
 	ModelOptions         []TemplateModelOption   `json:"modelOptions"`
+	ModelTypes           []TemplateModelType     `json:"modelTypes"`
 }
 
 type TemplatePresentation struct {
@@ -51,11 +52,22 @@ type TemplateSettingsSchema struct {
 }
 
 type TemplateModelOption struct {
-	Value    string `json:"value"`
-	Label    string `json:"label"`
-	Helper   string `json:"helper,omitempty"`
-	Provider string `json:"provider"`
-	APIMode  string `json:"apiMode"`
+	Value            string   `json:"value"`
+	Label            string   `json:"label"`
+	Helper           string   `json:"helper,omitempty"`
+	Provider         string   `json:"provider"`
+	APIMode          string   `json:"apiMode"`
+	Category         string   `json:"category,omitempty"`
+	Capabilities     []string `json:"capabilities,omitempty"`
+	InputModalities  []string `json:"inputModalities,omitempty"`
+	OutputModalities []string `json:"outputModalities,omitempty"`
+}
+
+type TemplateModelType struct {
+	Key         string                `json:"key"`
+	Label       string                `json:"label"`
+	Description string                `json:"description,omitempty"`
+	Models      []TemplateModelOption `json:"models"`
 }
 
 type TemplateCatalogResponse struct {

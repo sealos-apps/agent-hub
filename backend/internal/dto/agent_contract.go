@@ -58,6 +58,7 @@ type AgentRuntimeContract struct {
 	ModelProvider    string `json:"modelProvider,omitempty"`
 	ModelBaseURL     string `json:"modelBaseURL,omitempty"`
 	Model            string `json:"model,omitempty"`
+	ModelAPIMode     string `json:"modelAPIMode,omitempty"`
 	HasModelAPIKey   bool   `json:"hasModelAPIKey"`
 }
 

@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 func TestIsCanceledRequestError(t *testing.T) {
@@ -72,5 +75,56 @@ func TestIsDeadlineExceededError(t *testing.T) {
 	}
 	if isDeadlineExceededError(context.Canceled) {
 		t.Fatalf("isDeadlineExceededError(context.Canceled) = true, want false")
+	}
+}
+
+func TestIsKubernetesUnavailableError(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "deadline exceeded",
+			err:  context.DeadlineExceeded,
+			want: true,
+		},
+		{
+			name: "tls handshake timeout",
+			err:  errors.New(`Get "https://example.test": net/http: TLS handshake timeout`),
+			want: true,
+		},
+		{
+			name: "server timeout",
+			err:  apierrors.NewServerTimeout(schema.GroupResource{Group: "devbox.sealos.io", Resource: "devboxes"}, "get", 1),
+			want: true,
+		},
+		{
+			name: "service unavailable",
+			err:  apierrors.NewServiceUnavailable("api server unavailable"),
+			want: true,
+		},
+		{
+			name: "forbidden",
+			err:  apierrors.NewForbidden(schema.GroupResource{Group: "devbox.sealos.io", Resource: "devboxes"}, "devboxes", errors.New("forbidden")),
+			want: false,
+		},
+		{
+			name: "not found",
+			err:  apierrors.NewNotFound(schema.GroupResource{Group: "devbox.sealos.io", Resource: "devboxes"}, "devboxes"),
+			want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := isKubernetesUnavailableError(tc.err); got != tc.want {
+				t.Fatalf("isKubernetesUnavailableError(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
 	}
 }

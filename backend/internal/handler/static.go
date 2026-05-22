@@ -15,7 +15,7 @@ import (
 )
 
 func RegisterFrontendRoutes(engine *gin.Engine, cfg config.Config) {
-	distDir := resolveWebDistDir(cfg.WebDistDir)
+	distDir := resolveFrontendDistDir(cfg.FrontendDistDir)
 	if distDir == "" {
 		return
 	}
@@ -75,7 +75,7 @@ func isReservedFrontendPath(requestPath string) bool {
 	}
 }
 
-func resolveWebDistDir(override string) string {
+func resolveFrontendDistDir(override string) string {
 	candidates := []string{}
 	if trimmed := strings.TrimSpace(override); trimmed != "" {
 		candidates = append(candidates, trimmed)
@@ -83,6 +83,9 @@ func resolveWebDistDir(override string) string {
 
 	if cwd, err := os.Getwd(); err == nil {
 		candidates = append(candidates,
+			filepath.Join(cwd, "frontend", "dist"),
+			filepath.Join(cwd, "..", "frontend", "dist"),
+			filepath.Join(cwd, "..", "..", "frontend", "dist"),
 			filepath.Join(cwd, "web", "dist"),
 			filepath.Join(cwd, "..", "web", "dist"),
 			filepath.Join(cwd, "..", "..", "web", "dist"),
@@ -91,7 +94,10 @@ func resolveWebDistDir(override string) string {
 
 	if _, file, _, ok := runtime.Caller(0); ok {
 		base := filepath.Dir(file)
-		candidates = append(candidates, filepath.Join(base, "..", "..", "..", "web", "dist"))
+		candidates = append(candidates,
+			filepath.Join(base, "..", "..", "..", "frontend", "dist"),
+			filepath.Join(base, "..", "..", "..", "web", "dist"),
+		)
 	}
 
 	for _, candidate := range candidates {

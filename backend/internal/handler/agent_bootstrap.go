@@ -69,26 +69,30 @@ func runAgentBootstrapLifecycle(
 		return err
 	}
 
-	if err := persistBootstrapStatus(ctx, repo, spec.Name, kube.BootstrapPhaseRunning, "执行模板初始化脚本"); err != nil {
-		return err
-	}
+	if agenttemplate.HasScriptSpec(templateDef.Bootstrap) {
+		if err := persistBootstrapStatus(ctx, repo, spec.Name, kube.BootstrapPhaseRunning, "执行模板初始化脚本"); err != nil {
+			return err
+		}
 
-	if err := executeTemplateScript(ctx, clientset, factory, spec.Name, templateDef.Bootstrap.Script, templateDef.BootstrapScriptPath(), templateDef.Bootstrap.TimeoutSeconds); err != nil {
-		if fallbackErr := runBootstrapFallback(ctx, factory, spec, err); fallbackErr != nil {
-			message := truncateBootstrapMessage(fallbackErr.Error())
-			_ = persistBootstrapStatus(context.Background(), repo, spec.Name, kube.BootstrapPhaseFailed, message)
-			return fallbackErr
+		if err := executeTemplateScript(ctx, clientset, factory, spec.Name, templateDef.Bootstrap.Script, templateDef.BootstrapScriptPath(), templateDef.Bootstrap.TimeoutSeconds); err != nil {
+			if fallbackErr := runBootstrapFallback(ctx, factory, spec, err); fallbackErr != nil {
+				message := truncateBootstrapMessage(fallbackErr.Error())
+				_ = persistBootstrapStatus(context.Background(), repo, spec.Name, kube.BootstrapPhaseFailed, message)
+				return fallbackErr
+			}
 		}
 	}
 
-	if err := persistBootstrapStatus(ctx, repo, spec.Name, kube.BootstrapPhaseRunning, "等待健康检查通过"); err != nil {
-		return err
-	}
+	if agenttemplate.HasScriptSpec(templateDef.Healthcheck) {
+		if err := persistBootstrapStatus(ctx, repo, spec.Name, kube.BootstrapPhaseRunning, "等待健康检查通过"); err != nil {
+			return err
+		}
 
-	if err := waitForTemplateHealthcheck(ctx, clientset, factory, spec.Name, templateDef); err != nil {
-		message := truncateBootstrapMessage(err.Error())
-		_ = persistBootstrapStatus(context.Background(), repo, spec.Name, kube.BootstrapPhaseFailed, message)
-		return err
+		if err := waitForTemplateHealthcheck(ctx, clientset, factory, spec.Name, templateDef); err != nil {
+			message := truncateBootstrapMessage(err.Error())
+			_ = persistBootstrapStatus(context.Background(), repo, spec.Name, kube.BootstrapPhaseFailed, message)
+			return err
+		}
 	}
 
 	if err := persistBootstrapStatus(ctx, repo, spec.Name, kube.BootstrapPhaseReady, "实例已完成初始化"); err != nil {

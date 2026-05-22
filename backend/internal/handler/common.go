@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -56,8 +58,14 @@ func writeKubernetesError(c *gin.Context, err error, message string) {
 		writeAppError(c, 499, appErr.New(appErr.CodeKubernetesOperation, "request canceled"))
 		return
 	}
-	if isDeadlineExceededError(err) {
-		writeAppError(c, http.StatusGatewayTimeout, appErr.New(appErr.CodeKubernetesOperation, "request timeout"))
+	if isKubernetesUnavailableError(err) {
+		if err != nil {
+			log.Printf("%s: %v", message, err)
+		}
+		writeAppError(c, http.StatusGatewayTimeout, appErr.New(appErr.CodeKubernetesOperation, message).WithDetails(map[string]any{
+			"reason": "kubernetes_api_unavailable",
+			"cause":  err.Error(),
+		}))
 		return
 	}
 	if err != nil {
@@ -102,4 +110,26 @@ func isDeadlineExceededError(err error) bool {
 	}
 	message := strings.ToLower(strings.TrimSpace(err.Error()))
 	return strings.Contains(message, "deadline exceeded")
+}
+
+func isKubernetesUnavailableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if isDeadlineExceededError(err) || os.IsTimeout(err) {
+		return true
+	}
+	if apierrors.IsTimeout(err) || apierrors.IsServerTimeout(err) || apierrors.IsServiceUnavailable(err) || apierrors.IsTooManyRequests(err) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && (netErr.Timeout() || netErr.Temporary()) {
+		return true
+	}
+
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(message, "tls handshake timeout") ||
+		strings.Contains(message, "timeout awaiting response headers") ||
+		strings.Contains(message, "client.timeout exceeded") ||
+		strings.Contains(message, "ssl connection timeout")
 }

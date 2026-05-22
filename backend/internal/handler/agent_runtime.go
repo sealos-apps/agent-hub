@@ -34,6 +34,7 @@ func enrichAgentRuntimeStatus(ctx context.Context, clientset kubernetes.Interfac
 	}
 
 	view.Agent.Status = resolveAgentRuntimeStatus(ctx, clientset, devbox, view.Agent.Namespace, view.Agent.Name)
+	reconcileAgentReadinessFromRuntimeStatus(&view.Agent)
 }
 
 func enrichAgentRuntimeStatusWithPod(devbox *unstructured.Unstructured, view *kube.AgentView, pod *corev1.Pod) {
@@ -42,6 +43,21 @@ func enrichAgentRuntimeStatusWithPod(devbox *unstructured.Unstructured, view *ku
 	}
 
 	view.Agent.Status = resolveAgentRuntimeStatusFromPod(devbox, pod)
+	reconcileAgentReadinessFromRuntimeStatus(&view.Agent)
+}
+
+func reconcileAgentReadinessFromRuntimeStatus(spec *agent.Agent) {
+	if spec == nil {
+		return
+	}
+
+	if spec.Status != agent.StatusRunning {
+		return
+	}
+
+	spec.Ready = true
+	spec.BootstrapPhase = kube.BootstrapPhaseReady
+	spec.BootstrapMessage = ""
 }
 
 func resolveAgentRuntimeStatus(
@@ -58,11 +74,6 @@ func resolveAgentRuntimeStatus(
 		return agent.StatusDeleting
 	}
 
-	bootstrapPhase := kube.BootstrapPhase(devbox)
-	if bootstrapPhase == kube.BootstrapPhaseFailed {
-		return agent.StatusFailed
-	}
-
 	desiredState := strings.ToLower(strings.TrimSpace(nestedString(devbox, "spec", "state")))
 	switch desiredState {
 	case "paused", "stopped":
@@ -75,6 +86,7 @@ func resolveAgentRuntimeStatus(
 
 	statusCtx, cancel := context.WithTimeout(ctx, agentRuntimeStatusTimeout)
 	defer cancel()
+	bootstrapPhase := kube.BootstrapPhase(devbox)
 	pod, err := getLatestAgentPod(statusCtx, clientset, namespace, agentName)
 	if err == nil && pod != nil {
 		return resolveAgentRuntimeStatusFromPod(devbox, pod)
@@ -91,11 +103,6 @@ func resolveAgentRuntimeStatusFromPod(devbox *unstructured.Unstructured, pod *co
 		return agent.StatusDeleting
 	}
 
-	bootstrapPhase := kube.BootstrapPhase(devbox)
-	if bootstrapPhase == kube.BootstrapPhaseFailed {
-		return agent.StatusFailed
-	}
-
 	desiredState := strings.ToLower(strings.TrimSpace(nestedString(devbox, "spec", "state")))
 	switch desiredState {
 	case "paused", "stopped":
@@ -106,6 +113,7 @@ func resolveAgentRuntimeStatusFromPod(devbox *unstructured.Unstructured, pod *co
 		return agent.StatusDeleting
 	}
 
+	bootstrapPhase := kube.BootstrapPhase(devbox)
 	if pod != nil {
 		return statusFromPod(pod, bootstrapPhase)
 	}
@@ -152,7 +160,7 @@ func statusFromPod(pod *corev1.Pod, bootstrapPhase string) agent.Status {
 	switch pod.Status.Phase {
 	case corev1.PodRunning:
 		if isPodReady(pod) {
-			if bootstrapPhase != "" && bootstrapPhase != kube.BootstrapPhaseReady {
+			if bootstrapPhase != "" && bootstrapPhase != kube.BootstrapPhaseReady && bootstrapPhase != kube.BootstrapPhaseFailed {
 				return agent.StatusStarting
 			}
 			return agent.StatusRunning
@@ -170,13 +178,9 @@ func statusFromPod(pod *corev1.Pod, bootstrapPhase string) agent.Status {
 }
 
 func statusFromDevbox(devbox *unstructured.Unstructured, desiredState string, bootstrapPhase string) agent.Status {
-	if hasFailedPodSync(devbox) {
-		return agent.StatusFailed
-	}
-
 	switch strings.ToLower(strings.TrimSpace(nestedString(devbox, "status", "phase"))) {
 	case "running":
-		if bootstrapPhase != "" && bootstrapPhase != kube.BootstrapPhaseReady {
+		if bootstrapPhase != "" && bootstrapPhase != kube.BootstrapPhaseReady && bootstrapPhase != kube.BootstrapPhaseFailed {
 			return agent.StatusStarting
 		}
 		return agent.StatusRunning
@@ -187,6 +191,12 @@ func statusFromDevbox(devbox *unstructured.Unstructured, desiredState string, bo
 	case "deleting":
 		return agent.StatusDeleting
 	default:
+		if desiredState == "running" && bootstrapPhase == kube.BootstrapPhaseFailed && !hasFailedPodSync(devbox) {
+			return agent.StatusRunning
+		}
+		if hasFailedPodSync(devbox) || bootstrapPhase == kube.BootstrapPhaseFailed {
+			return agent.StatusFailed
+		}
 		return agent.StatusCreating
 	}
 }
