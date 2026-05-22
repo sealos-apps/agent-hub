@@ -312,6 +312,45 @@ func TestPreviewProxyRequestsIdentityEncoding(t *testing.T) {
 	}
 }
 
+func TestPreviewProxyStripsSessionCookieFromUpstreamRequest(t *testing.T) {
+	t.Parallel()
+
+	seenCookie := make(chan string, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenCookie <- r.Header.Get("Cookie")
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("preview ok"))
+	}))
+	defer upstream.Close()
+
+	manager := newPreviewManager(previewManagerOptions{
+		basePath: "/__preview",
+		starter: previewTunnelStarterFunc(func(context.Context, previewTunnelTarget) (previewTunnel, error) {
+			return &fakePreviewTunnel{target: upstream.URL}, nil
+		}),
+	})
+	session, err := manager.create(context.Background(), previewCreateOptions{
+		agentName: "demo-agent",
+		namespace: "ns-test",
+		podName:   "demo-pod",
+		port:      3000,
+	})
+	if err != nil {
+		t.Fatalf("manager.create() error = %v, want nil", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/__preview/"+session.ID+"/", nil)
+	request.AddCookie(&http.Cookie{Name: session.cookieName(), Value: session.Secret})
+	request.AddCookie(&http.Cookie{Name: "app_session", Value: "keep"})
+	recorder := httptest.NewRecorder()
+
+	manager.proxy(recorder, request, session.ID, "/")
+
+	if got := <-seenCookie; got != "app_session=keep" {
+		t.Fatalf("upstream Cookie = %q, want only non-preview cookie", got)
+	}
+}
+
 func TestPreviewProxyRequiresSessionCookie(t *testing.T) {
 	t.Parallel()
 

@@ -444,6 +444,7 @@ func (m *previewManager) proxy(writer http.ResponseWriter, request *http.Request
 			req.URL.RawQuery = request.URL.RawQuery
 			req.Host = targetURL.Host
 			req.Header.Set("Accept-Encoding", "identity")
+			stripRequestCookie(req, session.cookieName())
 		},
 		ModifyResponse: func(resp *http.Response) error {
 			return rewritePreviewHTMLResponse(resp, basePath)
@@ -591,6 +592,20 @@ func previewCookieValue(request *http.Request, id string) string {
 		return ""
 	}
 	return cookie.Value
+}
+
+func stripRequestCookie(request *http.Request, name string) {
+	if request == nil || strings.TrimSpace(name) == "" {
+		return
+	}
+	cookies := request.Cookies()
+	request.Header.Del("Cookie")
+	for _, cookie := range cookies {
+		if cookie.Name == name {
+			continue
+		}
+		request.AddCookie(cookie)
+	}
 }
 
 func previewSecretsEqual(candidate, expected string) bool {

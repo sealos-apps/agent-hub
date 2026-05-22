@@ -2,6 +2,14 @@ package kube
 
 import "testing"
 
+func TestPodPortForwardMappingUsesEphemeralLocalPort(t *testing.T) {
+	t.Parallel()
+
+	if got := podPortForwardMapping(3000); got != ":3000" {
+		t.Fatalf("podPortForwardMapping(3000) = %q, want :3000", got)
+	}
+}
+
 func TestLimitedBufferKeepsRecentBytes(t *testing.T) {
 	t.Parallel()
 

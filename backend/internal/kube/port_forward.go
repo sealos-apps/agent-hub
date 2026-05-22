@@ -80,6 +80,10 @@ func (b *limitedBuffer) String() string {
 	return string(b.data)
 }
 
+func podPortForwardMapping(remotePort int) string {
+	return fmt.Sprintf(":%d", remotePort)
+}
+
 func StartPodPortForward(ctx context.Context, options PodPortForwardOptions) (*PodPortForwardTunnel, error) {
 	if options.Clientset == nil {
 		return nil, errors.New("kubernetes clientset is required")
@@ -118,7 +122,7 @@ func StartPodPortForward(ctx context.Context, options PodPortForwardOptions) (*P
 	forwarder, err := portforward.NewOnAddresses(
 		dialer,
 		[]string{"127.0.0.1"},
-		[]string{fmt.Sprintf(":%d", options.Port)},
+		[]string{podPortForwardMapping(options.Port)},
 		stopChan,
 		readyChan,
 		io.Discard,

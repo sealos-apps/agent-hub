@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act } from 'react'
 import { BrowserRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentConsoleWindowPage } from './AgentConsoleWindowPage'
@@ -324,6 +325,58 @@ describe('AgentConsoleWindowPage helpers', () => {
     await screen.findByText('预览 3000')
     fireEvent.click(openPreviewButton)
 
+    await waitFor(() => expect(createAgentPreview).toHaveBeenCalledTimes(1))
+  })
+
+  it('does not create duplicate backend previews while the preview tab ref is stale', async () => {
+    window.history.replaceState({}, '', '/console?agentName=ympp868f')
+    vi.mocked(createClusterContext).mockReturnValue(clusterContext)
+    vi.mocked(getClusterInfo).mockResolvedValue({
+      cluster: 'sealos',
+      namespace: 'ns-test',
+      kc: 'apiVersion: v1',
+      server: 'https://k8s.example.com',
+      operator: 'night',
+      updatedAt: '2026-05-22T00:00:00Z',
+    })
+    vi.mocked(listAgentTemplates).mockResolvedValue({
+      items: [template],
+      region: 'us',
+    })
+    vi.mocked(getAgentConsole).mockResolvedValue({
+      agent: agentContract,
+      workspaceRoot: '/workspace',
+      webSocketPath: '/api/v1/agents/ympp868f/ws',
+      services: [],
+    })
+    let resolvePreview: (value: { id: string; port: number; url: string }) => void = () => {}
+    vi.mocked(createAgentPreview).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePreview = resolve
+        }),
+    )
+
+    renderConsoleWindowPage()
+
+    await screen.findAllByText('Hermes Agent')
+    const addTerminalButtons = screen.getAllByRole('button', { name: '添加终端' })
+    fireEvent.click(addTerminalButtons[addTerminalButtons.length - 1])
+    await screen.findByText('mock terminal workspace')
+
+    const openPreviewButton = screen.getByRole('button', { name: 'open preview 3000' })
+    fireEvent.click(openPreviewButton)
+    await waitFor(() => expect(createAgentPreview).toHaveBeenCalledTimes(1))
+
+    resolvePreview({
+      id: 'p_3000',
+      port: 3000,
+      url: '/__preview/p_3000/',
+    })
+    await Promise.resolve()
+    fireEvent.click(openPreviewButton)
+
+    await act(async () => {})
     await waitFor(() => expect(createAgentPreview).toHaveBeenCalledTimes(1))
   })
 

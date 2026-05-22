@@ -412,6 +412,7 @@ export function AgentConsoleWindowPage() {
   const mobileTabsScrollerRef = useRef<HTMLDivElement | null>(null)
   const clusterContextRef = useRef<ClusterContext | null>(null)
   const previewTabsRef = useRef<WebTab[]>([])
+  const previewServiceKeysRef = useRef(new Set<string>())
   const openingPreviewPortsRef = useRef(new Set<string>())
 
   const {
@@ -441,7 +442,9 @@ export function AgentConsoleWindowPage() {
   }, [clusterContext])
 
   useEffect(() => {
-    previewTabsRef.current = tabs.filter((tab): tab is WebTab => tab.type === 'web' && Boolean(tab.preview))
+    const previewTabs = tabs.filter((tab): tab is WebTab => tab.type === 'web' && Boolean(tab.preview))
+    previewTabsRef.current = previewTabs
+    previewServiceKeysRef.current = new Set(previewTabs.map((tab) => tab.serviceKey))
   }, [tabs])
 
   useEffect(() => {
@@ -976,10 +979,12 @@ export function AgentConsoleWindowPage() {
       if (isMobileConsole) setMobilePane('workspace')
       return
     }
+    if (previewServiceKeysRef.current.has(previewKey)) return
     if (openingPreviewPortsRef.current.has(previewKey)) return
     openingPreviewPortsRef.current.add(previewKey)
     try {
       const preview = await createAgentPreview(item.name, port, clusterContext)
+      previewServiceKeysRef.current.add(previewKey)
       openWebTab({
         key: previewKey,
         label: t('console.openPreviewTab', { port }),
@@ -1051,6 +1056,7 @@ export function AgentConsoleWindowPage() {
         return next.length ? next : createInitialConsoleTabs(consoleHomeTitle)
       })
       if (previewTarget?.preview && clusterContext) {
+        previewServiceKeysRef.current.delete(previewTarget.serviceKey)
         void deleteAgentPreview(previewTarget.preview.agentName, previewTarget.preview.id, clusterContext)
       }
       setTerminalStates((current) => {
