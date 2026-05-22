@@ -375,7 +375,7 @@ export const createAgentPreview = async (
         body: JSON.stringify({ port }),
       },
     ),
-    "Preview 响应为空。",
+    "预览响应为空。",
   );
 
 export const heartbeatAgentPreview = async (

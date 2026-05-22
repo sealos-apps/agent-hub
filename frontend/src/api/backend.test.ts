@@ -59,6 +59,20 @@ describe('agent preview backend api', () => {
     )
   })
 
+  it('uses a Chinese error message for empty preview creation responses', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({
+        code: 0,
+        message: 'ok',
+      }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      }),
+    ) as typeof fetch
+
+    await expect(createAgentPreview('demo-agent', 3000, clusterContext)).rejects.toThrow('预览响应为空。')
+  })
+
   it('heartbeats and deletes preview sessions', async () => {
     await heartbeatAgentPreview('demo-agent', 'p_test', clusterContext)
     await deleteAgentPreview('demo-agent', 'p_test', clusterContext)
