@@ -646,12 +646,34 @@ func readPreviewHTMLBody(body io.Reader) ([]byte, error) {
 
 func rewritePreviewHTMLRootPaths(body, basePath string) string {
 	prefix := strings.TrimRight(basePath, "/")
-	replacer := strings.NewReplacer(
-		`src="/`, `src="`+prefix+`/`,
-		`href="/`, `href="`+prefix+`/`,
-		`action="/`, `action="`+prefix+`/`,
-	)
-	return replacer.Replace(body)
+	previewBase := strings.TrimRight(path.Dir(prefix), "/") + "/"
+	for _, attr := range []string{`src="`, `href="`, `action="`} {
+		body = rewritePreviewHTMLAttributeRootPaths(body, attr, prefix, previewBase)
+	}
+	return body
+}
+
+func rewritePreviewHTMLAttributeRootPaths(body, attr, prefix, previewBase string) string {
+	var builder strings.Builder
+	searchStart := 0
+	for {
+		index := strings.Index(body[searchStart:], attr)
+		if index < 0 {
+			builder.WriteString(body[searchStart:])
+			break
+		}
+		index += searchStart
+		valueStart := index + len(attr)
+		builder.WriteString(body[searchStart:valueStart])
+		remaining := body[valueStart:]
+		if strings.HasPrefix(remaining, "/") &&
+			!strings.HasPrefix(remaining, "//") &&
+			!strings.HasPrefix(remaining, previewBase) {
+			builder.WriteString(prefix)
+		}
+		searchStart = valueStart
+	}
+	return builder.String()
 }
 
 func (kubePreviewTunnelStarter) StartPreviewTunnel(ctx context.Context, target previewTunnelTarget) (previewTunnel, error) {

@@ -15,6 +15,49 @@ const viteEnv = loadEnv(
 )
 const readEnv = (key: string, fallback = '') => process.env[key] || viteEnv[key] || fallback
 
+const toScalar = (value: unknown) => {
+  if (typeof value !== 'string') return ''
+  return value.trim().replace(/^['"]|['"]$/g, '')
+}
+
+const normalizeLocalKubeconfigEnv = (value = '') => {
+  const kubeconfig = toScalar(value)
+  if (!kubeconfig) return ''
+  return kubeconfig.includes('\\n') ? kubeconfig.replace(/\\n/g, '\n').trim() : kubeconfig
+}
+
+const normalizeUsableLocalKubeconfig = (value = '') => {
+  const kubeconfig = normalizeLocalKubeconfigEnv(value)
+  if (!kubeconfig) return ''
+
+  try {
+    const parsed = parseYaml(kubeconfig)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return ''
+    const record = parsed as Record<string, unknown>
+    if (!Array.isArray(record.clusters) || !Array.isArray(record.contexts)) return ''
+    return kubeconfig
+  } catch {
+    return ''
+  }
+}
+
+const decodeLocalKubeconfigB64 = (value = '') => {
+  const encoded = toScalar(value).replace(/\s/g, '')
+  if (!encoded) return ''
+
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded) || encoded.length % 4 === 1) {
+    console.warn('[vite:local-session] invalid AGENTHUB_LOCAL_KUBECONFIG_B64')
+    return ''
+  }
+
+  try {
+    return normalizeUsableLocalKubeconfig(Buffer.from(encoded, 'base64').toString('utf8'))
+  } catch (error) {
+    console.warn('[vite:local-session] failed to decode AGENTHUB_LOCAL_KUBECONFIG_B64', error)
+    return ''
+  }
+}
+
 if (!readEnv('VITE_AGENTHUB_BROWSER_TITLE')) {
   process.env.VITE_AGENTHUB_BROWSER_TITLE = 'Agent Hub Web'
 }
@@ -31,39 +74,18 @@ const AGENT_HUB_FAVICON_URL = readEnv('VITE_AGENTHUB_FAVICON_URL', '/brand/agent
 const INSECURE_HTTPS_AGENT = new https.Agent({ rejectUnauthorized: false })
 const LOCAL_KUBECONFIG_ENV = readEnv('AGENTHUB_LOCAL_KUBECONFIG')
 const LOCAL_KUBECONFIG_B64_ENV = readEnv('AGENTHUB_LOCAL_KUBECONFIG_B64')
+const LOCAL_KUBECONFIG_INLINE =
+  normalizeUsableLocalKubeconfig(LOCAL_KUBECONFIG_ENV) ||
+  decodeLocalKubeconfigB64(LOCAL_KUBECONFIG_B64_ENV)
 const ENABLE_LOCAL_SESSION =
   String(readEnv('VITE_AGENTHUB_ENABLE_LOCAL_SESSION')).toLowerCase() === 'true' ||
-  Boolean(LOCAL_KUBECONFIG_ENV) ||
-  Boolean(LOCAL_KUBECONFIG_B64_ENV)
+  Boolean(LOCAL_KUBECONFIG_INLINE)
 if (ENABLE_LOCAL_SESSION) {
   process.env.VITE_AGENTHUB_ENABLE_LOCAL_SESSION = 'true'
 }
 const LOCAL_KUBECONFIG_PATH =
   readEnv('VITE_AGENTHUB_LOCAL_KUBECONFIG_PATH') ||
   path.resolve(process.cwd(), '../.local/kubeconfig.yaml')
-
-const toScalar = (value: unknown) => {
-  if (typeof value !== 'string') return ''
-  return value.trim().replace(/^['"]|['"]$/g, '')
-}
-
-const decodeLocalKubeconfigB64 = (value = '') => {
-  const encoded = toScalar(value)
-  if (!encoded) return ''
-
-  try {
-    return Buffer.from(encoded, 'base64').toString('utf8').trim()
-  } catch (error) {
-    console.warn('[vite:local-session] failed to decode AGENTHUB_LOCAL_KUBECONFIG_B64', error)
-    return ''
-  }
-}
-
-const normalizeLocalKubeconfigEnv = (value = '') => {
-  const kubeconfig = toScalar(value)
-  if (!kubeconfig) return ''
-  return kubeconfig.includes('\\n') ? kubeconfig.replace(/\\n/g, '\n').trim() : kubeconfig
-}
 
 const decodeHeaderValue = (value: unknown) => {
   const scalar = Array.isArray(value) ? value[0] : value
@@ -135,8 +157,7 @@ const parseProxyKubeconfig = (authorizationHeader = '') => {
 const loadLocalSealosSession = () => {
   try {
     const kubeconfig =
-      normalizeLocalKubeconfigEnv(LOCAL_KUBECONFIG_ENV) ||
-      decodeLocalKubeconfigB64(LOCAL_KUBECONFIG_B64_ENV) ||
+      LOCAL_KUBECONFIG_INLINE ||
       (fs.existsSync(LOCAL_KUBECONFIG_PATH)
         ? fs.readFileSync(LOCAL_KUBECONFIG_PATH, 'utf8').trim()
         : '')

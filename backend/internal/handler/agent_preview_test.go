@@ -434,6 +434,30 @@ func TestPreviewProxyRewritesHTMLRootAssetPaths(t *testing.T) {
 	}
 }
 
+func TestRewritePreviewHTMLRootPathsSkipsProtocolRelativeAndPreviewPaths(t *testing.T) {
+	t.Parallel()
+
+	body := `<script src="//cdn.example.com/app.js"></script><link href="/__preview/p_existing/app.css"><a href="/docs">docs</a><form action="/submit"></form>`
+	rewritten := rewritePreviewHTMLRootPaths(body, "/__preview/p_test/")
+
+	for _, want := range []string{
+		`src="//cdn.example.com/app.js"`,
+		`href="/__preview/p_existing/app.css"`,
+		`href="/__preview/p_test/docs"`,
+		`action="/__preview/p_test/submit"`,
+	} {
+		if !strings.Contains(rewritten, want) {
+			t.Fatalf("rewritePreviewHTMLRootPaths() = %q, want %s", rewritten, want)
+		}
+	}
+	if strings.Contains(rewritten, `/__preview/p_test//cdn.example.com`) {
+		t.Fatalf("rewritePreviewHTMLRootPaths() = %q, rewrote protocol-relative URL", rewritten)
+	}
+	if strings.Contains(rewritten, `/__preview/p_test/__preview/p_existing`) {
+		t.Fatalf("rewritePreviewHTMLRootPaths() = %q, rewrote existing preview URL", rewritten)
+	}
+}
+
 func TestReadPreviewHTMLBodyRejectsOversizedResponse(t *testing.T) {
 	t.Parallel()
 
