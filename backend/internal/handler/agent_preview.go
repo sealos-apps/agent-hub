@@ -32,11 +32,9 @@ const defaultPreviewCleanupInterval = time.Minute
 const maxPreviewHTMLRewriteBytes = 2 * 1024 * 1024
 
 var defaultPreviewManager = newPreviewManager(previewManagerOptions{
-	basePath:         defaultPreviewBasePath,
-	starter:          kubePreviewTunnelStarter{},
-	idleTTL:          defaultPreviewIdleTTL,
-	cleanupInterval:  defaultPreviewCleanupInterval,
-	startCleanupLoop: true,
+	basePath: defaultPreviewBasePath,
+	starter:  kubePreviewTunnelStarter{},
+	idleTTL:  defaultPreviewIdleTTL,
 })
 
 type createPreviewRequest struct {
@@ -75,12 +73,10 @@ func (f previewTunnelStarterFunc) StartPreviewTunnel(ctx context.Context, target
 }
 
 type previewManagerOptions struct {
-	basePath         string
-	starter          previewTunnelStarter
-	now              func() time.Time
-	idleTTL          time.Duration
-	cleanupInterval  time.Duration
-	startCleanupLoop bool
+	basePath string
+	starter  previewTunnelStarter
+	now      func() time.Time
+	idleTTL  time.Duration
 }
 
 type previewCreateOptions struct {
@@ -137,14 +133,11 @@ func newPreviewManager(options previewManagerOptions) *previewManager {
 		idleTTL:  idleTTL,
 		sessions: map[string]*previewSession{},
 	}
-	if options.startCleanupLoop {
-		interval := options.cleanupInterval
-		if interval <= 0 {
-			interval = defaultPreviewCleanupInterval
-		}
-		go manager.cleanupLoop(interval)
-	}
 	return manager
+}
+
+func StartAgentPreviewCleanup(ctx context.Context) {
+	go defaultPreviewManager.cleanupLoop(ctx, defaultPreviewCleanupInterval)
 }
 
 func CreateAgentPreview(c *gin.Context) {
@@ -513,12 +506,17 @@ func (m *previewManager) expireIdleSessions() int {
 	return len(expired)
 }
 
-func (m *previewManager) cleanupLoop(interval time.Duration) {
+func (m *previewManager) cleanupLoop(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		m.expireIdleSessions()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			m.expireIdleSessions()
+		}
 	}
 }
 

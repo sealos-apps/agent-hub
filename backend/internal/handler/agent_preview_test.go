@@ -179,6 +179,31 @@ func TestPreviewManagerExpireIdleSessionsClosesTunnel(t *testing.T) {
 	}
 }
 
+func TestPreviewManagerCleanupLoopStopsWhenContextCancels(t *testing.T) {
+	t.Parallel()
+
+	manager := newPreviewManager(previewManagerOptions{
+		basePath: "/__preview",
+		starter: previewTunnelStarterFunc(func(context.Context, previewTunnelTarget) (previewTunnel, error) {
+			return &fakePreviewTunnel{target: "http://127.0.0.1:45678"}, nil
+		}),
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+
+	go func() {
+		manager.cleanupLoop(ctx, time.Hour)
+		close(done)
+	}()
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("cleanupLoop did not stop after context cancellation")
+	}
+}
+
 func TestPreviewManagerRejectsWrongAgentForHeartbeatAndRelease(t *testing.T) {
 	t.Parallel()
 
