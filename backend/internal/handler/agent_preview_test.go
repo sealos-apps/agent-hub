@@ -434,6 +434,16 @@ func TestPreviewProxyRewritesHTMLRootAssetPaths(t *testing.T) {
 	}
 }
 
+func TestReadPreviewHTMLBodyRejectsOversizedResponse(t *testing.T) {
+	t.Parallel()
+
+	body := strings.NewReader(strings.Repeat("x", maxPreviewHTMLRewriteBytes+1))
+
+	if _, err := readPreviewHTMLBody(body); err == nil {
+		t.Fatal("readPreviewHTMLBody() error = nil, want size limit error")
+	}
+}
+
 func TestCreateAgentPreviewRejectsInvalidPort(t *testing.T) {
 	t.Parallel()
 

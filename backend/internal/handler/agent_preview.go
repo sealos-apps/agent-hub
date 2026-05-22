@@ -29,6 +29,7 @@ import (
 const defaultPreviewBasePath = "/__preview"
 const defaultPreviewIdleTTL = 5 * time.Minute
 const defaultPreviewCleanupInterval = time.Minute
+const maxPreviewHTMLRewriteBytes = 2 * 1024 * 1024
 
 var defaultPreviewManager = newPreviewManager(previewManagerOptions{
 	basePath:         defaultPreviewBasePath,
@@ -619,7 +620,7 @@ func rewritePreviewHTMLResponse(resp *http.Response, basePath string) error {
 	if resp == nil || resp.Body == nil || !strings.HasPrefix(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") {
 		return nil
 	}
-	body, err := io.ReadAll(resp.Body)
+	body, err := readPreviewHTMLBody(resp.Body)
 	_ = resp.Body.Close()
 	if err != nil {
 		return err
@@ -629,6 +630,18 @@ func rewritePreviewHTMLResponse(resp *http.Response, basePath string) error {
 	resp.ContentLength = int64(len(rewritten))
 	resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(rewritten)))
 	return nil
+}
+
+func readPreviewHTMLBody(body io.Reader) ([]byte, error) {
+	reader := io.LimitReader(body, maxPreviewHTMLRewriteBytes+1)
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxPreviewHTMLRewriteBytes {
+		return nil, errors.New("preview html response exceeds rewrite size limit")
+	}
+	return data, nil
 }
 
 func rewritePreviewHTMLRootPaths(body, basePath string) string {
