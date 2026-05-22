@@ -443,4 +443,73 @@ describe('AgentConsoleWindowPage helpers', () => {
     await screen.findAllByText('Next Agent')
   })
 
+  it('releases an in-flight preview session when the agent changes before creation resolves', async () => {
+    window.history.replaceState({}, '', '/console?agentName=ympp868f')
+    vi.mocked(createClusterContext).mockReturnValue(clusterContext)
+    vi.mocked(getClusterInfo).mockResolvedValue({
+      cluster: 'sealos',
+      namespace: 'ns-test',
+      kc: 'apiVersion: v1',
+      server: 'https://k8s.example.com',
+      operator: 'night',
+      updatedAt: '2026-05-22T00:00:00Z',
+    })
+    vi.mocked(listAgentTemplates).mockResolvedValue({
+      items: [template],
+      region: 'us',
+    })
+    vi.mocked(getAgentConsole).mockImplementation(async (agentName) => ({
+      agent: {
+        ...agentContract,
+        core: {
+          ...agentContract.core,
+          name: agentName,
+          aliasName: agentName === 'next-agent' ? 'Next Agent' : 'Hermes Agent',
+        },
+      },
+      workspaceRoot: '/workspace',
+      webSocketPath: `/api/v1/agents/${agentName}/ws`,
+      services: [],
+    }))
+    let resolvePreview: (value: { id: string; port: number; url: string }) => void = () => {}
+    vi.mocked(createAgentPreview).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePreview = resolve
+        }),
+    )
+
+    renderConsoleWindowPage()
+
+    await screen.findAllByText('Hermes Agent')
+    const addTerminalButtons = screen.getAllByRole('button', { name: '添加终端' })
+    fireEvent.click(addTerminalButtons[addTerminalButtons.length - 1])
+    await screen.findByText('mock terminal workspace')
+
+    fireEvent.click(screen.getByRole('button', { name: 'open preview 3000' }))
+    await waitFor(() => expect(createAgentPreview).toHaveBeenCalledTimes(1))
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'AgentHubConsoleWindow', agentName: 'next-agent' },
+          origin: window.location.origin,
+          source: window,
+        }),
+      )
+    })
+    await screen.findAllByText('Next Agent')
+
+    resolvePreview({
+      id: 'p_late',
+      port: 3000,
+      url: '/__preview/p_late/',
+    })
+
+    await waitFor(() => {
+      expect(deleteAgentPreview).toHaveBeenCalledWith('ympp868f', 'p_late', clusterContext)
+    })
+    expect(screen.queryByText('预览 3000')).not.toBeInTheDocument()
+  })
+
 })

@@ -411,6 +411,10 @@ export function AgentConsoleWindowPage() {
   const manuallyCollapsedPathsRef = useRef(new Set<string>())
   const mobileTabsScrollerRef = useRef<HTMLDivElement | null>(null)
   const clusterContextRef = useRef<ClusterContext | null>(null)
+  const activePreviewTargetRef = useRef<{ agentName: string; clusterContext: ClusterContext | null }>({
+    agentName: '',
+    clusterContext: null,
+  })
   const previewTabsRef = useRef<WebTab[]>([])
   const previewServiceKeysRef = useRef(new Set<string>())
   const openingPreviewPortsRef = useRef(new Set<string>())
@@ -452,7 +456,11 @@ export function AgentConsoleWindowPage() {
 
   useEffect(() => {
     clusterContextRef.current = clusterContext
-  }, [clusterContext])
+    activePreviewTargetRef.current = {
+      agentName: item?.name || '',
+      clusterContext,
+    }
+  }, [clusterContext, item?.name])
 
   useEffect(() => {
     const previewTabs = tabs.filter((tab): tab is WebTab => tab.type === 'web' && Boolean(tab.preview))
@@ -984,9 +992,10 @@ export function AgentConsoleWindowPage() {
 
   const openPreviewPort = useCallback(async (port: number) => {
     if (!clusterContext || !item) return
-    const previewKey = `preview:${item.name}:${port}`
+    const agentName = item.name
+    const previewKey = `preview:${agentName}:${port}`
     const existing = previewTabsRef.current.find(
-      (tab) => tab.preview?.agentName === item.name && tab.preview.port === port,
+      (tab) => tab.preview?.agentName === agentName && tab.preview.port === port,
     )
     if (existing) {
       setActiveTabId(existing.id)
@@ -997,14 +1006,19 @@ export function AgentConsoleWindowPage() {
     if (openingPreviewPortsRef.current.has(previewKey)) return
     openingPreviewPortsRef.current.add(previewKey)
     try {
-      const preview = await createAgentPreview(item.name, port, clusterContext)
+      const preview = await createAgentPreview(agentName, port, clusterContext)
+      const activePreviewTarget = activePreviewTargetRef.current
+      if (activePreviewTarget.agentName !== agentName || activePreviewTarget.clusterContext !== clusterContext) {
+        void deleteAgentPreview(agentName, preview.id, clusterContext)
+        return
+      }
       previewServiceKeysRef.current.add(previewKey)
       openWebTab({
         key: previewKey,
         label: t('console.openPreviewTab', { port }),
         url: preview.url,
         preview: {
-          agentName: item.name,
+          agentName,
           id: preview.id,
           port: preview.port,
         },
