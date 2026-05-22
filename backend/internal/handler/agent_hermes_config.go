@@ -175,7 +175,7 @@ def resolve_aiproxy_provider_base_url(base_url: str, provider: str, model_name: 
     return urlunparse(parsed).rstrip("/")
 
 
-def upsert_aiproxy_custom_providers(config: dict, base_url: str, active_provider: str, model_name: str) -> None:
+def upsert_aiproxy_custom_providers(config: dict, base_url: str, active_provider: str, model_name: str, active_api_mode: str = "") -> None:
     existing_entries = config.get("custom_providers")
     if not isinstance(existing_entries, list):
         existing_entries = []
@@ -212,7 +212,7 @@ def upsert_aiproxy_custom_providers(config: dict, base_url: str, active_provider
         entry["provider_key"] = provider_name
         entry["key_env"] = AIPROXY_API_KEY_ENV
         entry["base_url"] = resolve_aiproxy_provider_base_url(base_url, provider_id)
-        entry["api_mode"] = profile["api_mode"]
+        entry["api_mode"] = active_api_mode if provider_id == normalized_active and active_api_mode else profile["api_mode"]
         if provider_id == normalized_active and model_name:
             entry["model"] = model_name
         else:
@@ -235,22 +235,29 @@ config["model"] = model_cfg
 provider = os.environ.get("AGENT_MODEL_PROVIDER", "").strip() or "custom"
 base_url = os.environ.get("AGENT_MODEL_BASEURL", "")
 model_name = os.environ.get("AGENT_MODEL", "").strip()
+api_mode = os.environ.get("AGENT_MODEL_API_MODE", "").strip()
 
 if is_aiproxy_provider(provider):
     provider, _ = resolve_aiproxy_provider(provider, model_name)
     resolved_base_url = resolve_aiproxy_provider_base_url(base_url, provider, model_name)
     model_cfg["provider"] = provider
     model_cfg.pop("base_url", None)
-    model_cfg.pop("api_mode", None)
+    if api_mode:
+        model_cfg["api_mode"] = api_mode
+    else:
+        model_cfg.pop("api_mode", None)
     if model_name:
         model_cfg["default"] = model_name
-    upsert_aiproxy_custom_providers(config, base_url, provider, model_name)
+    upsert_aiproxy_custom_providers(config, base_url, provider, model_name, api_mode)
 else:
     resolved_base_url = normalize_aiproxy_base_url(base_url)
     model_cfg["provider"] = provider
     if resolved_base_url:
         model_cfg["base_url"] = resolved_base_url
-    model_cfg.pop("api_mode", None)
+    if api_mode:
+        model_cfg["api_mode"] = api_mode
+    else:
+        model_cfg.pop("api_mode", None)
 if model_name:
     model_cfg["default"] = model_name
 

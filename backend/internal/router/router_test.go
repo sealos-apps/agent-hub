@@ -142,6 +142,34 @@ func TestListTemplatesReturnsRegionalCatalogWithoutAuthorization(t *testing.T) {
 		if !ok || len(modelOptions) == 0 {
 			t.Fatalf("hermes-agent modelOptions = %#v, want regional presets", item["modelOptions"])
 		}
+		modelTypes, ok := item["modelTypes"].([]any)
+		if !ok || len(modelTypes) == 0 {
+			t.Fatalf("hermes-agent modelTypes = %#v, want grouped model types", item["modelTypes"])
+		}
+		foundMultimodalType := false
+		foundImageType := false
+		for _, typeRaw := range modelTypes {
+			modelType, ok := typeRaw.(map[string]any)
+			if !ok {
+				t.Fatalf("hermes-agent model type = %#v, want map", typeRaw)
+			}
+			models, ok := modelType["models"].([]any)
+			if !ok || len(models) == 0 {
+				t.Fatalf("hermes-agent model type %v models = %#v, want models", modelType["key"], modelType["models"])
+			}
+			switch modelType["key"] {
+			case "multimodal":
+				foundMultimodalType = true
+			case "image":
+				foundImageType = true
+			}
+		}
+		if !foundMultimodalType {
+			t.Fatalf("hermes-agent modelTypes did not expose multimodal group: %#v", modelTypes)
+		}
+		if !foundImageType {
+			t.Fatalf("hermes-agent modelTypes did not expose image group: %#v", modelTypes)
+		}
 
 		for _, optionRaw := range modelOptions {
 			option, ok := optionRaw.(map[string]any)
@@ -152,11 +180,51 @@ func TestListTemplatesReturnsRegionalCatalogWithoutAuthorization(t *testing.T) {
 				t.Fatalf("cn catalog should not expose us-only model gpt-5.4-mini: %#v", modelOptions)
 			}
 		}
+		foundMultimodal := false
+		foundImageGeneration := false
+		for _, optionRaw := range modelOptions {
+			option := optionRaw.(map[string]any)
+			if option["value"] == "glm-4.6v" {
+				foundMultimodal = true
+				if option["category"] != "multimodal" {
+					t.Fatalf("glm-4.6v category = %#v, want multimodal", option["category"])
+				}
+				inputModalities, ok := option["inputModalities"].([]any)
+				if !ok || !containsAnyString(inputModalities, "image") {
+					t.Fatalf("glm-4.6v inputModalities = %#v, want image", option["inputModalities"])
+				}
+			}
+			if option["value"] == "cogview-4" {
+				foundImageGeneration = true
+				if option["apiMode"] != "image_generation" {
+					t.Fatalf("cogview-4 apiMode = %#v, want image_generation", option["apiMode"])
+				}
+				outputModalities, ok := option["outputModalities"].([]any)
+				if !ok || !containsAnyString(outputModalities, "image") {
+					t.Fatalf("cogview-4 outputModalities = %#v, want image", option["outputModalities"])
+				}
+			}
+		}
+		if !foundMultimodal {
+			t.Fatalf("cn catalog did not expose multimodal model glm-4.6v: %#v", modelOptions)
+		}
+		if !foundImageGeneration {
+			t.Fatalf("cn catalog did not expose image generation model cogview-4: %#v", modelOptions)
+		}
 	}
 
 	if !foundHermes {
 		t.Fatal("GET /api/v1/templates did not return hermes-agent")
 	}
+}
+
+func containsAnyString(items []any, expected string) bool {
+	for _, item := range items {
+		if value, ok := item.(string); ok && value == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func TestListTemplatesRejectsMissingRegion(t *testing.T) {

@@ -20,7 +20,7 @@ func TestLoadPrefersRegionEnv(t *testing.T) {
 	}
 }
 
-func TestLoadInvalidRegionClearsValue(t *testing.T) {
+func TestLoadInvalidRegionReturnsEmpty(t *testing.T) {
 	t.Setenv("LOAD_DOTENV", "")
 	t.Setenv("GO_ENV", "production")
 	t.Setenv("APP_ENV", "")
@@ -30,11 +30,11 @@ func TestLoadInvalidRegionClearsValue(t *testing.T) {
 
 	cfg := Load()
 	if cfg.Region != "" {
-		t.Fatalf("Load().Region = %q, want empty", cfg.Region)
+		t.Fatalf("Load().Region = %q, want empty region for invalid REGION", cfg.Region)
 	}
 }
 
-func TestLoadNormalizesUSW1RegionToUS(t *testing.T) {
+func TestLoadRejectsClusterAliasRegion(t *testing.T) {
 	t.Setenv("LOAD_DOTENV", "")
 	t.Setenv("GO_ENV", "production")
 	t.Setenv("APP_ENV", "")
@@ -43,12 +43,12 @@ func TestLoadNormalizesUSW1RegionToUS(t *testing.T) {
 	t.Setenv("REGION", "usw-1")
 
 	cfg := Load()
-	if cfg.Region != "us" {
-		t.Fatalf("Load().Region = %q, want us", cfg.Region)
+	if cfg.Region != "" {
+		t.Fatalf("Load().Region = %q, want empty region for cluster alias REGION", cfg.Region)
 	}
 }
 
-func TestLoadMissingRegionKeepsEmpty(t *testing.T) {
+func TestLoadMissingRegionReturnsEmpty(t *testing.T) {
 	t.Setenv("LOAD_DOTENV", "")
 	t.Setenv("GO_ENV", "production")
 	t.Setenv("APP_ENV", "")
@@ -58,7 +58,7 @@ func TestLoadMissingRegionKeepsEmpty(t *testing.T) {
 
 	cfg := Load()
 	if cfg.Region != "" {
-		t.Fatalf("Load().Region = %q, want empty", cfg.Region)
+		t.Fatalf("Load().Region = %q, want empty region when REGION is missing", cfg.Region)
 	}
 }
 
@@ -175,6 +175,75 @@ func TestLoadParsesK8sProxyAllowedHostsFromEnv(t *testing.T) {
 	}
 }
 
+func TestLoadReadsTemplateAndFrontendSourceConfig(t *testing.T) {
+	t.Setenv("LOAD_DOTENV", "")
+	t.Setenv("GO_ENV", "production")
+	t.Setenv("APP_ENV", "")
+	t.Setenv("GIN_MODE", "")
+	t.Setenv("KUBERNETES_SERVICE_HOST", "")
+	t.Setenv("AGENT_TEMPLATE_GITHUB_URL", "https://github.com/example/agent-templates/tree/main/template")
+	t.Setenv("AGENT_TEMPLATE_GITHUB_TOKEN", "secret-token")
+	t.Setenv("AGENT_TEMPLATE_CACHE_DIR", "/tmp/agenthub-templates")
+	t.Setenv("FRONTEND_DIST_DIR", "/app/frontend/dist")
+	t.Setenv("WEB_DIST_DIR", "/app/web/dist")
+
+	cfg := Load()
+	if cfg.AgentTemplateGitHubURL != "https://github.com/example/agent-templates/tree/main/template" {
+		t.Fatalf("Load().AgentTemplateGitHubURL = %q, want configured github url", cfg.AgentTemplateGitHubURL)
+	}
+	if cfg.AgentTemplateGitHubToken != "secret-token" {
+		t.Fatalf("Load().AgentTemplateGitHubToken = %q, want configured token", cfg.AgentTemplateGitHubToken)
+	}
+	if cfg.AgentTemplateCacheDir != "/tmp/agenthub-templates" {
+		t.Fatalf("Load().AgentTemplateCacheDir = %q, want configured cache dir", cfg.AgentTemplateCacheDir)
+	}
+	if cfg.FrontendDistDir != "/app/frontend/dist" {
+		t.Fatalf("Load().FrontendDistDir = %q, want FRONTEND_DIST_DIR", cfg.FrontendDistDir)
+	}
+}
+
+func TestLoadDefaultsTemplateGitHubURLWhenUnset(t *testing.T) {
+	t.Setenv("LOAD_DOTENV", "")
+	t.Setenv("GO_ENV", "production")
+	t.Setenv("APP_ENV", "")
+	t.Setenv("GIN_MODE", "")
+	t.Setenv("KUBERNETES_SERVICE_HOST", "")
+
+	cfg := Load()
+	if cfg.AgentTemplateGitHubURL != DefaultAgentTemplateGitHubURL {
+		t.Fatalf("Load().AgentTemplateGitHubURL = %q, want default template github url", cfg.AgentTemplateGitHubURL)
+	}
+}
+
+func TestLoadAllowsExplicitEmptyTemplateGitHubURL(t *testing.T) {
+	t.Setenv("LOAD_DOTENV", "")
+	t.Setenv("GO_ENV", "production")
+	t.Setenv("APP_ENV", "")
+	t.Setenv("GIN_MODE", "")
+	t.Setenv("KUBERNETES_SERVICE_HOST", "")
+	t.Setenv("AGENT_TEMPLATE_GITHUB_URL", "")
+
+	cfg := Load()
+	if cfg.AgentTemplateGitHubURL != "" {
+		t.Fatalf("Load().AgentTemplateGitHubURL = %q, want explicit empty value", cfg.AgentTemplateGitHubURL)
+	}
+}
+
+func TestLoadFallsBackToLegacyWebDistDir(t *testing.T) {
+	t.Setenv("LOAD_DOTENV", "")
+	t.Setenv("GO_ENV", "production")
+	t.Setenv("APP_ENV", "")
+	t.Setenv("GIN_MODE", "")
+	t.Setenv("KUBERNETES_SERVICE_HOST", "")
+	t.Setenv("FRONTEND_DIST_DIR", "")
+	t.Setenv("WEB_DIST_DIR", "/legacy/web/dist")
+
+	cfg := Load()
+	if cfg.FrontendDistDir != "/legacy/web/dist" {
+		t.Fatalf("Load().FrontendDistDir = %q, want legacy WEB_DIST_DIR", cfg.FrontendDistDir)
+	}
+}
+
 func TestLoadDoesNotReadDotEnvInProductionByDefault(t *testing.T) {
 	t.Setenv("LOAD_DOTENV", "")
 	t.Setenv("GO_ENV", "production")
@@ -201,7 +270,7 @@ func TestLoadDoesNotReadDotEnvInProductionByDefault(t *testing.T) {
 
 	cfg := Load()
 	if cfg.Region != "" {
-		t.Fatalf("Load().Region = %q, want empty in production when LOAD_DOTENV is not enabled", cfg.Region)
+		t.Fatalf("Load().Region = %q, want empty region in production when LOAD_DOTENV is not enabled", cfg.Region)
 	}
 }
 

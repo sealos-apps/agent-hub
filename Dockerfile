@@ -1,10 +1,10 @@
-FROM node:22-bookworm-slim AS web-build
-WORKDIR /src/web
+FROM node:22-bookworm-slim AS frontend-build
+WORKDIR /src/frontend
 
-COPY web/package.json web/package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
-COPY web/ ./
+COPY frontend/ ./
 RUN npm run build
 
 FROM golang:1.26.2-bookworm AS go-build
@@ -19,14 +19,14 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o
 FROM gcr.io/distroless/base-debian12:nonroot
 WORKDIR /app
 
-ENV PORT=8999
-ENV WEB_DIST_DIR=/app/web/dist
-ENV AGENT_MANIFEST_TEMPLATE_DIR=/app/template
+ENV PORT=8888
+ENV REGION=us
+ENV FRONTEND_DIST_DIR=/app/frontend/dist
+ENV AGENT_TEMPLATE_GITHUB_URL=https://github.com/gitlayzer/Agent-Hub-Template
 
 COPY --from=go-build /out/agenthub /app/agenthub
-COPY --from=web-build /src/web/dist /app/web/dist
-COPY template/ /app/template/
+COPY --from=frontend-build /src/frontend/dist /app/frontend/dist
 
-EXPOSE 8999
+EXPOSE 8888
 
 ENTRYPOINT ["/app/agenthub"]

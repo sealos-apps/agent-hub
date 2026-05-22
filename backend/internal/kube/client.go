@@ -2,8 +2,10 @@ package kube
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	appErr "github.com/nightwhite/Agent-Hub/pkg/errors"
@@ -18,8 +20,9 @@ const DefaultAuthorizationHeader = "Authorization"
 const WebSocketAuthorizationQueryParam = "authorization"
 
 type Factory struct {
-	restConfig *rest.Config
-	namespace  string
+	restConfig    *rest.Config
+	namespace     string
+	clusterServer string
 }
 
 func NewFactoryFromHeaders(header http.Header) (*Factory, *appErr.AppError) {
@@ -56,6 +59,8 @@ func NewFactoryFromEncodedKubeconfig(encodedKC string) (*Factory, *appErr.AppErr
 			"reason": "invalid_kubeconfig",
 		})
 	}
+	clusterServer := strings.TrimSpace(restConfig.Host)
+	restConfig.Host = preferredAPIServerHost(restConfig.Host)
 
 	namespace, err := namespaceFromKubeconfig([]byte(rawKC))
 	if err != nil {
@@ -65,7 +70,7 @@ func NewFactoryFromEncodedKubeconfig(encodedKC string) (*Factory, *appErr.AppErr
 		})
 	}
 
-	return &Factory{restConfig: restConfig, namespace: namespace}, nil
+	return &Factory{restConfig: restConfig, namespace: namespace, clusterServer: clusterServer}, nil
 }
 
 func namespaceFromKubeconfig(rawKC []byte) (string, error) {
@@ -101,7 +106,13 @@ func (f *Factory) RESTConfig() *rest.Config {
 }
 
 func (f *Factory) ClusterServer() string {
-	if f == nil || f.restConfig == nil {
+	if f == nil {
+		return ""
+	}
+	if strings.TrimSpace(f.clusterServer) != "" {
+		return strings.TrimSpace(f.clusterServer)
+	}
+	if f.restConfig == nil {
 		return ""
 	}
 	return strings.TrimSpace(f.restConfig.Host)
@@ -117,4 +128,16 @@ func (f *Factory) Dynamic() (dynamic.Interface, error) {
 
 func (f *Factory) ListOptionsByAgentName(agentName string) metav1.ListOptions {
 	return metav1.ListOptions{LabelSelector: fmt.Sprintf("agent.sealos.io/name=%s", agentName)}
+}
+
+func preferredAPIServerHost(fallback string) string {
+	serviceHost := strings.TrimSpace(os.Getenv("KUBERNETES_SERVICE_HOST"))
+	if serviceHost == "" {
+		return strings.TrimSpace(fallback)
+	}
+	servicePort := strings.TrimSpace(os.Getenv("KUBERNETES_SERVICE_PORT"))
+	if servicePort == "" {
+		servicePort = "443"
+	}
+	return "https://" + net.JoinHostPort(serviceHost, servicePort)
 }

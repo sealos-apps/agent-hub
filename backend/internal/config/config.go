@@ -7,18 +7,25 @@ import (
 	"github.com/joho/godotenv"
 )
 
+const (
+	DefaultAgentTemplateGitHubURL = "https://github.com/gitlayzer/Agent-Hub-Template"
+)
+
 type Config struct {
-	Port                string
-	IngressSuffix       string
-	SSHDomain           string
-	APIServerImage      string
-	AgentTemplateDir    string
-	WebDistDir          string
-	AIProxyBaseURL      string
-	AIProxyModelBaseURL string
-	Region              string
-	K8sProxyAllowHosts  []string
-	WSAllowedOrigins    string
+	Port                     string
+	IngressSuffix            string
+	SSHDomain                string
+	APIServerImage           string
+	AgentTemplateDir         string
+	AgentTemplateGitHubURL   string
+	AgentTemplateGitHubToken string
+	AgentTemplateCacheDir    string
+	FrontendDistDir          string
+	AIProxyBaseURL           string
+	AIProxyModelBaseURL      string
+	Region                   string
+	K8sProxyAllowHosts       []string
+	WSAllowedOrigins         string
 }
 
 func Load() Config {
@@ -30,17 +37,20 @@ func Load() Config {
 	}
 
 	return Config{
-		Port:                getenv("PORT", "8999"),
-		IngressSuffix:       getenv("INGRESS_SUFFIX", "agent.usw-1.sealos.app"),
-		SSHDomain:           strings.TrimSpace(os.Getenv("SSH_DOMAIN")),
-		APIServerImage:      getenv("AGENT_IMAGE", "nousresearch/hermes-agent:latest"),
-		AgentTemplateDir:    getenv("AGENT_MANIFEST_TEMPLATE_DIR", ""),
-		WebDistDir:          getenv("WEB_DIST_DIR", ""),
-		AIProxyBaseURL:      aiProxyManagerBaseURL,
-		AIProxyModelBaseURL: strings.TrimSpace(os.Getenv("AIPROXY_MODEL_BASE_URL")),
-		Region:              resolveRegion(),
-		K8sProxyAllowHosts:  parseCSV(getenv("K8S_PROXY_ALLOWED_HOSTS", ".sealos.io,.sealos.run")),
-		WSAllowedOrigins:    getenv("WS_ALLOWED_ORIGINS", ""),
+		Port:                     getenv("PORT", "8888"),
+		IngressSuffix:            getenv("INGRESS_SUFFIX", "agent.usw-1.sealos.app"),
+		SSHDomain:                strings.TrimSpace(os.Getenv("SSH_DOMAIN")),
+		APIServerImage:           getenv("AGENT_IMAGE", "nousresearch/hermes-agent:latest"),
+		AgentTemplateDir:         getenv("AGENT_MANIFEST_TEMPLATE_DIR", ""),
+		AgentTemplateGitHubURL:   resolveTemplateGitHubURL(),
+		AgentTemplateGitHubToken: strings.TrimSpace(os.Getenv("AGENT_TEMPLATE_GITHUB_TOKEN")),
+		AgentTemplateCacheDir:    strings.TrimSpace(os.Getenv("AGENT_TEMPLATE_CACHE_DIR")),
+		FrontendDistDir:          firstNonEmptyEnv("FRONTEND_DIST_DIR", "WEB_DIST_DIR"),
+		AIProxyBaseURL:           aiProxyManagerBaseURL,
+		AIProxyModelBaseURL:      strings.TrimSpace(os.Getenv("AIPROXY_MODEL_BASE_URL")),
+		Region:                   resolveRegion(),
+		K8sProxyAllowHosts:       parseCSV(getenv("K8S_PROXY_ALLOWED_HOSTS", ".sealos.io,.sealos.run")),
+		WSAllowedOrigins:         getenv("WS_ALLOWED_ORIGINS", ""),
 	}
 }
 
@@ -57,6 +67,23 @@ func getenv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func firstNonEmptyEnv(keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func resolveTemplateGitHubURL() string {
+	value, exists := os.LookupEnv("AGENT_TEMPLATE_GITHUB_URL")
+	if !exists {
+		return DefaultAgentTemplateGitHubURL
+	}
+	return strings.TrimSpace(value)
 }
 
 func resolveRegion() string {
@@ -80,7 +107,7 @@ func normalizeRegion(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "cn":
 		return "cn"
-	case "us", "usw-1":
+	case "us":
 		return "us"
 	default:
 		return ""

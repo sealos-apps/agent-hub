@@ -43,7 +43,7 @@ type manifestTemplateData struct {
 	IngressAnnotations map[string]string
 }
 
-const manifestTemplateRoot = "template/hermes-agent/manifests"
+const manifestTemplateRoot = "internal/agenttemplate/testdata/template/hermes-agent/manifests"
 
 func Build(agentSpec agent.Agent, options BuildOptions) (ResourceObjects, error) {
 	data := buildManifestTemplateData(agentSpec, options)

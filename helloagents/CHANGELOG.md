@@ -6,7 +6,7 @@
 
 ### 变更
 - Agent Console 深层性能治理：目录树改为“工作目录优先锚点 + 可切换根目录 + 手动折叠优先”，文件链路从轮询 ready 改为事件门控并补齐请求超时回收；后端文件操作按读/写分级队列与超时策略，终端隐藏标签采用降压刷写以降低持续输出卡顿。
-- 新增 `web/scripts/agentConsolePerfSmoke.ts` 与 `perf:agent-console-smoke` 命令，补齐控制台关键路径（目录链路、文件 ready gate、终端背压）的可复用 smoke 基线。
+- 新增 `frontend/scripts/agentConsolePerfSmoke.ts` 与 `perf:agent-console-smoke` 命令，补齐控制台关键路径（目录链路、文件 ready gate、终端背压）的可复用 smoke 基线。
 - Agent Console Stream V2 全链路升级：WebSocket 改为 Binary V2 帧协议；后端新增单写有界队列与流式高压淘汰（附 `dropped/droppedCount` 标记）；前端终端优先启用 WebGL renderer + burst 调度，文件预览支持 `fromCache/stale` 反馈与后台刷新。
 - 补齐 Agent Hub 的通用基础能力主链路：模板目录新增 `workspaces + settings.binding`，前后端统一按 schema 驱动创建与设置更新，不再只认 Hermes 的硬编码模型字段。
 - 详情页工作区升级为模板显式声明能力：侧边栏不再硬编码 `overview / terminal / files / settings`，并新增内嵌 `Web UI` 工作区。

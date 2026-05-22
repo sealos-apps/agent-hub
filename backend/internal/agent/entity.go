@@ -17,6 +17,7 @@ type Agent struct {
 	ModelBaseURL     string
 	ModelAPIKey      string
 	Model            string
+	ModelAPIMode     string
 	APIServerKey     string
 	IngressDomain    string
 	BootstrapPhase   string

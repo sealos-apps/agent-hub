@@ -3,13 +3,13 @@
 ## 技术栈
 - 前端：React 19、TypeScript、Vite、React Router、Tailwind CSS、lucide-react
 - 后端：Go、Gin、client-go、gorilla/websocket
-- 部署：Sealos / Kubernetes，模板与清单位于 `deploy/`、`template/`
+- 部署：Sealos / Kubernetes，清单位于 `deploy/`，运行模板从 `AGENT_TEMPLATE_GITHUB_URL` 指定的 GitHub 源读取
 
 ## 目录约定
-- `web/`：Agent Hub 前端
+- `frontend/`：Agent Hub 前端
 - `backend/`：统一管理 API、AIProxy 接口与终端/文件 WebSocket
 - `deploy/`：Sealos 模板与部署清单
-- `template/hermes-agent/`：Hermes Agent 模板资源
+- `backend/internal/agenttemplate/testdata/template/`：后端测试用模板夹具
 - `helloagents/`：方案包、知识库与历史索引
 
 ## 开发约定
@@ -19,6 +19,6 @@
 - 后端本地开发统一使用 `backend/.env`；Sealos 线上部署继续使用 Deployment `env`，不依赖仓库内 `.env` 文件。
 
 ## 验证命令
-- 前端构建：`cd web && npm run build`
-- 前端 lint：`cd web && npm run lint`
+- 前端构建：`cd frontend && npm run build`
+- 前端 lint：`cd frontend && npm run lint`
 - 后端路由测试：`cd backend && go test ./internal/router`

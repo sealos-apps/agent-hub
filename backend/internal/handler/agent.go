@@ -47,10 +47,6 @@ func ListAgents(c *gin.Context) {
 		return
 	}
 	cacheKey := buildAgentListCacheKey(factory, c.GetHeader(kube.DefaultAuthorizationHeader))
-	if cached, ok := readCachedAgentList(cacheKey); ok {
-		writeSuccess(c, http.StatusOK, cached)
-		return
-	}
 
 	var (
 		devboxes              *unstructured.UnstructuredList
@@ -89,6 +85,11 @@ func ListAgents(c *gin.Context) {
 			writeSuccess(c, http.StatusOK, markAgentListResponseStale(cached, devboxErr))
 			return
 		}
+		if shouldServeEmptyAgentList(devboxErr) {
+			log.Printf("failed to list agents; serving empty list: %v", devboxErr)
+			writeSuccess(c, http.StatusOK, buildUnavailableAgentListResponse(factory, devboxErr))
+			return
+		}
 		writeKubernetesError(c, devboxErr, "failed to list agents")
 		return
 	}
@@ -113,7 +114,7 @@ func ListAgents(c *gin.Context) {
 			writeAppError(c, http.StatusInternalServerError, appErr.New(appErr.CodeKubernetesOperation, convErr.Error()))
 			return
 		}
-		view.Agent.Status = resolveAgentRuntimeStatusFromPod(&item, latestPodsByAgent[view.Agent.Name])
+		enrichAgentRuntimeStatusWithPod(&item, &view, latestPodsByAgent[view.Agent.Name])
 		view.Agent.IngressDomain = ingressDomainsByAgent[view.Agent.Name]
 		views = append(views, view)
 	}
@@ -214,6 +215,35 @@ func markAgentListResponseStale(response dto.AgentListResponse, err error) dto.A
 	}
 	response.Meta = meta
 	return response
+}
+
+func buildUnavailableAgentListResponse(factory *kube.Factory, err error) dto.AgentListResponse {
+	meta := map[string]any{
+		"namespace":   factory.Namespace(),
+		"unavailable": true,
+		"warning":     "kubernetes list unavailable; served empty agent list",
+	}
+	if err != nil {
+		meta["reason"] = err.Error()
+	}
+	return dto.AgentListResponse{
+		Items: []dto.AgentContract{},
+		Total: 0,
+		Meta:  meta,
+	}
+}
+
+func shouldServeEmptyAgentList(err error) bool {
+	if err == nil {
+		return false
+	}
+	if isClientCanceledError(err) {
+		return false
+	}
+	if apierrors.IsUnauthorized(err) || apierrors.IsForbidden(err) {
+		return false
+	}
+	return isKubernetesUnavailableError(err)
 }
 
 func writeCachedAgentList(key string, response dto.AgentListResponse) {
@@ -326,6 +356,7 @@ func CreateAgent(c *gin.Context) {
 		writeValidationError(c, mapErr)
 		return
 	}
+	applyTemplateModelMetadata(&mappedSettings, templateDef, region)
 
 	ingressDomain := domainPrefix + "-" + strings.TrimSpace(cfg.IngressSuffix)
 	if mappedSettings.ModelProvider != nil && mappedSettings.ModelBaseURL != nil {
@@ -373,6 +404,7 @@ func CreateAgent(c *gin.Context) {
 		ModelBaseURL:     stringValue(mappedSettings.ModelBaseURL),
 		ModelAPIKey:      stringValue(mappedSettings.ModelAPIKey),
 		Model:            stringValue(mappedSettings.Model),
+		ModelAPIMode:     stringValue(mappedSettings.ModelAPIMode),
 		APIServerKey:     apiServerKey,
 		IngressDomain:    ingressDomain,
 		BootstrapPhase:   kube.BootstrapPhasePending,
@@ -1048,7 +1080,7 @@ func getManagedAgentIngressResources(ctx context.Context, namespace, agentName s
 }
 
 func shouldRebootstrap(req dto.UpdateAgentRequest) bool {
-	return req.Rebootstrap || req.ModelProvider != nil || req.ModelBaseURL != nil || req.Model != nil || req.ModelAPIKey != nil
+	return req.Rebootstrap || req.ModelProvider != nil || req.ModelBaseURL != nil || req.Model != nil || req.ModelAPIKey != nil || req.ModelAPIMode != nil
 }
 
 func markAgentBootstrapPending(ctx context.Context, repo *kube.Repository, devbox *unstructured.Unstructured, templateID string) error {
@@ -1463,6 +1495,11 @@ func applyUpdateToDevbox(devbox *unstructured.Unstructured, req dto.UpdateAgentR
 		_ = kube.SetModelName(devbox, strings.TrimSpace(*req.Model))
 		_ = kube.SetEnvValue(devbox, "AGENT_MODEL", strings.TrimSpace(*req.Model))
 	}
+	if req.ModelAPIMode != nil {
+		modelAPIMode := strings.TrimSpace(*req.ModelAPIMode)
+		_ = kube.SetModelAPIMode(devbox, modelAPIMode)
+		_ = kube.SetEnvValue(devbox, "AGENT_MODEL_API_MODE", modelAPIMode)
+	}
 	if req.ModelAPIKey != nil {
 		_ = kube.SetEnvValue(devbox, "AGENT_MODEL_APIKEY", strings.TrimSpace(*req.ModelAPIKey))
 	}
@@ -1554,6 +1591,9 @@ func applyUpdateToService(service *corev1.Service, req dto.UpdateAgentRequest) {
 	if req.Model != nil {
 		service.Annotations["agent.sealos.io/model"] = strings.TrimSpace(*req.Model)
 	}
+	if req.ModelAPIMode != nil {
+		service.Annotations["agent.sealos.io/model-api-mode"] = strings.TrimSpace(*req.ModelAPIMode)
+	}
 	for key, value := range req.AnnotationValues {
 		if value == nil {
 			continue
@@ -1592,6 +1632,9 @@ func applyUpdateToIngress(ingress *networkingv1.Ingress, req dto.UpdateAgentRequ
 	}
 	if req.Model != nil {
 		ingress.Annotations["agent.sealos.io/model"] = strings.TrimSpace(*req.Model)
+	}
+	if req.ModelAPIMode != nil {
+		ingress.Annotations["agent.sealos.io/model-api-mode"] = strings.TrimSpace(*req.ModelAPIMode)
 	}
 	for key, value := range req.AnnotationValues {
 		if value == nil {

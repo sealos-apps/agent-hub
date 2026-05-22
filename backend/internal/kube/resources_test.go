@@ -21,6 +21,7 @@ func TestBuildReturnsKubernetesObjects(t *testing.T) {
 		ModelBaseURL:  "https://api.openai.com/v1",
 		ModelAPIKey:   "secret-key",
 		Model:         "gpt-4o-mini",
+		ModelAPIMode:  "chat_completions",
 		APIServerKey:  "generated-api-key",
 	}
 
@@ -63,6 +64,12 @@ func TestBuildReturnsKubernetesObjects(t *testing.T) {
 	}
 	if got := envValue(objects.Devbox, "AIPROXY_API_KEY"); got != "" {
 		t.Fatalf("Build() AIPROXY_API_KEY = %q, want empty for non-managed provider", got)
+	}
+	if got := envValue(objects.Devbox, "AGENT_MODEL_API_MODE"); got != ag.ModelAPIMode {
+		t.Fatalf("Build() AGENT_MODEL_API_MODE = %q, want %q", got, ag.ModelAPIMode)
+	}
+	if got := objects.Devbox.GetAnnotations()["agent.sealos.io/model-api-mode"]; got != ag.ModelAPIMode {
+		t.Fatalf("Build() model-api-mode annotation = %q, want %q", got, ag.ModelAPIMode)
 	}
 	if got := objects.Service.Spec.Selector["agent.sealos.io/name"]; got != ag.Name {
 		t.Fatalf("Build() service selector agent.sealos.io/name = %q, want %q", got, ag.Name)
@@ -136,6 +143,7 @@ func TestBuildWithManagedAIProxyProviderClearsOpenAIBaseURL(t *testing.T) {
 		ModelBaseURL:  "https://aiproxy.usw-1.sealos.io/v1",
 		ModelAPIKey:   "secret-key",
 		Model:         "gpt-5.4-mini",
+		ModelAPIMode:  "codex_responses",
 		APIServerKey:  "generated-api-key",
 	}
 
@@ -158,6 +166,9 @@ func TestBuildWithManagedAIProxyProviderClearsOpenAIBaseURL(t *testing.T) {
 	}
 	if got := envValue(objects.Devbox, "OPENAI_API_KEY"); got != "" {
 		t.Fatalf("Build() OPENAI_API_KEY = %q, want empty for managed AIProxy provider", got)
+	}
+	if got := envValue(objects.Devbox, "AGENT_MODEL_API_MODE"); got != "codex_responses" {
+		t.Fatalf("Build() AGENT_MODEL_API_MODE = %q, want codex_responses", got)
 	}
 }
 

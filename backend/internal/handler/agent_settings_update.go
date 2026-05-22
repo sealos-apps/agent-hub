@@ -57,7 +57,7 @@ func UpdateAgentSettings(c *gin.Context) {
 		return
 	}
 
-	mapped, err := buildSettingsUpdateRequest(req, templateDef)
+	mapped, err := buildSettingsUpdateRequest(req, templateDef, region)
 	if err != nil {
 		writeValidationError(c, err)
 		return
@@ -107,11 +107,13 @@ func validateSettingsUpdateRequest(
 func buildSettingsUpdateRequest(
 	req dto.UpdateAgentSettingsRequest,
 	templateDef agenttemplate.Definition,
+	region string,
 ) (dto.UpdateAgentRequest, *appErr.AppError) {
 	mapped, err := buildTemplateSettingsUpdate(req.Settings, templateDef.Settings.Agent)
 	if err != nil {
 		return dto.UpdateAgentRequest{}, err
 	}
+	applyTemplateModelMetadata(&mapped, templateDef, region)
 	mapped.AgentAliasName = req.AgentAliasName
 	return mapped, nil
 }

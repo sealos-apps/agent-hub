@@ -59,6 +59,10 @@ func SetModelName(obj *unstructured.Unstructured, value string) error {
 	return SetAnnotation(obj, annotationModel, strings.TrimSpace(value))
 }
 
+func SetModelAPIMode(obj *unstructured.Unstructured, value string) error {
+	return SetAnnotation(obj, annotationModelAPIMode, strings.TrimSpace(value))
+}
+
 func IsBootstrapReady(spec agent.Agent) bool {
 	return normalizeBootstrapPhase(spec.BootstrapPhase) == BootstrapPhaseReady
 }

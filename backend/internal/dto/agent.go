@@ -12,6 +12,7 @@ type CreateAgentRequest struct {
 	ModelBaseURL   *string        `json:"agent-model-baseurl,omitempty"`
 	ModelAPIKey    *string        `json:"agent-model-apikey,omitempty"`
 	Model          *string        `json:"agent-model,omitempty"`
+	ModelAPIMode   *string        `json:"agent-model-api-mode,omitempty"`
 }
 
 type UpdateAgentRequest struct {
@@ -23,6 +24,7 @@ type UpdateAgentRequest struct {
 	ModelBaseURL     *string            `json:"agent-model-baseurl,omitempty"`
 	ModelAPIKey      *string            `json:"agent-model-apikey,omitempty"`
 	Model            *string            `json:"agent-model,omitempty"`
+	ModelAPIMode     *string            `json:"agent-model-api-mode,omitempty"`
 	AgentAliasName   *string            `json:"agent-alias-name,omitempty"`
 	EnvValues        map[string]*string `json:"-"`
 	AnnotationValues map[string]*string `json:"-"`

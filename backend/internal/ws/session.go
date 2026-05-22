@@ -32,6 +32,7 @@ import (
 const (
 	fileRootDir             = "/"
 	terminalDefaultDir      = "/opt/data/workspace"
+	terminalWorkspaceDir    = "/workspace"
 	terminalHomeDir         = "/opt/data/home"
 	terminalInstallDir      = "/opt/hermes"
 	terminalRuntimeRoot     = "/opt/data"
@@ -1378,7 +1379,7 @@ func resolveTerminalPath(raw string) (string, error) {
 
 	cleaned := path.Clean(raw)
 	if path.IsAbs(cleaned) {
-		if isWithinRoot(cleaned, terminalRuntimeRoot) || isWithinRoot(cleaned, terminalInstallDir) {
+		if isWithinRoot(cleaned, terminalRuntimeRoot) || isWithinRoot(cleaned, terminalInstallDir) || isWithinRoot(cleaned, terminalWorkspaceDir) {
 			return cleaned, nil
 		}
 		return "", fmt.Errorf("path escapes the terminal workspace")

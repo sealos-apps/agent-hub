@@ -15,9 +15,17 @@ import (
 	"github.com/nightwhite/Agent-Hub/internal/kube"
 )
 
-const sshAccessTokenTTL = 1 * time.Hour
+const (
+	sshAccessTokenTTL          = 1 * time.Hour
+	templateDefinitionCacheTTL = 5 * time.Minute
+)
 
 var templateDefinitionCache sync.Map
+
+type cachedTemplateDefinition struct {
+	definition agenttemplate.Definition
+	expiresAt  time.Time
+}
 
 func resolveTemplateDefinition(cfg config.Config, templateID string) (agenttemplate.Definition, error) {
 	templateID = strings.TrimSpace(templateID)
@@ -25,19 +33,35 @@ func resolveTemplateDefinition(cfg config.Config, templateID string) (agenttempl
 		return agenttemplate.Definition{}, fmt.Errorf("template id is required")
 	}
 
-	cacheKey := strings.TrimSpace(cfg.AgentTemplateDir) + "::" + templateID
+	source := templateSourceFromConfig(cfg)
+	cacheKey := strings.TrimSpace(cfg.AgentTemplateGitHubURL) + "::" + strings.TrimSpace(cfg.AgentTemplateDir) + "::" + templateID
 	if cached, ok := templateDefinitionCache.Load(cacheKey); ok {
-		if definition, typed := cached.(agenttemplate.Definition); typed {
-			return definition, nil
+		if entry, typed := cached.(cachedTemplateDefinition); typed {
+			if time.Now().Before(entry.expiresAt) {
+				return entry.definition, nil
+			}
+			templateDefinitionCache.Delete(cacheKey)
 		}
 	}
 
-	definition, err := agenttemplate.Resolve(templateID, cfg.AgentTemplateDir)
+	definition, err := agenttemplate.ResolveFromSource(templateID, source)
 	if err != nil {
 		return agenttemplate.Definition{}, err
 	}
-	templateDefinitionCache.Store(cacheKey, definition)
+	templateDefinitionCache.Store(cacheKey, cachedTemplateDefinition{
+		definition: definition,
+		expiresAt:  time.Now().Add(templateDefinitionCacheTTL),
+	})
 	return definition, nil
+}
+
+func templateSourceFromConfig(cfg config.Config) agenttemplate.Source {
+	return agenttemplate.Source{
+		Dir:         cfg.AgentTemplateDir,
+		GitHubURL:   cfg.AgentTemplateGitHubURL,
+		GitHubToken: cfg.AgentTemplateGitHubToken,
+		CacheDir:    cfg.AgentTemplateCacheDir,
+	}
 }
 
 func buildAgentContract(view kube.AgentView, templateDef agenttemplate.Definition, cfg config.Config) dto.AgentContract {
@@ -72,6 +96,7 @@ func buildAgentContract(view kube.AgentView, templateDef agenttemplate.Definitio
 			ModelProvider:    view.Agent.ModelProvider,
 			ModelBaseURL:     view.Agent.ModelBaseURL,
 			Model:            view.Agent.Model,
+			ModelAPIMode:     view.Agent.ModelAPIMode,
 			HasModelAPIKey:   strings.TrimSpace(view.Agent.ModelAPIKey) != "",
 		},
 		Settings: dto.AgentSettingsContract{

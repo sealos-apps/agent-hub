@@ -93,7 +93,7 @@
 - 终端输出调度新增隐藏标签降压策略：标签切走后保留会话不断连，但降低每次刷写预算，减少持续输出场景的主线程卡顿
 
 ## 验证
-- 构建：`cd web && npm run build`
-- lint：`cd web && npm run lint`
-- 控制台性能 smoke：`cd web && bun run perf:agent-console-smoke`
+- 构建：`cd frontend && npm run build`
+- lint：`cd frontend && npm run lint`
+- 控制台性能 smoke：`cd frontend && bun run perf:agent-console-smoke`
 - 联调/回归清单：`backend/api/frontend-checklist.md`

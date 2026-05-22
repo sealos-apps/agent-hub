@@ -4,10 +4,10 @@
 - 产品上下文：`.impeccable.md`
 - 方法论来源：`impeccable` skill（重点采用 `extract` 与 `craft` 的约束）
 - 适用代码范围：
-  - `web/src/app/pages/agent-hub/**`
-  - `web/src/components/business/**`
-  - `web/src/components/ui/**`
-  - `web/src/index.css`
+  - `frontend/src/app/pages/agent-hub/**`
+  - `frontend/src/components/business/**`
+  - `frontend/src/components/ui/**`
+  - `frontend/src/index.css`
 
 本规范是 Agent Hub 前端唯一视觉与交互基线。新页面、新组件与重构必须遵循本文件。
 
@@ -60,7 +60,7 @@
 - `Semantic Token`：业务语义（surface、text-muted、danger 等）。
 - 页面与组件仅允许引用 `Semantic Token`，禁止直接写十六进制色值（过渡阶段除外）。
 
-## 3.2 当前颜色语义（以 `web/src/index.css` 为准）
+## 3.2 当前颜色语义（以 `frontend/src/index.css` 为准）
 - `--color-brand`: 主操作色
 - `--color-brand-hover`: 主操作 hover
 - `--color-bg`: 页面底色
@@ -79,7 +79,7 @@
 
 ## 3.3 字体与字号基线
 - 基础字体：`SF Pro Display / PingFang SC / Helvetica Neue / sans-serif`
-- 根字号：桌面 `13.5px`，`<=640px` 为 `14px`（`web/src/index.css`）
+- 根字号：桌面 `13.5px`，`<=640px` 为 `14px`（`frontend/src/index.css`）
 - UI 组件字号（固定尺寸，不使用 fluid type）：
   - 页面主标题：20px（`text-[1.28rem]`）
   - 区块标题：16px（`text-[1.02rem]`）

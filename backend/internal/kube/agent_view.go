@@ -51,6 +51,10 @@ func DevboxToAgentView(devbox *unstructured.Unstructured) (AgentView, error) {
 	runtimeClassName, _, _ := unstructured.NestedString(devbox.Object, "spec", "runtimeClassName")
 	networkType, _, _ := unstructured.NestedString(devbox.Object, "spec", "network", "type")
 	modelProvider := strings.TrimSpace(annotations[annotationModelProvider])
+	modelAPIMode := strings.TrimSpace(annotations[annotationModelAPIMode])
+	if modelAPIMode == "" {
+		modelAPIMode = strings.TrimSpace(envValue(devbox, "AGENT_MODEL_API_MODE"))
+	}
 	modelAPIKey := resolveModelAPIKey(devbox, modelProvider)
 
 	view := AgentView{
@@ -70,6 +74,7 @@ func DevboxToAgentView(devbox *unstructured.Unstructured) (AgentView, error) {
 			ModelProvider:    modelProvider,
 			ModelBaseURL:     strings.TrimSpace(annotations[annotationModelBaseURL]),
 			Model:            strings.TrimSpace(annotations[annotationModel]),
+			ModelAPIMode:     modelAPIMode,
 			ModelAPIKey:      modelAPIKey,
 			APIServerKey:     envValue(devbox, "API_SERVER_KEY"),
 			BootstrapPhase:   bootstrapPhase,

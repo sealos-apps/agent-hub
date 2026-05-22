@@ -174,6 +174,32 @@ func buildTemplateSettingsUpdate(
 	return update, nil
 }
 
+func applyTemplateModelMetadata(
+	update *dto.UpdateAgentRequest,
+	templateDef agenttemplate.Definition,
+	region string,
+) {
+	if update == nil {
+		return
+	}
+	model := stringValue(update.Model)
+	if model == "" {
+		return
+	}
+	for _, preset := range templateDef.RegionModelPresets[region] {
+		if strings.TrimSpace(preset.Value) != model {
+			continue
+		}
+		if update.ModelProvider == nil && strings.TrimSpace(preset.Provider) != "" {
+			update.ModelProvider = stringPtr(preset.Provider)
+		}
+		if strings.TrimSpace(preset.APIMode) != "" {
+			update.ModelAPIMode = stringPtr(preset.APIMode)
+		}
+		return
+	}
+}
+
 func stringPtr(value string) *string {
 	next := value
 	return &next
