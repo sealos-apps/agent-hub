@@ -325,7 +325,7 @@ export function AgentInstancesTable({
         ? translateStatus(statusFilter[0], t)
         : t('agent.selectedCount', { count: statusFilter.length })
   const tableGridClassName =
-    'grid min-w-[976px] grid-cols-[minmax(188px,1.5fr)_minmax(124px,0.82fr)_minmax(160px,1fr)_minmax(136px,0.86fr)_minmax(272px,1fr)] items-center gap-4'
+    'grid min-w-0 grid-cols-[minmax(180px,1.35fr)_minmax(92px,0.72fr)_minmax(140px,0.9fr)_minmax(120px,0.78fr)_minmax(252px,1fr)] items-center gap-3 xl:gap-4'
 
   if (!items.length) {
     return null
@@ -335,7 +335,7 @@ export function AgentInstancesTable({
     <section className="flex min-h-[320px] flex-1 flex-col">
       <div className="hidden min-h-0 flex-1 flex-col min-[960px]:flex">
         <Card className="overflow-hidden rounded-[12px] border-zinc-200/90 px-0 py-3.5 text-[14px]/5 text-zinc-500 shadow-[0_1px_2px_rgba(24,24,27,0.03)]">
-          <div className="overflow-x-auto px-5 lg:px-6">
+          <div className="px-5 lg:px-6">
             <div className={tableGridClassName}>
               <button
                 className="flex min-w-0 items-center gap-1 truncate pr-2 text-left font-medium transition hover:text-zinc-700"
@@ -377,8 +377,8 @@ export function AgentInstancesTable({
           </div>
         </Card>
 
-        <div className="mt-3 min-h-0 flex-1 overflow-x-auto">
-          <div className="flex min-h-full min-w-[976px] flex-col gap-3.5">
+        <div className="mt-3 min-h-0 flex-1">
+          <div className="flex min-h-full min-w-0 flex-col gap-3.5">
             {items.map((item) => (
               <Card
                 className={`${tableGridClassName} group min-h-[84px] rounded-[14px] border-zinc-200/90 px-5 py-4 transition-colors hover:bg-zinc-50 lg:px-6`}

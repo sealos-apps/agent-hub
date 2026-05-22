@@ -27,7 +27,7 @@ import { useAgentHub } from './hooks/AgentHubControllerContext'
 import { useAgentChat } from './hooks/useAgentChat'
 import { useAgentFiles } from './hooks/useAgentFiles'
 import { applyBlueprintPreset, updateBlueprintField } from './lib/blueprint'
-import { openAgentConsoleDesktopWindow } from './lib/consoleWindow'
+import { AGENTHUB_CONSOLE_ROUTE, openAgentConsoleDesktopWindow } from './lib/consoleWindow'
 
 const MOCK_AGENT_ID_PREFIX = 'mock-agent-'
 const ALL_STATUS_FILTERS: AgentListStatusFilter = [
@@ -670,7 +670,7 @@ export function AgentsListPage() {
 
   const handleOpenTerminal = async (item: AgentListItem) => {
     if (isMockAgentItem(item)) {
-      navigate(`/desktop/console?agentName=${encodeURIComponent(item.name)}`)
+      navigate(`${AGENTHUB_CONSOLE_ROUTE}?agentName=${encodeURIComponent(item.name)}`)
       return
     }
 

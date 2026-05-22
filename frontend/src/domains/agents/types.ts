@@ -405,6 +405,7 @@ export interface FilesSessionState {
   wsUrl: string;
   rootPath: string;
   currentPath: string;
+  loadedPath: string;
   items: AgentFileItem[];
   selectedItem: AgentFileItem | null;
   openedItem: AgentFileItem | null;

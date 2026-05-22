@@ -8,6 +8,7 @@ import (
 
 	"github.com/nightwhite/Agent-Hub/internal/config"
 	"github.com/nightwhite/Agent-Hub/internal/dto"
+	"k8s.io/client-go/tools/remotecommand"
 )
 
 func TestResolveFilePathResolvesRelativePath(t *testing.T) {
@@ -42,6 +43,53 @@ func TestSplitCSVFiltersEmptyValues(t *testing.T) {
 	got := splitCSV(" http://localhost:3000, ,127.0.0.1:5173 ")
 	if len(got) != 2 {
 		t.Fatalf("splitCSV() len = %d, want 2", len(got))
+	}
+}
+
+func TestTerminalBootstrapSetsInteractiveTerminalType(t *testing.T) {
+	t.Parallel()
+
+	command := buildTerminalBootstrapCommand("/opt/data/workspace")
+	if !strings.Contains(command, "if [ -z \"${TERM:-}\" ] || [ \"$TERM\" = 'dumb' ]; then export TERM='xterm-256color'; fi") {
+		t.Fatalf("buildTerminalBootstrapCommand() = %q, want empty/dumb TERM normalized to xterm-256color", command)
+	}
+	if !strings.Contains(command, "export COLORTERM=${COLORTERM:-'truecolor'}") {
+		t.Fatalf("buildTerminalBootstrapCommand() = %q, want default COLORTERM=truecolor", command)
+	}
+}
+
+func TestTerminalResizeKeepsLatestSizeWhenQueueIsFull(t *testing.T) {
+	t.Parallel()
+
+	session := &terminalSession{
+		resizeChan: make(chan remotecommand.TerminalSize, 1),
+	}
+	session.resize(80, 24)
+	session.resize(120, 32)
+
+	size := terminalSizeQueue(session.resizeChan).Next()
+	if size == nil {
+		t.Fatal("terminalSizeQueue.Next() = nil, want latest size")
+	}
+	if size.Width != 120 || size.Height != 32 {
+		t.Fatalf("terminalSizeQueue.Next() = %dx%d, want 120x32", size.Width, size.Height)
+	}
+}
+
+func TestTerminalSizeQueueReturnsLatestQueuedSize(t *testing.T) {
+	t.Parallel()
+
+	queue := make(chan remotecommand.TerminalSize, 3)
+	queue <- remotecommand.TerminalSize{Width: 80, Height: 24}
+	queue <- remotecommand.TerminalSize{Width: 100, Height: 28}
+	queue <- remotecommand.TerminalSize{Width: 132, Height: 40}
+
+	size := terminalSizeQueue(queue).Next()
+	if size == nil {
+		t.Fatal("terminalSizeQueue.Next() = nil, want latest size")
+	}
+	if size.Width != 132 || size.Height != 40 {
+		t.Fatalf("terminalSizeQueue.Next() = %dx%d, want 132x40", size.Width, size.Height)
 	}
 }
 

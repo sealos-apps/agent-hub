@@ -38,9 +38,14 @@ func New(cfg config.Config) *gin.Engine {
 		v1.GET("/agents/:agentName/key", handler.GetAgentKey)
 		v1.POST("/agents/:agentName/key/rotate", handler.RotateAgentKey)
 		v1.POST("/agents/:agentName/chat/completions", handler.ChatCompletions)
+		v1.POST("/agents/:agentName/previews", handler.CreateAgentPreview)
+		v1.POST("/agents/:agentName/previews/:id/heartbeat", handler.HeartbeatAgentPreview)
+		v1.DELETE("/agents/:agentName/previews/:id", handler.DeleteAgentPreview)
 		v1.GET("/agents/:agentName/ws", handler.AgentWebSocket)
 	}
 
+	engine.Any("/__preview/:previewID/*proxyPath", handler.ProxyAgentPreview)
+	engine.Any("/__preview/:previewID", handler.ProxyAgentPreview)
 	engine.Any("/k8s-api/*proxyPath", handler.KubernetesProxy)
 	engine.Any("/k8s-api", handler.KubernetesProxy)
 	handler.RegisterFrontendRoutes(engine, cfg)

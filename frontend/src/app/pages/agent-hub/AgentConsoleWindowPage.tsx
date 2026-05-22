@@ -16,8 +16,16 @@ import {
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { useLocation, useSearchParams } from 'react-router-dom'
-import { createClusterContext, getAgentConsole, getClusterInfo, listAgentTemplates } from '../../../api'
+import { useSearchParams } from 'react-router-dom'
+import {
+  createAgentPreview,
+  createClusterContext,
+  deleteAgentPreview,
+  getAgentConsole,
+  getClusterInfo,
+  heartbeatAgentPreview,
+  listAgentTemplates,
+} from '../../../api'
 import { APP_NAME, APP_TERMINAL_ICON_URL } from '../../../branding'
 import { AgentFileCodeEditor } from '../../../components/business/files/AgentFileCodeEditor'
 import { isTextPreviewableFile } from '../../../components/business/files/fileHelpers'
@@ -47,7 +55,16 @@ import { parseAgentTerminalDesktopMessage } from './lib/desktopMessages'
 
 type HomeTab = { id: string; type: 'home'; title: string }
 type TerminalTab = { id: string; type: 'terminal'; title: string }
-type WebTab = { id: string; type: 'web'; title: string; url: string; serviceKey: string; refreshKey: number }
+type PreviewMetadata = { agentName: string; id: string; port: number }
+type WebTab = {
+  id: string
+  type: 'web'
+  title: string
+  url: string
+  serviceKey: string
+  refreshKey: number
+  preview?: PreviewMetadata
+}
 type FileTab = {
   id: string
   type: 'file'
@@ -216,12 +233,14 @@ function TerminalTabPane({
   clusterContext,
   isVisible,
   item,
+  onOpenPreviewPort,
   onStatusChange,
   tabId,
 }: {
   clusterContext: ClusterContext | null
   isVisible: boolean
   item: AgentListItem | null
+  onOpenPreviewPort: (port: number) => void
   onStatusChange: (tabId: string, status: TerminalSessionState['status']) => void
   tabId: string
 }) {
@@ -265,13 +284,25 @@ function TerminalTabPane({
     onStatusChange(tabId, terminalSession.status)
   }, [onStatusChange, tabId, terminalSession?.status])
 
+  const attachTerminalOutput = useCallback((listener: (chunk: string) => void) => {
+    return subscribeTerminalOutput((chunk) => {
+      listener(chunk)
+    })
+  }, [subscribeTerminalOutput])
+
   return (
-    <div className={isVisible ? 'h-full min-h-0 bg-[#05070a]' : 'hidden'}>
+    <div
+      className={[
+        'absolute inset-0 h-full min-h-0 bg-[#05070a] transition-opacity duration-75',
+        isVisible ? 'z-10 opacity-100 pointer-events-auto' : 'z-0 opacity-0 pointer-events-none',
+      ].join(' ')}
+    >
       <AgentTerminalWorkspace
         isVisible={isVisible}
-        onAttachOutput={subscribeTerminalOutput}
+        onAttachOutput={attachTerminalOutput}
         onError={markTerminalError}
         onInput={sendTerminalInput}
+        onOpenPreviewPort={onOpenPreviewPort}
         onReady={markTerminalConnected}
         onResize={resizeTerminal}
         session={terminalSession}
@@ -280,14 +311,21 @@ function TerminalTabPane({
   )
 }
 
-function WebTabPane({ tab }: { tab: WebTab }) {
+function WebTabPane({ isVisible, tab }: { isVisible: boolean; tab: WebTab }) {
   return (
-    <iframe
-      className="h-full w-full border-0 bg-white"
-      key={`${tab.id}-${tab.refreshKey}`}
-      src={tab.url}
-      title={tab.title}
-    />
+    <div
+      className={[
+        'absolute inset-0 h-full min-h-0 bg-white transition-opacity duration-75',
+        isVisible ? 'z-10 opacity-100 pointer-events-auto' : 'z-0 opacity-0 pointer-events-none',
+      ].join(' ')}
+    >
+      <iframe
+        className="h-full w-full border-0 bg-white"
+        key={`${tab.id}-${tab.refreshKey}`}
+        src={tab.url}
+        title={tab.title}
+      />
+    </div>
   )
 }
 
@@ -345,7 +383,6 @@ export function AgentConsoleWindowPage() {
   const consoleClusterContextMissing = t('console.clusterContextMissing')
   const consoleAgentNameMissing = t('console.agentNameMissing')
   const consoleSearchFilesFailed = t('console.searchFilesFailed')
-  const location = useLocation()
   const [searchParams] = useSearchParams()
   const [clusterContext, setClusterContext] = useState<ClusterContext | null>(null)
   const [activeAgentName, setActiveAgentName] = useState(() => String(searchParams.get('agentName') || '').trim())
@@ -371,9 +408,11 @@ export function AgentConsoleWindowPage() {
   const [mobilePane, setMobilePane] = useState<MobileConsolePane>('explorer')
 
   const tabSeedRef = useRef(0)
-  const didAutoOpenTerminalRef = useRef(false)
   const manuallyCollapsedPathsRef = useRef(new Set<string>())
   const mobileTabsScrollerRef = useRef<HTMLDivElement | null>(null)
+  const clusterContextRef = useRef<ClusterContext | null>(null)
+  const previewTabsRef = useRef<WebTab[]>([])
+  const openingPreviewPortsRef = useRef(new Set<string>())
 
   const {
     closeFiles,
@@ -393,10 +432,17 @@ export function AgentConsoleWindowPage() {
   )
 
   const serviceTabs = useMemo(() => readServiceList(services, item), [item, services])
-  const shouldAutoOpenTerminal = location.pathname.endsWith('/desktop/terminal')
 
   const pageTabs = useMemo(() => tabs.filter((tab) => tab.id !== initialConsoleTabId), [tabs])
   const visibleTabs = pageTabs.length ? pageTabs : tabs
+
+  useEffect(() => {
+    clusterContextRef.current = clusterContext
+  }, [clusterContext])
+
+  useEffect(() => {
+    previewTabsRef.current = tabs.filter((tab): tab is WebTab => tab.type === 'web' && Boolean(tab.preview))
+  }, [tabs])
 
   useEffect(() => {
     setTabs((current) => {
@@ -601,7 +647,6 @@ export function AgentConsoleWindowPage() {
     setActiveTabId(initialConsoleTabId)
     setMobilePane('explorer')
     setTerminalStates({})
-    didAutoOpenTerminalRef.current = false
     manuallyCollapsedPathsRef.current = new Set()
   }, [consoleHomeTitle, item?.name])
 
@@ -644,12 +689,12 @@ export function AgentConsoleWindowPage() {
   }, [ensureDirectoryLoaded, workspaceRoot])
 
   useEffect(() => {
-    if (!filesSession?.items?.length) return
+    if (!filesSession?.loadedPath) return
     setExplorerChildren((current) => ({
       ...current,
-      [normalizeExplorerPath(filesSession.currentPath || explorerRootPath)]: sortEntries(filesSession.items),
+      [normalizeExplorerPath(filesSession.loadedPath)]: sortEntries(filesSession.items),
     }))
-  }, [explorerRootPath, filesSession?.currentPath, filesSession?.items])
+  }, [filesSession?.items, filesSession?.loadedPath])
 
   useEffect(() => {
     const query = resourceSearch.trim()
@@ -896,13 +941,7 @@ export function AgentConsoleWindowPage() {
     if (isMobileConsole) setMobilePane('workspace')
   }, [consoleTerminalTabLabel, isMobileConsole, pageTabs])
 
-  useEffect(() => {
-    if (!shouldAutoOpenTerminal || !item || didAutoOpenTerminalRef.current) return
-    didAutoOpenTerminalRef.current = true
-    openNewTerminalTab()
-  }, [item, openNewTerminalTab, shouldAutoOpenTerminal])
-
-  const openWebTab = useCallback((service: { key: string; label: string; url: string }) => {
+  const openWebTab = useCallback((service: { key: string; label: string; url: string; preview?: PreviewMetadata }) => {
     setTabs((current) => {
       const existing = current.find((tab) => tab.type === 'web' && tab.serviceKey === service.key)
       if (existing) {
@@ -918,6 +957,7 @@ export function AgentConsoleWindowPage() {
         url: service.url,
         serviceKey: service.key,
         refreshKey: 0,
+        preview: service.preview,
       }
       setActiveTabId(nextTab.id)
       if (isMobileConsole) setMobilePane('workspace')
@@ -925,10 +965,70 @@ export function AgentConsoleWindowPage() {
     })
   }, [isMobileConsole])
 
+  const openPreviewPort = useCallback(async (port: number) => {
+    if (!clusterContext || !item) return
+    const previewKey = `preview:${item.name}:${port}`
+    const existing = previewTabsRef.current.find(
+      (tab) => tab.preview?.agentName === item.name && tab.preview.port === port,
+    )
+    if (existing) {
+      setActiveTabId(existing.id)
+      if (isMobileConsole) setMobilePane('workspace')
+      return
+    }
+    if (openingPreviewPortsRef.current.has(previewKey)) return
+    openingPreviewPortsRef.current.add(previewKey)
+    try {
+      const preview = await createAgentPreview(item.name, port, clusterContext)
+      openWebTab({
+        key: previewKey,
+        label: t('console.openPreviewTab', { port }),
+        url: preview.url,
+        preview: {
+          agentName: item.name,
+          id: preview.id,
+          port: preview.port,
+        },
+      })
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t('console.openPreviewFailed'))
+    } finally {
+      openingPreviewPortsRef.current.delete(previewKey)
+    }
+  }, [clusterContext, isMobileConsole, item, openWebTab, t])
+
+  useEffect(() => {
+    if (!clusterContext) return
+    const previewTabs = tabs.filter((tab): tab is WebTab => tab.type === 'web' && Boolean(tab.preview))
+    if (!previewTabs.length) return
+
+    const heartbeat = () => {
+      previewTabs.forEach((tab) => {
+        if (!tab.preview) return
+        void heartbeatAgentPreview(tab.preview.agentName, tab.preview.id, clusterContext)
+      })
+    }
+    heartbeat()
+    const timer = window.setInterval(heartbeat, 25_000)
+    return () => window.clearInterval(timer)
+  }, [clusterContext, tabs])
+
+  useEffect(() => {
+    return () => {
+      const currentClusterContext = clusterContextRef.current
+      if (!currentClusterContext) return
+      previewTabsRef.current.forEach((tab) => {
+        if (!tab.preview) return
+        void deleteAgentPreview(tab.preview.agentName, tab.preview.id, currentClusterContext)
+      })
+    }
+  }, [])
+
   const closeTab = useCallback(
     async (tabId: string) => {
       if (tabId === initialConsoleTabId) return
       const target = tabs.find((tab): tab is FileTab => tab.id === tabId && tab.type === 'file')
+      const previewTarget = tabs.find((tab): tab is WebTab => tab.id === tabId && tab.type === 'web' && Boolean(tab.preview))
       if (target?.dirty) {
         const shouldSave = window.confirm(`${target.title} 有未保存的修改，是否保存后关闭？`)
         if (shouldSave) {
@@ -950,6 +1050,9 @@ export function AgentConsoleWindowPage() {
         }
         return next.length ? next : createInitialConsoleTabs(consoleHomeTitle)
       })
+      if (previewTarget?.preview && clusterContext) {
+        void deleteAgentPreview(previewTarget.preview.agentName, previewTarget.preview.id, clusterContext)
+      }
       setTerminalStates((current) => {
         if (!(tabId in current)) return current
         const next = { ...current }
@@ -957,7 +1060,7 @@ export function AgentConsoleWindowPage() {
         return next
       })
     },
-    [activeTabId, consoleHomeTitle, isMobileConsole, saveFileTab, tabs],
+    [activeTabId, clusterContext, consoleHomeTitle, isMobileConsole, saveFileTab, tabs],
   )
 
   useEffect(() => {
@@ -1106,6 +1209,7 @@ export function AgentConsoleWindowPage() {
   const showMobileWorkspace = isMobileConsole && mobilePane === 'workspace'
   const canReturnMobileWorkspace = isMobileConsole && activeTab?.id !== initialConsoleTabId
   const activeWorkspaceDark = activeTab?.type === 'terminal' || activeTab?.type === 'file'
+  const activeWebPreview = activeTab?.type === 'web' && Boolean(activeTab.preview)
 
   return (
     <main className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-white text-[var(--color-text)]">
@@ -1367,7 +1471,7 @@ export function AgentConsoleWindowPage() {
               </button>
             </div>
 
-            {activeTab?.type !== 'home' && activeTab?.type !== 'terminal' && activeTab?.type !== 'file' ? (
+            {activeTab?.type !== 'home' && activeTab?.type !== 'terminal' && activeTab?.type !== 'file' && !activeWebPreview ? (
               <div className="flex min-h-[58px] shrink-0 items-center justify-between gap-4 border-b border-zinc-100 px-5">
                 <div className="min-w-0">
                   <div className="truncate text-[14px] font-medium text-zinc-950">{contextTitle}</div>
@@ -1391,12 +1495,12 @@ export function AgentConsoleWindowPage() {
 
             <div
               className={[
-                'min-h-0 flex-1 overflow-hidden',
+                'relative min-h-0 flex-1 overflow-hidden',
                 activeWorkspaceDark ? 'bg-[#05070a]' : '',
               ].join(' ')}
             >
               {activeTab?.type === 'home' ? (
-                <div className="flex h-full min-h-0 items-stretch overflow-hidden p-6">
+                <div className="absolute inset-0 flex h-full min-h-0 items-stretch overflow-hidden p-6">
                   <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden rounded-[16px] border border-dashed border-zinc-300 bg-[#fafafa] px-6 py-12 text-center">
                     <div className="relative z-10 flex max-w-[430px] flex-col items-center gap-3">
                       <h2 className="text-[24px]/8 font-medium tracking-normal text-black">{t('console.noOpenPage')}</h2>
@@ -1424,14 +1528,26 @@ export function AgentConsoleWindowPage() {
                     isVisible={activeTab?.id === tab.id}
                     item={item}
                     key={tab.id}
+                    onOpenPreviewPort={openPreviewPort}
                     onStatusChange={updateTerminalState}
                     tabId={tab.id}
                   />
                 ))}
 
-              {activeTab?.type === 'web' ? <WebTabPane tab={activeTab} /> : null}
+              {tabs
+                .filter((tab): tab is WebTab => tab.type === 'web')
+                .map((tab) => (
+                  <WebTabPane
+                    isVisible={activeTab?.id === tab.id}
+                    key={tab.id}
+                    tab={tab}
+                  />
+                ))}
+
               {activeTab?.type === 'file' ? (
-                <FileTabPane onChange={updateFileTabContent} tab={activeTab} />
+                <div className="absolute inset-0">
+                  <FileTabPane onChange={updateFileTabContent} tab={activeTab} />
+                </div>
               ) : null}
             </div>
           </section>
@@ -1441,9 +1557,10 @@ export function AgentConsoleWindowPage() {
       </div>
       <footer className="flex h-6 shrink-0 items-center justify-between gap-3 bg-zinc-600 px-3 text-[12px]/6 text-white">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="font-medium">Agent</span>
+          <span className="min-w-0 truncate font-medium">{item ? item.template.name : 'Agent'}</span>
+          <span className="shrink-0 text-white/55">/</span>
           <span className="truncate">{displayName}</span>
-          <span className="text-white/55">/</span>
+          <span className="shrink-0 text-white/55">/</span>
           <span className="truncate font-mono text-[11px] text-white/95">
             {item?.name || activeAgentName || '等待 Agent'}
           </span>

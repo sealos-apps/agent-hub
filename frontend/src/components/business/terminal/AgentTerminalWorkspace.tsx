@@ -2,9 +2,11 @@ import '@xterm/xterm/css/xterm.css'
 
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal as XTerm } from '@xterm/xterm'
+import type { ILink } from '@xterm/xterm'
 import { LoaderCircle, Terminal as TerminalIcon } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import type { TerminalSessionState } from '../../../domains/agents/types'
+import { extractTerminalPreviewLinks } from '../../../app/pages/agent-hub/lib/terminalPreviewDetector'
 import {
   applyTerminalOutputBackpressure,
   resolveTerminalFlushMode,
@@ -23,6 +25,7 @@ interface AgentTerminalWorkspaceProps {
   onInput?: (input: string) => void
   onResize?: (cols: number, rows: number) => void
   onAttachOutput?: (listener: (chunk: string) => void) => () => void
+  onOpenPreviewPort?: (port: number) => void
 }
 
 const terminalTheme = {
@@ -51,6 +54,10 @@ const terminalTheme = {
 
 type DisposableLike = { dispose: () => void }
 
+const xtermColorReportPattern = /^(?:\x1b\](?:10|11|12);rgb:[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}(?:\x07|\x1b\\)|\x9d(?:10|11|12);rgb:[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}\x9c)$/
+
+const isXtermColorReportResponse = (data: string) => xtermColorReportPattern.test(data)
+
 export function AgentTerminalWorkspace({
   isVisible = true,
   session,
@@ -60,6 +67,7 @@ export function AgentTerminalWorkspace({
   onInput,
   onResize,
   onAttachOutput,
+  onOpenPreviewPort,
 }: AgentTerminalWorkspaceProps) {
   const { t } = useI18n()
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -70,8 +78,10 @@ export function AgentTerminalWorkspace({
   const resizeHandlerRef = useRef(onResize)
   const readyHandlerRef = useRef(onReady)
   const errorHandlerRef = useRef(onError)
+  const openPreviewPortRef = useRef(onOpenPreviewPort)
   const detachOutputRef = useRef<(() => void) | null>(null)
   const connectedTerminalIdRef = useRef('')
+  const readyNotifiedTerminalIdRef = useRef('')
   const announcedStateRef = useRef('')
   const lastResizeRef = useRef({ cols: 0, rows: 0 })
   const previousStatusRef = useRef<TerminalSessionState['status'] | ''>('')
@@ -114,14 +124,40 @@ export function AgentTerminalWorkspace({
   }, [onError])
 
   useEffect(() => {
-    visibleRef.current = isVisible
-  }, [isVisible])
+    openPreviewPortRef.current = onOpenPreviewPort
+  }, [onOpenPreviewPort])
 
   useEffect(() => {
     connectedTerminalIdRef.current = ''
+    readyNotifiedTerminalIdRef.current = ''
     announcedStateRef.current = ''
     previousStatusRef.current = ''
   }, [session?.terminalId])
+
+  const notifyTerminalReady = (terminalId: string) => {
+    if (readyNotifiedTerminalIdRef.current === terminalId) return
+    readyNotifiedTerminalIdRef.current = terminalId
+    readyHandlerRef.current?.()
+  }
+
+  const activateVisibleTerminal = () => {
+    if (!visibleRef.current || !terminalRef.current) return
+
+    // Visibility changes can happen while the pty is still opening; force a fresh
+    // fit when the terminal becomes active so xterm never keeps a stale size.
+    lastResizeRef.current = { cols: 0, rows: 0 }
+    terminalRef.current.focus()
+    window.requestAnimationFrame(() => {
+      if (!visibleRef.current) return
+      resizeNowRef.current()
+    })
+  }
+
+  useEffect(() => {
+    visibleRef.current = isVisible
+    if (!isVisible || session?.status !== 'connected' || !session.terminalId) return
+    activateVisibleTerminal()
+  }, [isVisible, session?.status, session?.terminalId])
 
   useEffect(() => {
     if (!activeTerminalId || !containerRef.current) return
@@ -189,7 +225,47 @@ export function AgentTerminalWorkspace({
 
     const dataDisposable = terminal.onData((data) => {
       if (!data) return
+      if (isXtermColorReportResponse(data)) return
       inputHandlerRef.current?.(data)
+    })
+
+    const linkDisposable = terminal.registerLinkProvider({
+      provideLinks(bufferLineNumber, callback) {
+        if (!openPreviewPortRef.current) {
+          callback(undefined)
+          return
+        }
+
+        const line = terminal.buffer.active.getLine(bufferLineNumber - 1)
+        const text = line?.translateToString(true)
+        if (!text) {
+          callback(undefined)
+          return
+        }
+
+        const links = extractTerminalPreviewLinks(text).map<ILink>((link) => ({
+          text: link.text,
+          range: {
+            start: {
+              x: link.startColumn + 1,
+              y: bufferLineNumber,
+            },
+            end: {
+              x: link.endColumn,
+              y: bufferLineNumber,
+            },
+          },
+          decorations: {
+            pointerCursor: true,
+            underline: true,
+          },
+          activate: () => {
+            openPreviewPortRef.current?.(link.port)
+          },
+        }))
+
+        callback(links.length ? links : undefined)
+      },
     })
 
     const resizeObserver = new ResizeObserver(() => {
@@ -348,6 +424,7 @@ export function AgentTerminalWorkspace({
       detachOutputRef.current?.()
       detachOutputRef.current = null
       resizeObserver.disconnect()
+      linkDisposable.dispose()
       dataDisposable.dispose()
       fitAddon.dispose()
       terminal.dispose()
@@ -369,13 +446,8 @@ export function AgentTerminalWorkspace({
         connectedTerminalIdRef.current = session.terminalId
         terminalRef.current.clear()
       }
-      // Force one terminal.resize after each successful connect/reconnect.
-      lastResizeRef.current = { cols: 0, rows: 0 }
-      terminalRef.current.focus()
-      window.requestAnimationFrame(() => {
-        resizeNowRef.current()
-      })
-      readyHandlerRef.current?.()
+      notifyTerminalReady(session.terminalId)
+      activateVisibleTerminal()
       previousStatusRef.current = session.status
       return
     }

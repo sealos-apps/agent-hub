@@ -23,6 +23,31 @@ Local demo data is disabled by default. To run the UI without a real cluster dur
 VITE_AGENTHUB_LOCAL_DEMO=true npm run dev -- --host 0.0.0.0
 ```
 
+To run the local UI against a real Sealos workspace without embedding it in Sealos Desktop, store a base64 kubeconfig in `frontend/.env.local`:
+
+```bash
+AGENTHUB_LOCAL_KUBECONFIG_B64="<base64 kubeconfig>"
+```
+
+Generate the value with:
+
+```bash
+base64 -i /path/to/kubeconfig.yaml | tr -d '\n'
+```
+
+Then start normally:
+
+```bash
+npm run dev -- --host 0.0.0.0
+```
+
+You can also point `.env.local` at a local kubeconfig file:
+
+```bash
+VITE_AGENTHUB_ENABLE_LOCAL_SESSION=true
+VITE_AGENTHUB_LOCAL_KUBECONFIG_PATH=/path/to/kubeconfig.yaml
+```
+
 ## Verification
 
 ```bash

@@ -29,8 +29,15 @@ const BACKEND_PROXY_TARGET = readEnv('VITE_AGENTHUB_BACKEND_TARGET', 'http://127
 const AGENT_HUB_BROWSER_TITLE = readEnv('VITE_AGENTHUB_BROWSER_TITLE', 'Agent Hub Web')
 const AGENT_HUB_FAVICON_URL = readEnv('VITE_AGENTHUB_FAVICON_URL', '/brand/agent-hub.svg')
 const INSECURE_HTTPS_AGENT = new https.Agent({ rejectUnauthorized: false })
+const LOCAL_KUBECONFIG_ENV = readEnv('AGENTHUB_LOCAL_KUBECONFIG')
+const LOCAL_KUBECONFIG_B64_ENV = readEnv('AGENTHUB_LOCAL_KUBECONFIG_B64')
 const ENABLE_LOCAL_SESSION =
-  String(readEnv('VITE_AGENTHUB_ENABLE_LOCAL_SESSION')).toLowerCase() === 'true'
+  String(readEnv('VITE_AGENTHUB_ENABLE_LOCAL_SESSION')).toLowerCase() === 'true' ||
+  Boolean(LOCAL_KUBECONFIG_ENV) ||
+  Boolean(LOCAL_KUBECONFIG_B64_ENV)
+if (ENABLE_LOCAL_SESSION) {
+  process.env.VITE_AGENTHUB_ENABLE_LOCAL_SESSION = 'true'
+}
 const LOCAL_KUBECONFIG_PATH =
   readEnv('VITE_AGENTHUB_LOCAL_KUBECONFIG_PATH') ||
   path.resolve(process.cwd(), '../.local/kubeconfig.yaml')
@@ -38,6 +45,24 @@ const LOCAL_KUBECONFIG_PATH =
 const toScalar = (value: unknown) => {
   if (typeof value !== 'string') return ''
   return value.trim().replace(/^['"]|['"]$/g, '')
+}
+
+const decodeLocalKubeconfigB64 = (value = '') => {
+  const encoded = toScalar(value)
+  if (!encoded) return ''
+
+  try {
+    return Buffer.from(encoded, 'base64').toString('utf8').trim()
+  } catch (error) {
+    console.warn('[vite:local-session] failed to decode AGENTHUB_LOCAL_KUBECONFIG_B64', error)
+    return ''
+  }
+}
+
+const normalizeLocalKubeconfigEnv = (value = '') => {
+  const kubeconfig = toScalar(value)
+  if (!kubeconfig) return ''
+  return kubeconfig.includes('\\n') ? kubeconfig.replace(/\\n/g, '\n').trim() : kubeconfig
 }
 
 const decodeHeaderValue = (value: unknown) => {
@@ -109,11 +134,12 @@ const parseProxyKubeconfig = (authorizationHeader = '') => {
 
 const loadLocalSealosSession = () => {
   try {
-    if (!fs.existsSync(LOCAL_KUBECONFIG_PATH)) {
-      return null
-    }
-
-    const kubeconfig = fs.readFileSync(LOCAL_KUBECONFIG_PATH, 'utf8').trim()
+    const kubeconfig =
+      normalizeLocalKubeconfigEnv(LOCAL_KUBECONFIG_ENV) ||
+      decodeLocalKubeconfigB64(LOCAL_KUBECONFIG_B64_ENV) ||
+      (fs.existsSync(LOCAL_KUBECONFIG_PATH)
+        ? fs.readFileSync(LOCAL_KUBECONFIG_PATH, 'utf8').trim()
+        : '')
     if (!kubeconfig) {
       return null
     }
@@ -449,6 +475,13 @@ export default defineConfig({
         ws: true,
         rewriteWsOrigin: true,
         rewrite: (path: string) => path.replace(/^\/backend-api/, ''),
+      },
+      '/__preview': {
+        target: BACKEND_PROXY_TARGET,
+        changeOrigin: true,
+        secure: false,
+        ws: true,
+        rewriteWsOrigin: true,
       },
       '/k8s-api': {
         target: FALLBACK_PROXY_TARGET,
