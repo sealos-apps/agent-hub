@@ -415,6 +415,19 @@ export function AgentConsoleWindowPage() {
   const previewServiceKeysRef = useRef(new Set<string>())
   const openingPreviewPortsRef = useRef(new Set<string>())
 
+  const releasePreviewTabs = useCallback((previewTabs = previewTabsRef.current) => {
+    const currentClusterContext = clusterContextRef.current
+    previewTabs.forEach((tab) => {
+      if (!tab.preview) return
+      previewServiceKeysRef.current.delete(tab.serviceKey)
+      if (!currentClusterContext) return
+      void deleteAgentPreview(tab.preview.agentName, tab.preview.id, currentClusterContext)
+    })
+    if (previewTabs.length) {
+      previewTabsRef.current = []
+    }
+  }, [])
+
   const {
     closeFiles,
     filesSession,
@@ -646,12 +659,13 @@ export function AgentConsoleWindowPage() {
   }, [closeFiles, item, openFiles])
 
   useEffect(() => {
+    releasePreviewTabs()
     setTabs(createInitialConsoleTabs(consoleHomeTitle))
     setActiveTabId(initialConsoleTabId)
     setMobilePane('explorer')
     setTerminalStates({})
     manuallyCollapsedPathsRef.current = new Set()
-  }, [consoleHomeTitle, item?.name])
+  }, [consoleHomeTitle, item?.name, releasePreviewTabs])
 
   const ensureDirectoryLoaded = useCallback(
     async (path: string) => {
@@ -1020,14 +1034,9 @@ export function AgentConsoleWindowPage() {
 
   useEffect(() => {
     return () => {
-      const currentClusterContext = clusterContextRef.current
-      if (!currentClusterContext) return
-      previewTabsRef.current.forEach((tab) => {
-        if (!tab.preview) return
-        void deleteAgentPreview(tab.preview.agentName, tab.preview.id, currentClusterContext)
-      })
+      releasePreviewTabs()
     }
-  }, [])
+  }, [releasePreviewTabs])
 
   const closeTab = useCallback(
     async (tabId: string) => {

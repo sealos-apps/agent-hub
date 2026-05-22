@@ -6,6 +6,7 @@ import { AgentConsoleWindowPage } from './AgentConsoleWindowPage'
 import {
   createAgentPreview,
   createClusterContext,
+  deleteAgentPreview,
   getAgentConsole,
   getClusterInfo,
   listAgentTemplates,
@@ -177,6 +178,7 @@ describe('AgentConsoleWindowPage helpers', () => {
       throw new Error('missing test cluster context')
     })
     vi.mocked(createAgentPreview).mockReset()
+    vi.mocked(deleteAgentPreview).mockReset()
     vi.mocked(getAgentConsole).mockReset()
     vi.mocked(getClusterInfo).mockReset()
     vi.mocked(listAgentTemplates).mockReset()
@@ -378,6 +380,67 @@ describe('AgentConsoleWindowPage helpers', () => {
 
     await act(async () => {})
     await waitFor(() => expect(createAgentPreview).toHaveBeenCalledTimes(1))
+  })
+
+  it('releases open preview sessions before resetting tabs for another agent', async () => {
+    window.history.replaceState({}, '', '/console?agentName=ympp868f')
+    vi.mocked(createClusterContext).mockReturnValue(clusterContext)
+    vi.mocked(getClusterInfo).mockResolvedValue({
+      cluster: 'sealos',
+      namespace: 'ns-test',
+      kc: 'apiVersion: v1',
+      server: 'https://k8s.example.com',
+      operator: 'night',
+      updatedAt: '2026-05-22T00:00:00Z',
+    })
+    vi.mocked(listAgentTemplates).mockResolvedValue({
+      items: [template],
+      region: 'us',
+    })
+    vi.mocked(getAgentConsole).mockImplementation(async (agentName) => ({
+      agent: {
+        ...agentContract,
+        core: {
+          ...agentContract.core,
+          name: agentName,
+          aliasName: agentName === 'next-agent' ? 'Next Agent' : 'Hermes Agent',
+        },
+      },
+      workspaceRoot: '/workspace',
+      webSocketPath: `/api/v1/agents/${agentName}/ws`,
+      services: [],
+    }))
+    vi.mocked(createAgentPreview).mockResolvedValue({
+      id: 'p_3000',
+      port: 3000,
+      url: '/__preview/p_3000/',
+    })
+
+    renderConsoleWindowPage()
+
+    await screen.findAllByText('Hermes Agent')
+    const addTerminalButtons = screen.getAllByRole('button', { name: '添加终端' })
+    fireEvent.click(addTerminalButtons[addTerminalButtons.length - 1])
+    await screen.findByText('mock terminal workspace')
+
+    fireEvent.click(screen.getByRole('button', { name: 'open preview 3000' }))
+    await waitFor(() => expect(createAgentPreview).toHaveBeenCalledTimes(1))
+    await screen.findByText('预览 3000')
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'AgentHubConsoleWindow', agentName: 'next-agent' },
+          origin: window.location.origin,
+          source: window,
+        }),
+      )
+    })
+
+    await waitFor(() => {
+      expect(deleteAgentPreview).toHaveBeenCalledWith('ympp868f', 'p_3000', clusterContext)
+    })
+    await screen.findAllByText('Next Agent')
   })
 
 })
