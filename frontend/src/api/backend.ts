@@ -33,6 +33,12 @@ export type ChatStreamEvent = {
   payload?: unknown;
 };
 
+export type AgentPreviewSession = {
+  id: string;
+  port: number;
+  url: string;
+};
+
 type ChatStreamPayload = {
   model: string;
   stream: boolean;
@@ -354,6 +360,45 @@ export const ensureAIProxyToken = async (
 
 export const buildAgentWebSocketUrl = (agentName: string) =>
   buildBackendWsUrl(`/api/v1/agents/${encodeURIComponent(agentName)}/ws`);
+
+export const createAgentPreview = async (
+  agentName: string,
+  port: number,
+  clusterContext: ClusterContext,
+): Promise<AgentPreviewSession> =>
+  expectData(
+    await requestBackend<AgentPreviewSession>(
+      `/api/v1/agents/${encodeURIComponent(agentName)}/previews`,
+      clusterContext,
+      {
+        method: "POST",
+        body: JSON.stringify({ port }),
+      },
+    ),
+    "预览响应为空。",
+  );
+
+export const heartbeatAgentPreview = async (
+  agentName: string,
+  previewID: string,
+  clusterContext: ClusterContext,
+) =>
+  requestBackend(
+    `/api/v1/agents/${encodeURIComponent(agentName)}/previews/${encodeURIComponent(previewID)}/heartbeat`,
+    clusterContext,
+    { method: "POST" },
+  );
+
+export const deleteAgentPreview = async (
+  agentName: string,
+  previewID: string,
+  clusterContext: ClusterContext,
+) =>
+  requestBackend(
+    `/api/v1/agents/${encodeURIComponent(agentName)}/previews/${encodeURIComponent(previewID)}`,
+    clusterContext,
+    { method: "DELETE" },
+  );
 
 export const streamAgentChatCompletions = async (
   {

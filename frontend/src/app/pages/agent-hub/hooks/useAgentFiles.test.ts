@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { createAgentItemFixture } from '../../../../test/agentFixtures'
 import type { ClusterContext } from '../../../../domains/agents/types'
-import { encodeWSBinaryMessage } from '../lib/wsBinaryProtocol'
+import { decodeWSBinaryMessage, encodeWSBinaryMessage } from '../lib/wsBinaryProtocol'
 import { __agentFilesTestables, useAgentFiles } from './useAgentFiles'
 
 class MockWebSocket {
@@ -145,6 +145,65 @@ describe('useAgentFiles helpers', () => {
       expect(result.current.filesSession?.resource.name).toBe('agent-b')
       expect(result.current.filesSession?.status).not.toBe('disconnected')
       expect(result.current.filesSession?.error).not.toContain('1006')
+
+      unmount()
+    } finally {
+      globalThis.WebSocket = originalWebSocket
+    }
+  })
+
+  it('records empty directory listings as loaded paths', async () => {
+    const originalWebSocket = globalThis.WebSocket
+    MockWebSocket.instances = []
+    globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
+
+    try {
+      const agent = createAgentItemFixture()
+      const { result, unmount } = renderHook(() => useAgentFiles({ clusterContext }))
+
+      act(() => {
+        result.current.openFiles(agent)
+      })
+      await waitFor(() => expect(MockWebSocket.instances).toHaveLength(1))
+
+      const socket = MockWebSocket.instances[0]
+      act(() => {
+        emitSystemReady(socket, agent.name)
+      })
+
+      await waitFor(() => {
+        expect(
+          socket.sent.some((payload) => {
+            if (!(payload instanceof ArrayBuffer)) return false
+            return decodeWSBinaryMessage(payload).type === 'file.list'
+          }),
+        ).toBe(true)
+      })
+
+      const listRequest = socket.sent
+        .filter((payload): payload is ArrayBuffer => payload instanceof ArrayBuffer)
+        .map((payload) => decodeWSBinaryMessage(payload))
+        .find((message) => message.type === 'file.list')
+
+      expect(listRequest?.requestId).toBeTruthy()
+
+      act(() => {
+        socket.emit('message', {
+          data: encodeWSBinaryMessage({
+            type: 'file.result',
+            requestId: listRequest?.requestId || '',
+            data: {
+              path: agent.workingDir,
+              items: [],
+            },
+          }),
+        })
+      })
+
+      await waitFor(() => {
+        expect(result.current.filesSession?.loadedPath).toBe(agent.workingDir)
+        expect(result.current.filesSession?.items).toEqual([])
+      })
 
       unmount()
     } finally {

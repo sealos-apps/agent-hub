@@ -5,7 +5,7 @@ export const AGENTHUB_CONSOLE_APP_KEY =
   import.meta.env.VITE_AGENTHUB_CONSOLE_APP_KEY ||
   import.meta.env.VITE_AGENTHUB_TERMINAL_APP_KEY ||
   'user-agenthub-terminal'
-export const AGENTHUB_CONSOLE_ROUTE = '/desktop/console'
+export const AGENTHUB_CONSOLE_ROUTE = '/console'
 export const AGENTHUB_CONSOLE_MESSAGE_TYPE = 'AgentHubConsoleWindow'
 const ENABLE_LOCAL_CONSOLE_FALLBACK =
   import.meta.env.DEV &&
@@ -70,7 +70,7 @@ export const openAgentConsoleDesktopWindow = async (item: AgentListItem) => {
         agentName,
         aliasName: item.aliasName || item.name,
       },
-      appSize: 'windowed',
+      appSize: 'normal',
     })
   } catch (error) {
     if (ENABLE_LOCAL_CONSOLE_FALLBACK) {

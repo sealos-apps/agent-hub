@@ -1060,8 +1060,20 @@ func (t *terminalSession) run(cwd string) {
 }
 
 func (t *terminalSession) resize(cols, rows int) {
+	size := remotecommand.TerminalSize{Width: uint16(cols), Height: uint16(rows)}
 	select {
-	case t.resizeChan <- remotecommand.TerminalSize{Width: uint16(cols), Height: uint16(rows)}:
+	case t.resizeChan <- size:
+		return
+	default:
+	}
+
+	select {
+	case <-t.resizeChan:
+	default:
+	}
+
+	select {
+	case t.resizeChan <- size:
 	default:
 	}
 }
@@ -1092,7 +1104,17 @@ func (q terminalSizeQueue) Next() *remotecommand.TerminalSize {
 	if !ok {
 		return nil
 	}
-	return &size
+	for {
+		select {
+		case next, ok := <-q:
+			if !ok {
+				return &size
+			}
+			size = next
+		default:
+			return &size
+		}
+	}
 }
 
 type logSession struct {
@@ -1403,6 +1425,8 @@ func isWithinRoot(target, root string) bool {
 func buildTerminalBootstrapCommand(cwd string) string {
 	return strings.Join([]string{
 		"export HERMES_HOME=${HERMES_HOME:-" + shellQuote(terminalRuntimeRoot) + "}",
+		"if [ -z \"${TERM:-}\" ] || [ \"$TERM\" = " + shellQuote("dumb") + " ]; then export TERM=" + shellQuote("xterm-256color") + "; fi",
+		"export COLORTERM=${COLORTERM:-" + shellQuote("truecolor") + "}",
 		"if [ -d " + shellQuote(terminalHomeDir) + " ]; then export HOME=" + shellQuote(terminalHomeDir) + "; fi",
 		"if [ -d " + shellQuote(terminalInstallDir+"/.venv/bin") + " ]; then export PATH=" + shellQuote(terminalInstallDir+"/.venv/bin") + ":$PATH; fi",
 		"if [ -f " + shellQuote(terminalInstallDir+"/.venv/bin/activate") + " ]; then . " + shellQuote(terminalInstallDir+"/.venv/bin/activate") + "; fi",

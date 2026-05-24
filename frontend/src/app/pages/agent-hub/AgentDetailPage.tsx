@@ -47,7 +47,7 @@ import { useAgentChat } from "./hooks/useAgentChat";
 import { useAgentFiles } from "./hooks/useAgentFiles";
 import { applyBlueprintPreset, updateBlueprintField } from "./lib/blueprint";
 import type { AgentDetailRouteState } from "./lib/navigation";
-import { openAgentConsoleDesktopWindow } from "./lib/consoleWindow";
+import { AGENTHUB_CONSOLE_ROUTE, openAgentConsoleDesktopWindow } from "./lib/consoleWindow";
 import { cn } from "../../../lib/format";
 import { useI18n } from "../../../i18n";
 
@@ -505,6 +505,7 @@ export function AgentDetailPage() {
       wsUrl: "ws://mock.local/files",
       rootPath: "/workspace",
       currentPath: "/workspace",
+      loadedPath: "/workspace",
       items,
       selectedItem: openedItem,
       openedItem,
@@ -717,7 +718,7 @@ export function AgentDetailPage() {
     if (!item) return;
 
     if (isMockAgentItem(item)) {
-      navigate(`/desktop/console?agentName=${encodeURIComponent(item.name)}`);
+      navigate(`${AGENTHUB_CONSOLE_ROUTE}?agentName=${encodeURIComponent(item.name)}`);
       return;
     }
 

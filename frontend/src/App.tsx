@@ -16,8 +16,7 @@ export default function App() {
             <Route element={<AgentsListPage />} path="/agents" />
             <Route element={<AgentTemplateSelectPage />} path="/agents/templates" />
             <Route element={<AgentCreatePage />} path="/agents/create" />
-            <Route element={<AgentConsoleWindowPage />} path="/desktop/console" />
-            <Route element={<AgentConsoleWindowPage />} path="/desktop/terminal" />
+            <Route element={<AgentConsoleWindowPage />} path="/console" />
             <Route element={<Navigate replace to="/agents" />} path="*" />
           </Routes>
         </AgentHubControllerProvider>

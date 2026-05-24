@@ -624,6 +624,37 @@ func TestAgentConsoleRequiresAuthorization(t *testing.T) {
 	}
 }
 
+func TestCreatePreviewRequiresAuthorization(t *testing.T) {
+	t.Parallel()
+
+	recorder := performRequest(t, http.MethodPost, "/api/v1/agents/demo-agent/previews", `{"port":3000}`, "", map[string]string{
+		"Content-Type": "application/json",
+	})
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("POST /api/v1/agents/:agentName/previews status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+	}
+
+	body := decodeEnvelope(t, recorder)
+	if body.Code != 40010 {
+		t.Fatalf("POST /api/v1/agents/:agentName/previews code = %d, want 40010", body.Code)
+	}
+	if body.Error == nil || body.Error.Type != "missing_authorization" {
+		t.Fatalf("POST /api/v1/agents/:agentName/previews error = %#v, want missing_authorization", body.Error)
+	}
+}
+
+func TestPreviewProxyRouteIsRegisteredBeforeFrontendFallback(t *testing.T) {
+	t.Parallel()
+
+	recorder := performRequest(t, http.MethodGet, "/__preview/missing-id/", "", "", nil)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("GET /__preview/:previewID status = %d, want %d", recorder.Code, http.StatusNotFound)
+	}
+	if contentType := recorder.Header().Get("Content-Type"); strings.Contains(contentType, "text/html") {
+		t.Fatalf("GET /__preview/:previewID content-type = %q, want non-frontend response", contentType)
+	}
+}
+
 func TestInvalidRequestIDHeaderIsRegenerated(t *testing.T) {
 	t.Parallel()
 

@@ -1,7 +1,18 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act } from 'react'
 import { BrowserRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentConsoleWindowPage } from './AgentConsoleWindowPage'
+import {
+  createAgentPreview,
+  createClusterContext,
+  deleteAgentPreview,
+  getAgentConsole,
+  getClusterInfo,
+  listAgentTemplates,
+} from '../../../api'
+import type { ClusterContext } from '../../../domains/agents/types'
+import { I18nProvider } from '../../../i18n'
 import {
   applyAutoExpandChain,
   buildExplorerPathChain,
@@ -10,26 +21,177 @@ import {
 import { createInitialConsoleTabs, initialConsoleTabId } from './lib/consoleTabs'
 
 vi.mock('../../../api', () => ({
+  buildAgentWebSocketUrl: vi.fn(() => 'ws://localhost:8888/api/v1/agents/ympp868f/ws'),
   createClusterContext: vi.fn(() => null),
+  createAgentPreview: vi.fn(),
+  deleteAgentPreview: vi.fn(),
   getAgentConsole: vi.fn(),
   getClusterInfo: vi.fn(),
+  heartbeatAgentPreview: vi.fn(),
   listAgentTemplates: vi.fn(),
 }))
 
 vi.mock('../../../sealosSdk', () => ({
   addSealosAppEventListener: vi.fn(() => () => {}),
+  getSealosLanguage: vi.fn(() => Promise.resolve('zh-CN')),
   getSealosSession: vi.fn(() => Promise.resolve(null)),
 }))
 
 vi.mock('../../../components/business/terminal/AgentTerminalWorkspace', () => ({
-  AgentTerminalWorkspace: () => <div>mock terminal workspace</div>,
+  AgentTerminalWorkspace: ({ onOpenPreviewPort }: { onOpenPreviewPort?: (port: number) => void }) => (
+    <div>
+      <span>mock terminal workspace</span>
+      <button type="button" onClick={() => onOpenPreviewPort?.(3000)}>
+        open preview 3000
+      </button>
+    </div>
+  ),
 }))
+
+const mockCloseFiles = vi.fn()
+const mockOpenFiles = vi.fn()
+const mockReadDirectory = vi.fn(async () => ({ path: '/workspace', items: [] }))
+const mockReadFile = vi.fn()
+const mockSearchFiles = vi.fn(async () => ({ items: [] }))
+const mockSaveFile = vi.fn()
+
+vi.mock('./hooks/useAgentFiles', () => ({
+  useAgentFiles: () => ({
+    closeFiles: mockCloseFiles,
+    filesSession: null,
+    openFiles: mockOpenFiles,
+    readDirectory: mockReadDirectory,
+    readFile: mockReadFile,
+    searchFiles: mockSearchFiles,
+    saveFile: mockSaveFile,
+  }),
+}))
+
+const clusterContext: ClusterContext = {
+  activeAuthSource: 'kubeconfig',
+  activeAuthToken: 'apiVersion: v1',
+  agentLabel: 'agent-hub',
+  authCandidates: [{ source: 'kubeconfig', token: 'apiVersion: v1' }],
+  kubeconfig: 'apiVersion: v1',
+  namespace: 'ns-test',
+  operator: 'night',
+  server: 'https://k8s.example.com',
+  sessionToken: '',
+  token: '',
+}
+
+const template = {
+  id: 'hermes-agent',
+  name: 'Hermes Agent',
+  shortName: 'Hermes',
+  description: '',
+  image: 'hermes:latest',
+  port: 8642,
+  defaultArgs: [],
+  workingDir: '/workspace',
+  user: 'root',
+  backendSupported: true,
+  presentation: {
+    logoKey: 'hermes-agent',
+    brandColor: '#111827',
+    docsLabel: 'Docs',
+  },
+  workspaces: [],
+  access: [],
+  actions: [],
+  settings: { runtime: [], agent: [] },
+  modelOptions: [],
+}
+
+const agentContract = {
+  core: {
+    name: 'ympp868f',
+    aliasName: 'Hermes Agent',
+    templateId: 'hermes-agent',
+    namespace: 'ns-test',
+    status: 'Running',
+    statusText: 'Running',
+    ready: true,
+    createdAt: '2026-05-22T00:00:00Z',
+  },
+  workspaces: [],
+  access: [
+    {
+      key: 'terminal',
+      label: 'Terminal',
+      enabled: true,
+    },
+  ],
+  runtime: {
+    cpu: '1000m',
+    memory: '2048Mi',
+    storage: '10Gi',
+    workingDir: '/workspace',
+    hasModelAPIKey: false,
+  },
+  settings: { runtime: [], agent: [] },
+  actions: [
+    {
+      key: 'open-terminal',
+      label: 'Terminal',
+      enabled: true,
+    },
+  ],
+}
+
+class MockWebSocket extends EventTarget {
+  static CONNECTING = 0
+  static OPEN = 1
+  static CLOSING = 2
+  static CLOSED = 3
+
+  binaryType = 'arraybuffer'
+  readyState = MockWebSocket.OPEN
+  url: string
+
+  constructor(url: string) {
+    super()
+    this.url = url
+  }
+
+  send() {}
+
+  close() {
+    this.readyState = MockWebSocket.CLOSED
+    this.dispatchEvent(new Event('close'))
+  }
+}
+
+function renderConsoleWindowPage() {
+  return render(
+    <I18nProvider>
+      <BrowserRouter>
+        <AgentConsoleWindowPage />
+      </BrowserRouter>
+    </I18nProvider>,
+  )
+}
 
 describe('AgentConsoleWindowPage helpers', () => {
   beforeEach(() => {
+    vi.mocked(createClusterContext).mockImplementation(() => {
+      throw new Error('missing test cluster context')
+    })
+    vi.mocked(createAgentPreview).mockReset()
+    vi.mocked(deleteAgentPreview).mockReset()
+    vi.mocked(getAgentConsole).mockReset()
+    vi.mocked(getClusterInfo).mockReset()
+    vi.mocked(listAgentTemplates).mockReset()
+    mockCloseFiles.mockClear()
+    mockOpenFiles.mockClear()
+    mockReadDirectory.mockClear()
+    mockReadFile.mockClear()
+    mockSearchFiles.mockClear()
+    mockSaveFile.mockClear()
+    Object.defineProperty(window, 'WebSocket', { configurable: true, writable: true, value: MockWebSocket })
     Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1024 })
     Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: 768 })
-    window.history.replaceState({}, '', '/desktop/console?agentName=go6becn4')
+    window.history.replaceState({}, '', '/console?agentName=go6becn4')
   })
 
   it('builds path chain from working directory', () => {
@@ -79,11 +241,7 @@ describe('AgentConsoleWindowPage helpers', () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 393 })
     Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: 852 })
 
-    render(
-      <BrowserRouter>
-        <AgentConsoleWindowPage />
-      </BrowserRouter>,
-    )
+    renderConsoleWindowPage()
 
     const explorerPane = await screen.findByTestId('console-explorer-pane')
     const workspacePane = await screen.findByTestId('console-workspace-pane')
@@ -121,14 +279,316 @@ describe('AgentConsoleWindowPage helpers', () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1024 })
     Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: 960 })
 
-    render(
-      <BrowserRouter>
-        <AgentConsoleWindowPage />
-      </BrowserRouter>,
-    )
+    renderConsoleWindowPage()
 
     const scaleFrame = await screen.findByTestId('console-scale-frame')
 
     expect(parseFloat(scaleFrame.style.height)).toBeGreaterThanOrEqual(900)
   })
+
+  it('reuses an existing preview tab for the same agent port', async () => {
+    window.history.replaceState({}, '', '/console?agentName=ympp868f')
+    vi.mocked(createClusterContext).mockReturnValue(clusterContext)
+    vi.mocked(getClusterInfo).mockResolvedValue({
+      cluster: 'sealos',
+      namespace: 'ns-test',
+      kc: 'apiVersion: v1',
+      server: 'https://k8s.example.com',
+      operator: 'night',
+      updatedAt: '2026-05-22T00:00:00Z',
+    })
+    vi.mocked(listAgentTemplates).mockResolvedValue({
+      items: [template],
+      region: 'us',
+    })
+    vi.mocked(getAgentConsole).mockResolvedValue({
+      agent: agentContract,
+      workspaceRoot: '/workspace',
+      webSocketPath: '/api/v1/agents/ympp868f/ws',
+      services: [],
+    })
+    vi.mocked(createAgentPreview).mockResolvedValue({
+      id: 'p_3000',
+      port: 3000,
+      url: '/__preview/p_3000/',
+    })
+
+    renderConsoleWindowPage()
+
+    await screen.findAllByText('Hermes Agent')
+    await waitFor(() => expect(mockOpenFiles).toHaveBeenCalled())
+    const addTerminalButtons = screen.getAllByRole('button', { name: '添加终端' })
+    fireEvent.click(addTerminalButtons[addTerminalButtons.length - 1])
+    await screen.findByText('mock terminal workspace')
+
+    const openPreviewButton = screen.getByRole('button', { name: 'open preview 3000' })
+    fireEvent.click(openPreviewButton)
+    await waitFor(() => expect(createAgentPreview).toHaveBeenCalledTimes(1))
+    await screen.findByText('预览 3000')
+    fireEvent.click(openPreviewButton)
+
+    await waitFor(() => expect(createAgentPreview).toHaveBeenCalledTimes(1))
+  })
+
+  it('keeps inactive web tab iframes out of keyboard and screen reader navigation', async () => {
+    window.history.replaceState({}, '', '/console?agentName=ympp868f')
+    vi.mocked(createClusterContext).mockReturnValue(clusterContext)
+    vi.mocked(getClusterInfo).mockResolvedValue({
+      cluster: 'sealos',
+      namespace: 'ns-test',
+      kc: 'apiVersion: v1',
+      server: 'https://k8s.example.com',
+      operator: 'night',
+      updatedAt: '2026-05-22T00:00:00Z',
+    })
+    vi.mocked(listAgentTemplates).mockResolvedValue({
+      items: [template],
+      region: 'us',
+    })
+    vi.mocked(getAgentConsole).mockResolvedValue({
+      agent: agentContract,
+      workspaceRoot: '/workspace',
+      webSocketPath: '/api/v1/agents/ympp868f/ws',
+      services: [],
+    })
+    vi.mocked(createAgentPreview).mockResolvedValue({
+      id: 'p_3000',
+      port: 3000,
+      url: '/__preview/p_3000/',
+    })
+
+    renderConsoleWindowPage()
+
+    await screen.findAllByText('Hermes Agent')
+    const addTerminalButtons = screen.getAllByRole('button', { name: '添加终端' })
+    fireEvent.click(addTerminalButtons[addTerminalButtons.length - 1])
+    await screen.findByText('mock terminal workspace')
+
+    fireEvent.click(screen.getByRole('button', { name: 'open preview 3000' }))
+    const previewFrame = await screen.findByTitle('预览 3000')
+    fireEvent.click(screen.getByRole('button', { name: /终端 1/ }))
+
+    await waitFor(() => expect(previewFrame.closest('div')).toHaveAttribute('aria-hidden', 'true'))
+    expect(previewFrame).toHaveAttribute('tabindex', '-1')
+  })
+
+  it('keeps inactive terminal panes out of assistive navigation', async () => {
+    window.history.replaceState({}, '', '/console?agentName=ympp868f')
+    vi.mocked(createClusterContext).mockReturnValue(clusterContext)
+    vi.mocked(getClusterInfo).mockResolvedValue({
+      cluster: 'sealos',
+      namespace: 'ns-test',
+      kc: 'apiVersion: v1',
+      server: 'https://k8s.example.com',
+      operator: 'night',
+      updatedAt: '2026-05-22T00:00:00Z',
+    })
+    vi.mocked(listAgentTemplates).mockResolvedValue({
+      items: [template],
+      region: 'us',
+    })
+    vi.mocked(getAgentConsole).mockResolvedValue({
+      agent: agentContract,
+      workspaceRoot: '/workspace',
+      webSocketPath: '/api/v1/agents/ympp868f/ws',
+      services: [],
+    })
+
+    renderConsoleWindowPage()
+
+    await screen.findAllByText('Hermes Agent')
+    const addTerminalButtons = screen.getAllByRole('button', { name: '添加终端' })
+    fireEvent.click(addTerminalButtons[addTerminalButtons.length - 1])
+    const terminalPane = (await screen.findByText('mock terminal workspace')).closest('div')?.parentElement
+    expect(terminalPane).not.toHaveAttribute('aria-hidden')
+
+    fireEvent.click(screen.getAllByRole('button', { name: '添加终端' }).at(-1)!)
+    await screen.findByRole('button', { name: /终端 2/ })
+
+    await waitFor(() => expect(terminalPane).toHaveAttribute('aria-hidden', 'true'))
+    expect(terminalPane).toHaveAttribute('inert')
+  })
+
+  it('does not create duplicate backend previews while the preview tab ref is stale', async () => {
+    window.history.replaceState({}, '', '/console?agentName=ympp868f')
+    vi.mocked(createClusterContext).mockReturnValue(clusterContext)
+    vi.mocked(getClusterInfo).mockResolvedValue({
+      cluster: 'sealos',
+      namespace: 'ns-test',
+      kc: 'apiVersion: v1',
+      server: 'https://k8s.example.com',
+      operator: 'night',
+      updatedAt: '2026-05-22T00:00:00Z',
+    })
+    vi.mocked(listAgentTemplates).mockResolvedValue({
+      items: [template],
+      region: 'us',
+    })
+    vi.mocked(getAgentConsole).mockResolvedValue({
+      agent: agentContract,
+      workspaceRoot: '/workspace',
+      webSocketPath: '/api/v1/agents/ympp868f/ws',
+      services: [],
+    })
+    let resolvePreview: (value: { id: string; port: number; url: string }) => void = () => {}
+    vi.mocked(createAgentPreview).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePreview = resolve
+        }),
+    )
+
+    renderConsoleWindowPage()
+
+    await screen.findAllByText('Hermes Agent')
+    const addTerminalButtons = screen.getAllByRole('button', { name: '添加终端' })
+    fireEvent.click(addTerminalButtons[addTerminalButtons.length - 1])
+    await screen.findByText('mock terminal workspace')
+
+    const openPreviewButton = screen.getByRole('button', { name: 'open preview 3000' })
+    fireEvent.click(openPreviewButton)
+    await waitFor(() => expect(createAgentPreview).toHaveBeenCalledTimes(1))
+
+    resolvePreview({
+      id: 'p_3000',
+      port: 3000,
+      url: '/__preview/p_3000/',
+    })
+    await Promise.resolve()
+    fireEvent.click(openPreviewButton)
+
+    await act(async () => {})
+    await waitFor(() => expect(createAgentPreview).toHaveBeenCalledTimes(1))
+  })
+
+  it('releases open preview sessions before resetting tabs for another agent', async () => {
+    window.history.replaceState({}, '', '/console?agentName=ympp868f')
+    vi.mocked(createClusterContext).mockReturnValue(clusterContext)
+    vi.mocked(getClusterInfo).mockResolvedValue({
+      cluster: 'sealos',
+      namespace: 'ns-test',
+      kc: 'apiVersion: v1',
+      server: 'https://k8s.example.com',
+      operator: 'night',
+      updatedAt: '2026-05-22T00:00:00Z',
+    })
+    vi.mocked(listAgentTemplates).mockResolvedValue({
+      items: [template],
+      region: 'us',
+    })
+    vi.mocked(getAgentConsole).mockImplementation(async (agentName) => ({
+      agent: {
+        ...agentContract,
+        core: {
+          ...agentContract.core,
+          name: agentName,
+          aliasName: agentName === 'next-agent' ? 'Next Agent' : 'Hermes Agent',
+        },
+      },
+      workspaceRoot: '/workspace',
+      webSocketPath: `/api/v1/agents/${agentName}/ws`,
+      services: [],
+    }))
+    vi.mocked(createAgentPreview).mockResolvedValue({
+      id: 'p_3000',
+      port: 3000,
+      url: '/__preview/p_3000/',
+    })
+
+    renderConsoleWindowPage()
+
+    await screen.findAllByText('Hermes Agent')
+    const addTerminalButtons = screen.getAllByRole('button', { name: '添加终端' })
+    fireEvent.click(addTerminalButtons[addTerminalButtons.length - 1])
+    await screen.findByText('mock terminal workspace')
+
+    fireEvent.click(screen.getByRole('button', { name: 'open preview 3000' }))
+    await waitFor(() => expect(createAgentPreview).toHaveBeenCalledTimes(1))
+    await screen.findByText('预览 3000')
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'AgentHubConsoleWindow', agentName: 'next-agent' },
+          origin: window.location.origin,
+          source: window,
+        }),
+      )
+    })
+
+    await waitFor(() => {
+      expect(deleteAgentPreview).toHaveBeenCalledWith('ympp868f', 'p_3000', clusterContext)
+    })
+    await screen.findAllByText('Next Agent')
+  })
+
+  it('releases an in-flight preview session when the agent changes before creation resolves', async () => {
+    window.history.replaceState({}, '', '/console?agentName=ympp868f')
+    vi.mocked(createClusterContext).mockReturnValue(clusterContext)
+    vi.mocked(getClusterInfo).mockResolvedValue({
+      cluster: 'sealos',
+      namespace: 'ns-test',
+      kc: 'apiVersion: v1',
+      server: 'https://k8s.example.com',
+      operator: 'night',
+      updatedAt: '2026-05-22T00:00:00Z',
+    })
+    vi.mocked(listAgentTemplates).mockResolvedValue({
+      items: [template],
+      region: 'us',
+    })
+    vi.mocked(getAgentConsole).mockImplementation(async (agentName) => ({
+      agent: {
+        ...agentContract,
+        core: {
+          ...agentContract.core,
+          name: agentName,
+          aliasName: agentName === 'next-agent' ? 'Next Agent' : 'Hermes Agent',
+        },
+      },
+      workspaceRoot: '/workspace',
+      webSocketPath: `/api/v1/agents/${agentName}/ws`,
+      services: [],
+    }))
+    let resolvePreview: (value: { id: string; port: number; url: string }) => void = () => {}
+    vi.mocked(createAgentPreview).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePreview = resolve
+        }),
+    )
+
+    renderConsoleWindowPage()
+
+    await screen.findAllByText('Hermes Agent')
+    const addTerminalButtons = screen.getAllByRole('button', { name: '添加终端' })
+    fireEvent.click(addTerminalButtons[addTerminalButtons.length - 1])
+    await screen.findByText('mock terminal workspace')
+
+    fireEvent.click(screen.getByRole('button', { name: 'open preview 3000' }))
+    await waitFor(() => expect(createAgentPreview).toHaveBeenCalledTimes(1))
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'AgentHubConsoleWindow', agentName: 'next-agent' },
+          origin: window.location.origin,
+          source: window,
+        }),
+      )
+    })
+    await screen.findAllByText('Next Agent')
+
+    resolvePreview({
+      id: 'p_late',
+      port: 3000,
+      url: '/__preview/p_late/',
+    })
+
+    await waitFor(() => {
+      expect(deleteAgentPreview).toHaveBeenCalledWith('ympp868f', 'p_late', clusterContext)
+    })
+    expect(screen.queryByText('预览 3000')).not.toBeInTheDocument()
+  })
+
 })

@@ -17,7 +17,6 @@ type SealosSdkClient = {
   getHostConfig?: SealosSdkMethod
   addAppEventListen?: SealosSdkMethod
   runEvents?: SealosSdkMethod
-  openApp?: SealosSdkMethod
 }
 
 export interface OpenSealosDesktopAppOptions {
@@ -25,7 +24,7 @@ export interface OpenSealosDesktopAppOptions {
   pathname: string
   query?: Record<string, string>
   messageData?: Record<string, unknown>
-  appSize?: 'minimized' | 'windowed' | 'maximized'
+  appSize?: 'minimize' | 'normal' | 'maximize'
 }
 
 type SealosEventResult = {
@@ -165,9 +164,9 @@ export const openSealosDesktopApp = async ({
   pathname,
   query = {},
   messageData = {},
-  appSize = 'maximized',
+  appSize = 'normal',
 }: OpenSealosDesktopAppOptions) =>
-  requireSdkMethod('openApp')({
+  runSealosEvent('openDesktopApp', {
     appKey,
     pathname,
     query,
@@ -192,7 +191,6 @@ export const getSealosSdkDebugInfo = () => {
         getHostConfig: typeof client.getHostConfig === 'function',
         addAppEventListen: typeof client.addAppEventListen === 'function',
         runEvents: typeof client.runEvents === 'function',
-        openApp: typeof client.openApp === 'function',
       }
       : null,
     isBrowser,
