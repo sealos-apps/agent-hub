@@ -1,6 +1,17 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act } from 'react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+
+const sealosEventListeners = new Map<string, (data: unknown) => void>()
+
+vi.mock('./sealosSdk', () => ({
+  addSealosAppEventListener: vi.fn((eventName: string, handler: (data: unknown) => void) => {
+    sealosEventListeners.set(eventName, handler)
+    return () => sealosEventListeners.delete(eventName)
+  }),
+  getSealosLanguage: vi.fn(() => Promise.resolve('zh-CN')),
+}))
 
 vi.mock('./app/pages/agent-hub/AgentsListPage', () => ({
   AgentsListPage: () => <div>agents list page</div>,
@@ -19,6 +30,10 @@ vi.mock('./app/pages/agent-hub/AgentConsoleWindowPage', () => ({
 }))
 
 describe('App routes', () => {
+  beforeEach(() => {
+    sealosEventListeners.clear()
+  })
+
   it('uses /console as the Agent console route', () => {
     window.history.replaceState({}, '', '/console?agentName=ympp868f')
 
@@ -34,5 +49,22 @@ describe('App routes', () => {
 
     expect(await screen.findByText('agents list page')).toBeInTheDocument()
     expect(screen.queryByText('console window page')).not.toBeInTheDocument()
+  })
+
+  it('opens the console route from Sealos desktop launch events', async () => {
+    window.history.replaceState({}, '', '/agents')
+
+    render(<App />)
+
+    expect(screen.getByText('agents list page')).toBeInTheDocument()
+
+    act(() => {
+      sealosEventListeners.get('openDesktopApp')?.({
+        pathname: '/console',
+        query: { agentName: 'ympp868f' },
+      })
+    })
+
+    expect(await screen.findByText('console window page')).toBeInTheDocument()
   })
 })

@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AgentCreatePage } from './app/pages/agent-hub/AgentCreatePage'
 import { AgentConsoleWindowPage } from './app/pages/agent-hub/AgentConsoleWindowPage'
+import { AgentConsoleLaunchBridge } from './app/pages/agent-hub/AgentConsoleLaunchBridge'
 import { AgentsListPage } from './app/pages/agent-hub/AgentsListPage'
 import { AgentHubControllerProvider } from './app/pages/agent-hub/hooks/AgentHubControllerProvider'
 import { AgentTemplateSelectPage } from './app/pages/agent-hub/AgentTemplateSelectPage'
@@ -11,6 +12,7 @@ export default function App() {
     <I18nProvider>
       <BrowserRouter basename={import.meta.env.BASE_URL}>
         <AgentHubControllerProvider>
+          <AgentConsoleLaunchBridge />
           <Routes>
             <Route element={<Navigate replace to="/agents" />} path="/" />
             <Route element={<AgentsListPage />} path="/agents" />
