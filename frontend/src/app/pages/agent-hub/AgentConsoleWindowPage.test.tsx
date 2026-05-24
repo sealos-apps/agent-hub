@@ -372,6 +372,43 @@ describe('AgentConsoleWindowPage helpers', () => {
     expect(previewFrame).toHaveAttribute('tabindex', '-1')
   })
 
+  it('keeps inactive terminal panes out of assistive navigation', async () => {
+    window.history.replaceState({}, '', '/console?agentName=ympp868f')
+    vi.mocked(createClusterContext).mockReturnValue(clusterContext)
+    vi.mocked(getClusterInfo).mockResolvedValue({
+      cluster: 'sealos',
+      namespace: 'ns-test',
+      kc: 'apiVersion: v1',
+      server: 'https://k8s.example.com',
+      operator: 'night',
+      updatedAt: '2026-05-22T00:00:00Z',
+    })
+    vi.mocked(listAgentTemplates).mockResolvedValue({
+      items: [template],
+      region: 'us',
+    })
+    vi.mocked(getAgentConsole).mockResolvedValue({
+      agent: agentContract,
+      workspaceRoot: '/workspace',
+      webSocketPath: '/api/v1/agents/ympp868f/ws',
+      services: [],
+    })
+
+    renderConsoleWindowPage()
+
+    await screen.findAllByText('Hermes Agent')
+    const addTerminalButtons = screen.getAllByRole('button', { name: '添加终端' })
+    fireEvent.click(addTerminalButtons[addTerminalButtons.length - 1])
+    const terminalPane = (await screen.findByText('mock terminal workspace')).closest('div')?.parentElement
+    expect(terminalPane).not.toHaveAttribute('aria-hidden')
+
+    fireEvent.click(screen.getAllByRole('button', { name: '添加终端' }).at(-1)!)
+    await screen.findByRole('button', { name: /终端 2/ })
+
+    await waitFor(() => expect(terminalPane).toHaveAttribute('aria-hidden', 'true'))
+    expect(terminalPane).toHaveAttribute('inert')
+  })
+
   it('does not create duplicate backend previews while the preview tab ref is stale', async () => {
     window.history.replaceState({}, '', '/console?agentName=ympp868f')
     vi.mocked(createClusterContext).mockReturnValue(clusterContext)

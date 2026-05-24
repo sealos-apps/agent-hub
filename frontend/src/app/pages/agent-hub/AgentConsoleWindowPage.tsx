@@ -292,10 +292,12 @@ function TerminalTabPane({
 
   return (
     <div
+      aria-hidden={isVisible ? undefined : true}
       className={[
         'absolute inset-0 h-full min-h-0 bg-[#05070a] transition-opacity duration-75',
         isVisible ? 'z-10 opacity-100 pointer-events-auto' : 'z-0 opacity-0 pointer-events-none',
       ].join(' ')}
+      inert={isVisible ? undefined : true}
     >
       <AgentTerminalWorkspace
         isVisible={isVisible}
