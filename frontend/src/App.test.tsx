@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { act } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
@@ -57,6 +57,9 @@ describe('App routes', () => {
     render(<App />)
 
     expect(screen.getByText('agents list page')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(sealosEventListeners.has('openDesktopApp')).toBe(true)
+    })
 
     act(() => {
       sealosEventListeners.get('openDesktopApp')?.({

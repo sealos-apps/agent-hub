@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { addSealosAppEventListener } from '../../../sealosSdk'
 import { AGENTHUB_CONSOLE_ROUTE } from './lib/consoleWindow'
-import { isTrustedDesktopMessageOrigin } from './lib/consoleExplorerHelpers'
 import { parseAgentTerminalDesktopMessage } from './lib/desktopMessages'
 
 export function AgentConsoleLaunchBridge() {
@@ -17,7 +16,7 @@ export function AgentConsoleLaunchBridge() {
 
     const onWindowMessage = (event: MessageEvent) => {
       if (!event.source) return
-      if (!isTrustedDesktopMessageOrigin(event.origin, window.location.origin)) return
+      if (event.origin !== window.location.origin) return
       openConsole(event.data)
     }
 
