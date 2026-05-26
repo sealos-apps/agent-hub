@@ -63,17 +63,31 @@ func UpdateAgentSettings(c *gin.Context) {
 		return
 	}
 
-	updatedDevbox, _, updateErr := updateAgentResources(ctx, repo, clientset, factory.Namespace(), agentName, mapped)
+	if err := validateModelSyncReadiness(view.Agent, mapped); err != nil {
+		writeAppError(c, http.StatusConflict, err)
+		return
+	}
+
+	updateResult, updateErr := updateAgentResources(ctx, repo, clientset, factory.Namespace(), agentName, mapped)
 	if updateErr != nil {
 		writeKubernetesError(c, updateErr, "failed to update agent settings")
 		return
 	}
+	updatedDevbox := updateResult.Devbox
 
 	view, found = getAgentView(ctx, factory.Namespace(), agentName, repo, clientset, c)
 	if !found {
 		return
 	}
 	if syncErr := syncAgentModelConfig(ctx, clientset, factory, view.Agent, mapped); syncErr != nil {
+		if rollbackErr := rollbackAgentResourceUpdate(ctx, repo, clientset, factory.Namespace(), updateResult); rollbackErr != nil {
+			details := syncErr.Details()
+			if details == nil {
+				details = map[string]any{}
+			}
+			details["rollbackError"] = rollbackErr.Error()
+			syncErr.WithDetails(details)
+		}
 		writeAppError(c, http.StatusBadGateway, syncErr)
 		return
 	}

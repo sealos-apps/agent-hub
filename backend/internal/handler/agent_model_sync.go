@@ -92,7 +92,7 @@ func shouldRebootstrap(req dto.UpdateAgentRequest) bool {
 
 func buildAgentModelSyncInput(current agent.Agent, req dto.UpdateAgentRequest) (agentModelSyncInput, error) {
 	provider := firstNonEmpty(stringValue(req.ModelProvider), current.ModelProvider)
-	baseURL := firstNonEmpty(stringValue(req.ModelBaseURL), current.ModelBaseURL)
+	baseURL := current.ModelBaseURL
 	model := firstNonEmpty(stringValue(req.Model), current.Model)
 	apiKey := firstNonEmpty(stringValue(req.ModelAPIKey), current.ModelAPIKey)
 	apiMode := normalizeAgentModelAPIMode(firstNonEmpty(stringValue(req.ModelAPIMode), current.ModelAPIMode))

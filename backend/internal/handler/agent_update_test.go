@@ -30,7 +30,7 @@ func TestUpdateAgentResourcesRollsBackDevboxWhenServiceUpdateFails(t *testing.T)
 	})
 
 	newAlias := "New Alias"
-	_, _, err := updateAgentResources(context.Background(), repo, clientset, namespace, agentName, dto.UpdateAgentRequest{
+	_, err := updateAgentResources(context.Background(), repo, clientset, namespace, agentName, dto.UpdateAgentRequest{
 		AgentAliasName: &newAlias,
 	})
 	if err == nil {
@@ -58,7 +58,7 @@ func TestUpdateAgentResourcesRollsBackDevboxAndServiceWhenIngressUpdateFails(t *
 	})
 
 	newAlias := "New Alias"
-	_, _, err := updateAgentResources(context.Background(), repo, clientset, namespace, agentName, dto.UpdateAgentRequest{
+	_, err := updateAgentResources(context.Background(), repo, clientset, namespace, agentName, dto.UpdateAgentRequest{
 		AgentAliasName: &newAlias,
 	})
 	if err == nil {
@@ -106,14 +106,32 @@ func TestUpdateAgentResourcesRejectsCowAgentNonChatAPI(t *testing.T) {
 	}
 
 	apiMode := "codex_responses"
-	_, _, err := updateAgentResources(context.Background(), repo, clientset, namespace, agentName, dto.UpdateAgentRequest{
+	_, err := updateAgentResources(context.Background(), repo, clientset, namespace, agentName, dto.UpdateAgentRequest{
 		ModelAPIMode: &apiMode,
 	})
 	if err == nil {
 		t.Fatal("updateAgentResources() error = nil, want CowAgent api mode validation error")
 	}
-	if got := readDevboxEnvValue(devbox, "AGENT_MODEL_API_MODE"); got != "" {
+	persisted, getErr := repo.Get(context.Background(), agentName)
+	if getErr != nil {
+		t.Fatalf("repo.Get() error = %v", getErr)
+	}
+	if got := readDevboxEnvValue(persisted, "AGENT_MODEL_API_MODE"); got != "" {
 		t.Fatalf("AGENT_MODEL_API_MODE = %q, want unchanged empty", got)
+	}
+}
+
+func TestValidateModelUpdateCompatibilityAllowsCowAgentChatAlias(t *testing.T) {
+	t.Parallel()
+
+	devbox := newModelUpdateDevbox("custom:aiproxy-chat", "https://aiproxy.usw-1.sealos.io/v1", "glm-5.1", "aiproxy-key")
+	devbox.SetLabels(map[string]string{
+		"app.kubernetes.io/name": "cowagent",
+	})
+	apiMode := "openai_chat"
+
+	if err := validateModelUpdateCompatibility(devbox, dto.UpdateAgentRequest{ModelAPIMode: &apiMode}); err != nil {
+		t.Fatalf("validateModelUpdateCompatibility() error = %v, want nil for chat alias", err)
 	}
 }
 
@@ -286,6 +304,50 @@ func TestApplyUpdateToDevboxOpenAIClearsAIProxyEnv(t *testing.T) {
 	}
 	if got := readDevboxEnvValue(devbox, "AIPROXY_API_KEY"); got != "" {
 		t.Fatalf("AIPROXY_API_KEY = %q, want empty after leaving managed AIProxy", got)
+	}
+}
+
+func TestRollbackAgentResourceUpdateRestoresAllResources(t *testing.T) {
+	t.Parallel()
+
+	const namespace = "ns-test"
+	const agentName = "demo-agent"
+
+	repo, clientset := newUpdateAgentTestFixtures(t, namespace, agentName)
+	newAlias := "New Alias"
+	result, err := updateAgentResources(context.Background(), repo, clientset, namespace, agentName, dto.UpdateAgentRequest{
+		AgentAliasName: &newAlias,
+	})
+	if err != nil {
+		t.Fatalf("updateAgentResources() error = %v", err)
+	}
+
+	if err := rollbackAgentResourceUpdate(context.Background(), repo, clientset, namespace, result); err != nil {
+		t.Fatalf("rollbackAgentResourceUpdate() error = %v", err)
+	}
+
+	devbox, getErr := repo.Get(context.Background(), agentName)
+	if getErr != nil {
+		t.Fatalf("repo.Get() error = %v", getErr)
+	}
+	if got := devbox.GetAnnotations()["agent.sealos.io/alias-name"]; got != "Old Alias" {
+		t.Fatalf("devbox alias after rollback = %q, want Old Alias", got)
+	}
+
+	service, serviceErr := clientset.CoreV1().Services(namespace).Get(context.Background(), agentName, metav1.GetOptions{})
+	if serviceErr != nil {
+		t.Fatalf("service get error = %v", serviceErr)
+	}
+	if got := service.Annotations["agent.sealos.io/alias-name"]; got != "Old Alias" {
+		t.Fatalf("service alias after rollback = %q, want Old Alias", got)
+	}
+
+	ingress, ingressErr := clientset.NetworkingV1().Ingresses(namespace).Get(context.Background(), agentName, metav1.GetOptions{})
+	if ingressErr != nil {
+		t.Fatalf("ingress get error = %v", ingressErr)
+	}
+	if got := ingress.Annotations["agent.sealos.io/alias-name"]; got != "Old Alias" {
+		t.Fatalf("ingress alias after rollback = %q, want Old Alias", got)
 	}
 }
 

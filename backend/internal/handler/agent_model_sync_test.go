@@ -92,6 +92,28 @@ func TestBuildAgentModelSyncInputUsesCowAgentOpenAIKeyEnv(t *testing.T) {
 	}
 }
 
+func TestBuildAgentModelSyncInputUsesPersistedBaseURL(t *testing.T) {
+	t.Parallel()
+
+	rawBaseURL := "https://aiproxy.usw-1.sealos.io"
+	input, err := buildAgentModelSyncInput(agent.Agent{
+		Name:          "demo-agent",
+		TemplateID:    "openclaw",
+		ModelProvider: aiproxyResponsesProvider,
+		ModelBaseURL:  "https://aiproxy.usw-1.sealos.io/v1",
+		ModelAPIKey:   "sk-test",
+		Model:         "gpt-5.4-mini",
+	}, dto.UpdateAgentRequest{
+		ModelBaseURL: &rawBaseURL,
+	})
+	if err != nil {
+		t.Fatalf("buildAgentModelSyncInput() error = %v", err)
+	}
+	if input.BaseURL != "https://aiproxy.usw-1.sealos.io/v1" {
+		t.Fatalf("BaseURL = %q, want persisted normalized base URL", input.BaseURL)
+	}
+}
+
 func TestBuildAgentModelSyncScriptUsesProviderInitThenSwitch(t *testing.T) {
 	t.Parallel()
 

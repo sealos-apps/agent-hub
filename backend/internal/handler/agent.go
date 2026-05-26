@@ -516,11 +516,22 @@ func UpdateAgent(c *gin.Context) {
 	if !ok {
 		return
 	}
-	updatedDevbox, updatedIngress, updateErr := updateAgentResources(ctx, repo, clientset, factory.Namespace(), agentName, req)
+	currentView, found := getAgentView(ctx, factory.Namespace(), agentName, repo, clientset, c)
+	if !found {
+		return
+	}
+	if err := validateModelSyncReadiness(currentView.Agent, req); err != nil {
+		writeAppError(c, http.StatusConflict, err)
+		return
+	}
+
+	updateResult, updateErr := updateAgentResources(ctx, repo, clientset, factory.Namespace(), agentName, req)
 	if updateErr != nil {
 		writeKubernetesError(c, updateErr, "failed to update agent resources")
 		return
 	}
+	updatedDevbox := updateResult.Devbox
+	updatedIngress := updateResult.Ingress
 
 	cfg := runtimeConfig(c)
 	view, convErr := kube.DevboxToAgentView(updatedDevbox)
@@ -532,6 +543,14 @@ func UpdateAgent(c *gin.Context) {
 	view.Agent.IngressDomain = kube.IngressDomain(updatedIngress)
 
 	if syncErr := syncAgentModelConfig(ctx, clientset, factory, view.Agent, req); syncErr != nil {
+		if rollbackErr := rollbackAgentResourceUpdate(ctx, repo, clientset, factory.Namespace(), updateResult); rollbackErr != nil {
+			details := syncErr.Details()
+			if details == nil {
+				details = map[string]any{}
+			}
+			details["rollbackError"] = rollbackErr.Error()
+			syncErr.WithDetails(details)
+		}
 		writeAppError(c, http.StatusBadGateway, syncErr)
 		return
 	}
@@ -617,6 +636,14 @@ func retryUpdateIngress(ctx context.Context, clientset kubernetes.Interface, nam
 	return updated, err
 }
 
+type agentResourceUpdateResult struct {
+	Devbox          *unstructured.Unstructured
+	Ingress         *networkingv1.Ingress
+	DevboxSnapshot  *unstructured.Unstructured
+	ServiceSnapshot *corev1.Service
+	IngressSnapshot *networkingv1.Ingress
+}
+
 func updateAgentResources(
 	ctx context.Context,
 	repo *kube.Repository,
@@ -624,36 +651,43 @@ func updateAgentResources(
 	namespace string,
 	agentName string,
 	req dto.UpdateAgentRequest,
-) (*unstructured.Unstructured, *networkingv1.Ingress, error) {
-	devbox, service, _, err := getManagedResources(ctx, namespace, agentName, repo, clientset)
+) (*agentResourceUpdateResult, error) {
+	devbox, service, ingress, err := getManagedResources(ctx, namespace, agentName, repo, clientset)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if validationErr := validateModelUpdateCompatibility(devbox, req); validationErr != nil {
-		return nil, nil, validationErr
+		return nil, validationErr
 	}
 
 	devboxSnapshot := devbox.DeepCopy()
 	serviceSnapshot := service.DeepCopy()
+	ingressSnapshot := ingress.DeepCopy()
 
 	updatedDevbox, err := retryUpdateDevbox(ctx, repo, agentName, req)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if err := retryUpdateService(ctx, clientset, namespace, agentName, req); err != nil {
-		return nil, nil, combineRollbackError(err, restoreDevbox(ctx, repo, devboxSnapshot))
+		return nil, combineRollbackError(err, restoreDevbox(ctx, repo, devboxSnapshot))
 	}
 
 	updatedIngress, err := retryUpdateIngress(ctx, clientset, namespace, agentName, req)
 	if err != nil {
-		return nil, nil, combineRollbackError(
+		return nil, combineRollbackError(
 			err,
 			restoreService(ctx, clientset, namespace, serviceSnapshot),
 			restoreDevbox(ctx, repo, devboxSnapshot),
 		)
 	}
 
-	return updatedDevbox, updatedIngress, nil
+	return &agentResourceUpdateResult{
+		Devbox:          updatedDevbox,
+		Ingress:         updatedIngress,
+		DevboxSnapshot:  devboxSnapshot,
+		ServiceSnapshot: serviceSnapshot,
+		IngressSnapshot: ingressSnapshot,
+	}, nil
 }
 
 func restoreDevbox(ctx context.Context, repo *kube.Repository, snapshot *unstructured.Unstructured) error {
@@ -690,6 +724,46 @@ func restoreService(ctx context.Context, clientset kubernetes.Interface, namespa
 		_, err = clientset.CoreV1().Services(namespace).Update(ctx, restore, metav1.UpdateOptions{})
 		return err
 	})
+}
+
+func restoreIngress(ctx context.Context, clientset kubernetes.Interface, namespace string, snapshot *networkingv1.Ingress) error {
+	if snapshot == nil {
+		return nil
+	}
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		current, err := clientset.NetworkingV1().Ingresses(namespace).Get(ctx, snapshot.Name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+
+		restore := snapshot.DeepCopy()
+		restore.ResourceVersion = current.ResourceVersion
+		_, err = clientset.NetworkingV1().Ingresses(namespace).Update(ctx, restore, metav1.UpdateOptions{})
+		return err
+	})
+}
+
+func rollbackAgentResourceUpdate(ctx context.Context, repo *kube.Repository, clientset kubernetes.Interface, namespace string, result *agentResourceUpdateResult) error {
+	if result == nil {
+		return nil
+	}
+
+	failures := []string{}
+	for _, err := range []error{
+		restoreIngress(ctx, clientset, namespace, result.IngressSnapshot),
+		restoreService(ctx, clientset, namespace, result.ServiceSnapshot),
+		restoreDevbox(ctx, repo, result.DevboxSnapshot),
+	} {
+		if err != nil {
+			failures = append(failures, err.Error())
+		}
+	}
+	if len(failures) == 0 {
+		return nil
+	}
+
+	return fmt.Errorf("rollback failed: %s", strings.Join(failures, "; "))
 }
 
 func combineRollbackError(primary error, rollbackErrors ...error) error {
@@ -1262,11 +1336,21 @@ func validateModelUpdateCompatibility(devbox *unstructured.Unstructured, req dto
 	if !isCowAgentDevbox(devbox) || req.ModelAPIMode == nil {
 		return nil
 	}
-	apiMode := strings.TrimSpace(*req.ModelAPIMode)
+	apiMode := normalizeAgentModelAPIMode(*req.ModelAPIMode)
 	if apiMode == "" || apiMode == "chat_completions" {
 		return nil
 	}
 	return validationFieldError("agent-model-api-mode", "unsupported_field", apiMode)
+}
+
+func validateModelSyncReadiness(spec agent.Agent, req dto.UpdateAgentRequest) *appErr.AppError {
+	if !hasModelUpdate(req) || spec.Ready {
+		return nil
+	}
+	return appErr.New(appErr.CodeKubernetesOperation, "agent is not ready for model switch").WithDetails(map[string]any{
+		"bootstrapPhase":   spec.BootstrapPhase,
+		"bootstrapMessage": spec.BootstrapMessage,
+	})
 }
 
 func isCowAgentDevbox(devbox *unstructured.Unstructured) bool {
