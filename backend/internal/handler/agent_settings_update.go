@@ -70,7 +70,7 @@ func UpdateAgentSettings(c *gin.Context) {
 
 	updateResult, updateErr := updateAgentResources(ctx, repo, clientset, factory.Namespace(), agentName, mapped)
 	if updateErr != nil {
-		writeKubernetesError(c, updateErr, "failed to update agent settings")
+		writeAgentResourceUpdateError(c, updateErr, "failed to update agent settings")
 		return
 	}
 	updatedDevbox := updateResult.Devbox
@@ -88,7 +88,7 @@ func UpdateAgentSettings(c *gin.Context) {
 			details["rollbackError"] = rollbackErr.Error()
 			syncErr.WithDetails(details)
 		}
-		writeAppError(c, http.StatusBadGateway, syncErr)
+		writeAgentModelSyncError(c, syncErr)
 		return
 	}
 

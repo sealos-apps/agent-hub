@@ -9,6 +9,7 @@ import (
 	"github.com/nightwhite/Agent-Hub/internal/agent"
 	"github.com/nightwhite/Agent-Hub/internal/dto"
 	"github.com/nightwhite/Agent-Hub/internal/kube"
+	apperrors "github.com/nightwhite/Agent-Hub/pkg/errors"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/remotecommand"
@@ -221,5 +222,64 @@ func TestSyncAgentModelConfigReturnsExecError(t *testing.T) {
 	}
 	if got := err.Details()["stderr"]; got != "switch failed" {
 		t.Fatalf("stderr detail = %#v, want switch failed", got)
+	}
+}
+
+func TestSyncAgentModelConfigSkipsExplicitRebootstrap(t *testing.T) {
+	factory, appErr := kube.NewFactoryFromEncodedKubeconfig(testEncodedKubeconfig())
+	if appErr != nil {
+		t.Fatalf("NewFactoryFromEncodedKubeconfig() error = %v", appErr)
+	}
+
+	called := false
+	previous := execAgentCommandWithRetry
+	execAgentCommandWithRetry = func(ctx context.Context, clientset kubernetes.Interface, factory *kube.Factory, agentName string, command []string, stdinPayload []byte, tty bool, sizeQueue remotecommand.TerminalSizeQueue) (string, string, error) {
+		called = true
+		return "", "", nil
+	}
+	defer func() {
+		execAgentCommandWithRetry = previous
+	}()
+
+	model := "gpt-5.4-mini"
+	err := syncAgentModelConfig(context.Background(), fake.NewSimpleClientset(), factory, agent.Agent{
+		Name:          "demo-agent",
+		TemplateID:    "openclaw",
+		ModelProvider: aiproxyResponsesProvider,
+		ModelBaseURL:  "https://aiproxy.usw-1.sealos.io/v1",
+		ModelAPIKey:   "sk-test",
+		Model:         "glm-5.1",
+	}, dto.UpdateAgentRequest{
+		Model:       &model,
+		Rebootstrap: true,
+	})
+	if err != nil {
+		t.Fatalf("syncAgentModelConfig() error = %v, want nil", err)
+	}
+	if called {
+		t.Fatal("exec called for explicit rebootstrap, want hot-sync skipped")
+	}
+}
+
+func TestSyncAgentModelConfigReturnsValidationErrorForInvalidInput(t *testing.T) {
+	factory, appErr := kube.NewFactoryFromEncodedKubeconfig(testEncodedKubeconfig())
+	if appErr != nil {
+		t.Fatalf("NewFactoryFromEncodedKubeconfig() error = %v", appErr)
+	}
+
+	model := "gpt-5.4-mini"
+	err := syncAgentModelConfig(context.Background(), fake.NewSimpleClientset(), factory, agent.Agent{
+		Name:         "demo-agent",
+		TemplateID:   "openclaw",
+		ModelBaseURL: "https://aiproxy.usw-1.sealos.io/v1",
+		Model:        "glm-5.1",
+	}, dto.UpdateAgentRequest{
+		Model: &model,
+	})
+	if err == nil {
+		t.Fatal("syncAgentModelConfig() error = nil, want validation error")
+	}
+	if err.Code() != apperrors.CodeValidationFailed {
+		t.Fatalf("syncAgentModelConfig() code = %d, want %d", err.Code(), apperrors.CodeValidationFailed)
 	}
 }

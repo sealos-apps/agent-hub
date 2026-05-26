@@ -47,12 +47,12 @@ func syncAgentModelConfig(
 	current agent.Agent,
 	req dto.UpdateAgentRequest,
 ) *appErr.AppError {
-	if !hasModelUpdate(req) {
+	if !hasModelUpdate(req) || shouldRebootstrap(req) {
 		return nil
 	}
 	input, err := buildAgentModelSyncInput(current, req)
 	if err != nil {
-		return appErr.New(appErr.CodeKubernetesOperation, "failed to build agent model sync command").WithDetails(map[string]any{
+		return appErr.New(appErr.CodeValidationFailed, "failed to build agent model sync command").WithDetails(map[string]any{
 			"reason": err.Error(),
 		})
 	}

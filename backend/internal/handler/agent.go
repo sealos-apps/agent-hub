@@ -527,7 +527,7 @@ func UpdateAgent(c *gin.Context) {
 
 	updateResult, updateErr := updateAgentResources(ctx, repo, clientset, factory.Namespace(), agentName, req)
 	if updateErr != nil {
-		writeKubernetesError(c, updateErr, "failed to update agent resources")
+		writeAgentResourceUpdateError(c, updateErr, "failed to update agent resources")
 		return
 	}
 	updatedDevbox := updateResult.Devbox
@@ -551,7 +551,7 @@ func UpdateAgent(c *gin.Context) {
 			details["rollbackError"] = rollbackErr.Error()
 			syncErr.WithDetails(details)
 		}
-		writeAppError(c, http.StatusBadGateway, syncErr)
+		writeAgentModelSyncError(c, syncErr)
 		return
 	}
 
@@ -634,6 +634,22 @@ func retryUpdateIngress(ctx context.Context, clientset kubernetes.Interface, nam
 		return nil
 	})
 	return updated, err
+}
+
+func writeAgentResourceUpdateError(c *gin.Context, err error, message string) {
+	if validationErr, ok := err.(*appErr.AppError); ok {
+		writeValidationError(c, validationErr)
+		return
+	}
+	writeKubernetesError(c, err, message)
+}
+
+func writeAgentModelSyncError(c *gin.Context, err *appErr.AppError) {
+	if err.Code() == appErr.CodeValidationFailed {
+		writeValidationError(c, err)
+		return
+	}
+	writeAppError(c, http.StatusBadGateway, err)
 }
 
 type agentResourceUpdateResult struct {
@@ -1344,7 +1360,7 @@ func validateModelUpdateCompatibility(devbox *unstructured.Unstructured, req dto
 }
 
 func validateModelSyncReadiness(spec agent.Agent, req dto.UpdateAgentRequest) *appErr.AppError {
-	if !hasModelUpdate(req) || spec.Ready {
+	if !hasModelUpdate(req) || shouldRebootstrap(req) || spec.Ready {
 		return nil
 	}
 	return appErr.New(appErr.CodeKubernetesOperation, "agent is not ready for model switch").WithDetails(map[string]any{
