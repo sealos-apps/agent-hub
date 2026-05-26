@@ -69,6 +69,15 @@ func UpdateAgentSettings(c *gin.Context) {
 		return
 	}
 
+	view, found = getAgentView(ctx, factory.Namespace(), agentName, repo, clientset, c)
+	if !found {
+		return
+	}
+	if syncErr := syncAgentModelConfig(ctx, clientset, factory, view.Agent, mapped); syncErr != nil {
+		writeAppError(c, http.StatusBadGateway, syncErr)
+		return
+	}
+
 	if shouldRebootstrap(mapped) {
 		if err := markAgentBootstrapPending(ctx, repo, updatedDevbox, templateDef.ID); err != nil {
 			writeKubernetesError(c, err, "failed to mark bootstrap pending")
@@ -76,10 +85,6 @@ func UpdateAgentSettings(c *gin.Context) {
 		}
 	}
 
-	view, found = getAgentView(ctx, factory.Namespace(), agentName, repo, clientset, c)
-	if !found {
-		return
-	}
 	if shouldRebootstrap(mapped) {
 		scheduleAgentBootstrap(factory, cfg, templateDef, view.Agent)
 	}

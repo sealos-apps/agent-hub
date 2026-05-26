@@ -531,6 +531,11 @@ func UpdateAgent(c *gin.Context) {
 	enrichAgentRuntimeStatus(ctx, clientset, updatedDevbox, &view)
 	view.Agent.IngressDomain = kube.IngressDomain(updatedIngress)
 
+	if syncErr := syncAgentModelConfig(ctx, clientset, factory, view.Agent, req); syncErr != nil {
+		writeAppError(c, http.StatusBadGateway, syncErr)
+		return
+	}
+
 	if shouldRebootstrap(req) {
 		templateDef, templateErr := resolveTemplateDefinition(cfg, view.Agent.TemplateID)
 		if templateErr != nil {
@@ -623,6 +628,9 @@ func updateAgentResources(
 	devbox, service, _, err := getManagedResources(ctx, namespace, agentName, repo, clientset)
 	if err != nil {
 		return nil, nil, err
+	}
+	if validationErr := validateModelUpdateCompatibility(devbox, req); validationErr != nil {
+		return nil, nil, validationErr
 	}
 
 	devboxSnapshot := devbox.DeepCopy()
@@ -1079,10 +1087,6 @@ func getManagedAgentIngressResources(ctx context.Context, namespace, agentName s
 	return devbox, ing, nil
 }
 
-func shouldRebootstrap(req dto.UpdateAgentRequest) bool {
-	return req.Rebootstrap || req.ModelProvider != nil || req.ModelBaseURL != nil || req.Model != nil || req.ModelAPIKey != nil || req.ModelAPIMode != nil
-}
-
 func markAgentBootstrapPending(ctx context.Context, repo *kube.Repository, devbox *unstructured.Unstructured, templateID string) error {
 	if devbox == nil {
 		return fmt.Errorf("devbox is nil")
@@ -1252,6 +1256,28 @@ func validateUpdateRequest(req dto.UpdateAgentRequest) *appErr.AppError {
 		return validationFieldError("agent-model", "cannot_be_empty", *req.Model)
 	}
 	return nil
+}
+
+func validateModelUpdateCompatibility(devbox *unstructured.Unstructured, req dto.UpdateAgentRequest) *appErr.AppError {
+	if !isCowAgentDevbox(devbox) || req.ModelAPIMode == nil {
+		return nil
+	}
+	apiMode := strings.TrimSpace(*req.ModelAPIMode)
+	if apiMode == "" || apiMode == "chat_completions" {
+		return nil
+	}
+	return validationFieldError("agent-model-api-mode", "unsupported_field", apiMode)
+}
+
+func isCowAgentDevbox(devbox *unstructured.Unstructured) bool {
+	if devbox == nil {
+		return false
+	}
+	templateID := strings.TrimSpace(kube.TemplateID(devbox))
+	if templateID == "" {
+		templateID = strings.TrimSpace(devbox.GetLabels()["app.kubernetes.io/name"])
+	}
+	return templateID == "cowagent"
 }
 
 func validateAgentName(name string) *appErr.AppError {

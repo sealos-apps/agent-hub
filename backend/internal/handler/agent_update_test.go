@@ -82,6 +82,41 @@ func TestUpdateAgentResourcesRollsBackDevboxAndServiceWhenIngressUpdateFails(t *
 	}
 }
 
+func TestUpdateAgentResourcesRejectsCowAgentNonChatAPI(t *testing.T) {
+	t.Parallel()
+
+	const namespace = "ns-test"
+	const agentName = "demo-agent"
+
+	repo, clientset := newUpdateAgentTestFixtures(t, namespace, agentName)
+	devbox, getErr := repo.Get(context.Background(), agentName)
+	if getErr != nil {
+		t.Fatalf("repo.Get() error = %v", getErr)
+	}
+	devbox.SetLabels(map[string]string{
+		"app.kubernetes.io/name":     "cowagent",
+		"agent.sealos.io/name":       agentName,
+		"agent.sealos.io/managed-by": kube.ManagedByValue(),
+	})
+	if err := kube.SetTemplateID(devbox, "cowagent"); err != nil {
+		t.Fatalf("SetTemplateID() error = %v", err)
+	}
+	if _, err := repo.Update(context.Background(), devbox); err != nil {
+		t.Fatalf("repo.Update() error = %v", err)
+	}
+
+	apiMode := "codex_responses"
+	_, _, err := updateAgentResources(context.Background(), repo, clientset, namespace, agentName, dto.UpdateAgentRequest{
+		ModelAPIMode: &apiMode,
+	})
+	if err == nil {
+		t.Fatal("updateAgentResources() error = nil, want CowAgent api mode validation error")
+	}
+	if got := readDevboxEnvValue(devbox, "AGENT_MODEL_API_MODE"); got != "" {
+		t.Fatalf("AGENT_MODEL_API_MODE = %q, want unchanged empty", got)
+	}
+}
+
 func newUpdateAgentTestFixtures(t *testing.T, namespace, agentName string) (*kube.Repository, *k8sfake.Clientset) {
 	t.Helper()
 
@@ -251,6 +286,29 @@ func TestApplyUpdateToDevboxOpenAIClearsAIProxyEnv(t *testing.T) {
 	}
 	if got := readDevboxEnvValue(devbox, "AIPROXY_API_KEY"); got != "" {
 		t.Fatalf("AIPROXY_API_KEY = %q, want empty after leaving managed AIProxy", got)
+	}
+}
+
+func TestValidateModelUpdateCompatibilityRejectsCowAgentNonChatAPI(t *testing.T) {
+	t.Parallel()
+
+	devbox := newModelUpdateDevbox("custom:aiproxy-chat", "https://aiproxy.usw-1.sealos.io/v1", "glm-5.1", "aiproxy-key")
+	devbox.SetLabels(map[string]string{
+		"app.kubernetes.io/name": "cowagent",
+	})
+	req := dto.UpdateAgentRequest{}
+	apiMode := "anthropic_messages"
+	req.ModelAPIMode = &apiMode
+
+	err := validateModelUpdateCompatibility(devbox, req)
+	if err == nil {
+		t.Fatal("validateModelUpdateCompatibility() error = nil, want CowAgent api mode validation error")
+	}
+	if got := err.Details()["field"]; got != "agent-model-api-mode" {
+		t.Fatalf("validation field = %#v, want agent-model-api-mode", got)
+	}
+	if got := err.Details()["reason"]; got != "unsupported_field" {
+		t.Fatalf("validation reason = %#v, want unsupported_field", got)
 	}
 }
 
