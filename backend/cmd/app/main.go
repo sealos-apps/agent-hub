@@ -20,6 +20,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	handler.StartAgentPreviewCleanup(ctx)
+	handler.StartAgentTemplateCacheRefresh(ctx, cfg)
 
 	log.Printf(
 		"agent hub backend listening on :%s region=%s aiproxy=%s modelProxy=%s",
