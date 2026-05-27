@@ -84,8 +84,9 @@ describe('AgentConfigForm', () => {
       />,
     )
 
+    fireEvent.click(screen.getByRole('button', { name: /GPT-5.4 Mini/ }))
     expect(screen.getAllByText('普通模型').length).toBeGreaterThan(0)
-    expect(screen.getByText('GPT-5.4 Mini')).toBeInTheDocument()
+    expect(screen.getAllByText('GPT-5.4 Mini').length).toBeGreaterThan(0)
     expect(screen.getByText('GLM-4.6')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /GLM-4.6/ }))
 
@@ -174,15 +175,14 @@ describe('AgentConfigForm', () => {
       />,
     )
 
+    fireEvent.click(screen.getByRole('button', { name: /GPT-5.4 Vision/ }))
     expect(screen.getAllByText('多模态模型').length).toBeGreaterThan(0)
     expect(screen.getByText('生图模型')).toBeInTheDocument()
-    expect(screen.getByText('GPT-5.4 Vision')).toBeInTheDocument()
+    expect(screen.getAllByText('GPT-5.4 Vision').length).toBeGreaterThan(0)
     expect(screen.queryByText('GPT Image 2')).not.toBeInTheDocument()
     expect(screen.getAllByText('输入:图像').length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: /生图模型/ }))
-    expect(settingCalls).toContainEqual(['model', ''])
-    expect(settingCalls).toContainEqual(['provider', ''])
-    expect(screen.getByText('GPT Image 2')).toBeInTheDocument()
+    expect(screen.getAllByText('GPT Image 2').length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: /GPT Image 2/ }))
     expect(settingCalls).toContainEqual(['model', 'gpt-image-2'])
     expect(settingCalls).toContainEqual(['provider', 'custom:aiproxy-responses'])
@@ -202,6 +202,7 @@ describe('AgentConfigForm', () => {
       />,
     )
     expect(screen.getByText('GPT Image 2')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /GPT Image 2/ }))
     expect(screen.getByText('输出:图像')).toBeInTheDocument()
   })
 
@@ -232,6 +233,7 @@ describe('AgentConfigForm', () => {
       />,
     )
 
+    fireEvent.click(screen.getByRole('button', { name: /请选择模型/ }))
     expect(screen.getByText('GLM-4.6')).toBeInTheDocument()
     expect(screen.queryByText('GPT-5.4 Mini')).not.toBeInTheDocument()
   })

@@ -18,7 +18,6 @@ import {
   writeBlueprintSettingValue,
 } from "../../../domains/agents/blueprintFields";
 import { createBlueprintFromAgentItem } from "../../../domains/agents/mappers";
-import { formatModelOptionLabel } from "../../../domains/agents/modelCapabilities";
 import {
   createEmptyBlueprint,
   RESOURCE_PRESETS,
@@ -152,10 +151,10 @@ function ConfigField({
   children: ReactNode;
 }) {
   return (
-    <label className="grid min-h-12 grid-cols-[108px_minmax(0,1fr)] items-center gap-4 border-b border-zinc-100 py-3 last:border-b-0">
-      <span className="text-[13px]/5 text-zinc-500">{label}</span>
+    <div className="grid min-h-12 grid-cols-[108px_minmax(0,1fr)] items-center gap-4 border-b border-zinc-100 py-3 last:border-b-0">
+      <div className="text-[13px]/5 text-zinc-500">{label}</div>
       <div className="min-w-0">{children}</div>
-    </label>
+    </div>
   );
 }
 
@@ -318,18 +317,13 @@ function AgentConfigEditModal({
         <ConfigField label={t('agent.model')}>
           <ModelCapabilitySelect
             modelTypes={template.modelTypes}
+            fallbackLabel={modelValue || t('summary.notSelected')}
             onChange={handleModelChange}
             options={template.modelOptions}
             placeholder={t('agent.selectModel')}
+            portal
             value={modelValue}
           />
-          <div className="mt-2 text-[12px]/5 text-zinc-500">
-            {formatModelOptionLabel(
-              template.modelOptions.find((option) => option.value === modelValue),
-            ) ||
-              modelValue ||
-              t('summary.notSelected')}
-          </div>
         </ConfigField>
 
         <ConfigField label={t('agent.runtimeEnv')}>

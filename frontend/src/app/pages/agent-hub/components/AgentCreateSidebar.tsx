@@ -37,11 +37,11 @@ function SidebarSection({
         className || '',
       ].join(' ')}
     >
-      <div className="px-6 pt-6">
+      <div className="px-4 pt-6 xl:px-5">
         <div className="text-[1.02rem]/6 font-semibold tracking-[-0.02em] text-zinc-950">{title}</div>
         {description ? <div className="mt-1 text-[13px]/6 text-zinc-500">{description}</div> : null}
       </div>
-      <div className="px-6 pt-5 pb-6">{children}</div>
+      <div className="px-4 pb-5 pt-4 xl:px-5">{children}</div>
     </section>
   )
 }
@@ -54,9 +54,9 @@ function SummaryMetric({
   value: string
 }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5">
-      <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-400">{label}</div>
-      <div className="mt-1 text-[1rem]/6 font-semibold tracking-[-0.03em] tabular-nums text-zinc-950">
+    <div className="min-w-0 rounded-xl border border-zinc-200 bg-zinc-50 px-2 py-2">
+      <div className="truncate text-[10px] font-medium uppercase tracking-[0.08em] text-zinc-400">{label}</div>
+      <div className="mt-1 truncate text-[0.92rem]/5 font-semibold tracking-[-0.03em] tabular-nums text-zinc-950">
         {value}
       </div>
     </div>
@@ -149,7 +149,6 @@ export function AgentCreateSidebar({
   return (
     <aside className="grid h-full w-full gap-4 pb-10 sm:pb-12 xl:pb-10">
       <SidebarSection
-        description={t('summary.cardDesc')}
         title={t('summary.card')}
         className="h-full"
       >
@@ -169,7 +168,7 @@ export function AgentCreateSidebar({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-1.5">
             <SummaryMetric label="CPU" value={formatCpu(blueprint.cpu)} />
             <SummaryMetric label={t('agent.memory')} value={formatMemory(blueprint.memory)} />
             <SummaryMetric label={t('agent.storage')} value={formatStorage(blueprint.storageLimit)} />

@@ -188,13 +188,13 @@ export function AgentCreatePage() {
     >
       <div className="flex h-full min-w-0 flex-col">
         <main className="flex min-h-0 flex-1 overflow-y-auto">
-          <div className="flex w-full min-h-full flex-col gap-5 px-4 pb-12 pt-5 sm:px-6 sm:pb-14 lg:px-12 lg:pb-10">
+          <div className="mx-auto flex w-full max-w-[1760px] min-h-full flex-col gap-4 px-4 pb-10 pt-4 sm:px-6 sm:pb-12 lg:px-8 lg:pb-6 xl:px-10 2xl:px-12">
             <AgentHubOverview message={message} onClose={() => setMessage("")} />
 
-            <div className="grid w-full gap-3 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)]">
+            <div className="grid w-full gap-3 lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[252px_minmax(0,1fr)] 2xl:grid-cols-[264px_minmax(0,1fr)]">
               {selectedTemplate ? (
                 <div
-                  className="hidden min-w-0 lg:block lg:w-[280px] xl:w-[300px] 2xl:w-[320px]"
+                  className="hidden min-w-0 lg:block lg:w-[240px] xl:w-[252px] 2xl:w-[264px]"
                   style={
                     syncedSidebarHeight
                       ? { height: `${syncedSidebarHeight}px` }

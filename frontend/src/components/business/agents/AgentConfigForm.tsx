@@ -190,7 +190,6 @@ function resolveNearestStep(value: number, options: number[]) {
 export function AgentConfigForm({
   template,
   blueprint,
-  workspaceRegion,
   onChangeTemplate,
   onChange,
   onChangeSettingField,
@@ -208,14 +207,10 @@ export function AgentConfigForm({
   }
 
   const formWidthClassName = "w-full";
-  const modelPresetHint = !template.modelOptions.length
-    ? t('agent.modelPresetEmpty')
-    : String(workspaceRegion || "").trim().toLowerCase() === "cn"
-      ? t('agent.modelPresetCn')
-      : t('agent.modelPresetUs');
   const controlClassName =
     "h-10 rounded-[10px] border-zinc-200 bg-white text-[14px] leading-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
   const compactInputClassName = `${controlClassName} w-full`;
+  const settingsGridClassName = "grid gap-x-4 gap-y-2.5 md:grid-cols-2";
   const getPresetLabel = (presetId: string) => {
     if (presetId === "minimum") return t('agent.presetMinimum');
     if (presetId === "recommended") return t('agent.presetRecommended');
@@ -411,8 +406,8 @@ export function AgentConfigForm({
       description={t('agent.settingsSectionDesc')}
       title={t('agent.settingsSection')}
     >
-      <div className="grid gap-4 md:grid-cols-2">
-        <FormItem className="w-full" label={t('agent.alias')}>
+      <div className={settingsGridClassName}>
+        <FormItem className="min-w-0 w-full" label={t('agent.alias')}>
           <Input
             className={`w-full ${controlClassName}`}
             onChange={(event) => onChange("aliasName", event.target.value)}
@@ -421,17 +416,18 @@ export function AgentConfigForm({
             value={blueprint.aliasName}
           />
         </FormItem>
-        {modelField ? <div>{renderEditableAgentField(modelField)}</div> : null}
+        {modelField ? (
+          <div className="min-w-0 w-full">{renderEditableAgentField(modelField)}</div>
+        ) : null}
       </div>
 
       {editableFields.length > 0 ? (
-        <div className="mt-5">
-          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-400">
-            {t('agent.moreSettings')}
-          </div>
-          <div className="mt-3 grid gap-4 md:grid-cols-2">
+        <div className="mt-2.5">
+          <div className={settingsGridClassName}>
             {editableFields.map((field) => (
-              <div key={field.key}>{renderEditableAgentField(field)}</div>
+              <div className="min-w-0 w-full" key={field.key}>
+                {renderEditableAgentField(field)}
+              </div>
             ))}
           </div>
         </div>
@@ -524,7 +520,7 @@ export function AgentConfigForm({
 
     if (bindingKey === "model") {
       return (
-        <FormItem className="w-full" hint={modelPresetHint} label={getFieldLabel(field)}>
+        <FormItem className="w-full" label={getFieldLabel(field)}>
           <ModelCapabilitySelect
             modelTypes={template.modelTypes}
             onChange={handleModelChange}

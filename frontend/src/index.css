@@ -142,7 +142,7 @@ a {
 
   .input {
     @apply w-full rounded-[10px] border border-[var(--color-border)] bg-white text-[var(--color-text)] shadow-[var(--shadow-sm)] transition-all;
-    @apply placeholder:text-[var(--color-muted)] focus:border-[var(--color-brand)] focus:outline-none focus:ring-4 focus:ring-[rgba(37,99,255,0.12)];
+    @apply placeholder:text-[var(--color-muted)] focus:border-[rgba(37,99,255,0.45)] focus:outline-none focus:ring-1 focus:ring-[rgba(37,99,255,0.16)];
   }
 
   .badge-success {
@@ -151,7 +151,7 @@ a {
 
   .field-input {
     @apply w-full rounded-[10px] border border-[var(--color-border)] bg-white py-2 text-[var(--color-text)] shadow-[var(--shadow-sm)] outline-none transition-all;
-    @apply placeholder:text-[var(--color-muted)] focus:border-[var(--color-brand)] focus:ring-4 focus:ring-[rgba(37,99,255,0.12)];
+    @apply placeholder:text-[var(--color-muted)] focus:border-[rgba(37,99,255,0.45)] focus:ring-1 focus:ring-[rgba(37,99,255,0.16)];
   }
 
   .workbench-card {
