@@ -1,15 +1,12 @@
 import { RESOURCE_PRESETS, resolveResourcePreset } from '../../../../domains/agents/templates'
 import type { AgentBlueprint } from '../../../../domains/agents/types'
 
-export const updateBlueprintField = (
+export function updateBlueprintField<K extends keyof AgentBlueprint>(
   current: AgentBlueprint,
-  field: keyof AgentBlueprint,
-  value: AgentBlueprint[keyof AgentBlueprint],
-): AgentBlueprint => {
-  const next =
-    field === 'modelSlots'
-      ? { ...current, modelSlots: value as AgentBlueprint['modelSlots'] }
-      : { ...current, [field]: value as string }
+  field: K,
+  value: AgentBlueprint[K],
+): AgentBlueprint {
+  const next = { ...current, [field]: value }
 
   if (field === 'cpu' || field === 'memory') {
     const textValue = String(value || "")

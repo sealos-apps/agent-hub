@@ -113,6 +113,59 @@ func buildAgentContract(view kube.AgentView, templateDef agenttemplate.Definitio
 	}, nil
 }
 
+func buildAgentContractWithConfigError(view kube.AgentView, templateDef agenttemplate.Definition, cfg config.Config, configErr *appErr.AppError) dto.AgentContract {
+	contract, err := buildAgentContract(view, templateDef, cfg)
+	if err == nil {
+		return contract
+	}
+
+	region := strings.TrimSpace(cfg.Region)
+	accessItems := buildAgentAccessItems(view.Agent, templateDef, cfg)
+	actionItems := buildAgentActions(view.Agent, templateDef, accessItems)
+	message := strings.TrimSpace(configErr.Error())
+	if message == "" {
+		message = "agent configuration is invalid"
+	}
+
+	return dto.AgentContract{
+		Core: dto.AgentCoreContract{
+			Name:             view.Agent.Name,
+			AliasName:        view.Agent.AliasName,
+			TemplateID:       view.Agent.TemplateID,
+			Namespace:        view.Agent.Namespace,
+			Status:           "Error",
+			StatusText:       "配置异常",
+			Ready:            false,
+			BootstrapPhase:   view.Agent.BootstrapPhase,
+			BootstrapMessage: message,
+			ConfigError:      message,
+			CreatedAt:        view.CreatedAt,
+		},
+		Workspaces: buildAgentWorkspaces(view.Agent, templateDef, accessItems, actionItems),
+		Access:     accessItems,
+		Runtime: dto.AgentRuntimeContract{
+			CPU:              view.Agent.CPU,
+			Memory:           view.Agent.Memory,
+			Storage:          view.Agent.Storage,
+			RuntimeClassName: view.Agent.RuntimeClassName,
+			WorkingDir:       view.Agent.WorkingDir,
+			User:             view.Agent.User,
+			NetworkType:      view.Agent.NetworkType,
+			SSHPort:          view.Agent.SSHPort,
+			ModelProvider:    view.Agent.ModelProvider,
+			ModelBaseURL:     view.Agent.ModelBaseURL,
+			Model:            view.Agent.Model,
+			ModelAPIMode:     view.Agent.ModelAPIMode,
+			HasModelAPIKey:   strings.TrimSpace(view.Agent.ModelAPIKey) != "",
+		},
+		Settings: dto.AgentSettingsContract{
+			Runtime: toSettingFields(templateDef.Settings.Runtime, templateDef, region, buildSettingValues(view.Agent, templateDef.Settings.Runtime)),
+			Agent:   toSettingFields(templateDef.Settings.Agent, templateDef, region, buildSettingValues(view.Agent, templateDef.Settings.Agent)),
+		},
+		Actions: actionItems,
+	}
+}
+
 func modelSlotsFromAnnotations(annotations map[string]string) (map[string]dto.ModelSlotSelection, *appErr.AppError) {
 	value := strings.TrimSpace(annotations["agent.sealos.io/model-slots"])
 	modelSlots, err := decodeModelSlotsAnnotation(value)

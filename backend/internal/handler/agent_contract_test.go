@@ -178,3 +178,37 @@ func TestBuildAgentContractRejectsInvalidModelSlotsAnnotation(t *testing.T) {
 		t.Fatalf("buildAgentContract() code = %d, want %d", contractErr.Code(), appErr.CodeKubernetesOperation)
 	}
 }
+
+func TestBuildAgentContractWithConfigErrorPreservesAgentInErrorState(t *testing.T) {
+	t.Parallel()
+
+	view := kube.AgentView{
+		Agent: agent.Agent{
+			Name:       "agent-test",
+			TemplateID: "template-test",
+			Namespace:  "ns-test",
+			Ready:      true,
+			Annotations: map[string]string{
+				"agent.sealos.io/model-slots": `{bad json`,
+			},
+		},
+	}
+	_, contractErr := buildAgentContract(view, agenttemplate.Definition{}, config.Config{})
+	if contractErr == nil {
+		t.Fatal("buildAgentContract() error = nil, want invalid annotation error")
+	}
+
+	contract := buildAgentContractWithConfigError(view, agenttemplate.Definition{}, config.Config{}, contractErr)
+	if contract.Core.Name != "agent-test" {
+		t.Fatalf("contract.Core.Name = %q, want agent-test", contract.Core.Name)
+	}
+	if contract.Core.Status != "Error" {
+		t.Fatalf("contract.Core.Status = %q, want Error", contract.Core.Status)
+	}
+	if contract.Core.Ready {
+		t.Fatal("contract.Core.Ready = true, want false")
+	}
+	if contract.Core.ConfigError != "invalid model slots annotation" {
+		t.Fatalf("contract.Core.ConfigError = %q, want invalid model slots annotation", contract.Core.ConfigError)
+	}
+}

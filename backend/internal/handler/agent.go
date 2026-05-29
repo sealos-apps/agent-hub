@@ -136,8 +136,8 @@ func ListAgents(c *gin.Context) {
 		}
 		contract, contractErr := buildAgentContract(view, templateDef, cfg)
 		if contractErr != nil {
-			writeAppError(c, http.StatusInternalServerError, contractErr)
-			return
+			log.Printf("failed to build agent contract for %s/%s: %v", view.Agent.Namespace, view.Agent.Name, contractErr)
+			contract = buildAgentContractWithConfigError(view, templateDef, cfg, contractErr)
 		}
 		items = append(items, contract)
 	}

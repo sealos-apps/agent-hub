@@ -154,6 +154,7 @@ export interface AgentCoreContract {
   ready: boolean;
   bootstrapPhase?: string;
   bootstrapMessage?: string;
+  configError?: string;
   createdAt?: string;
 }
 

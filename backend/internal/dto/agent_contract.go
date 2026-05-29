@@ -19,6 +19,7 @@ type AgentCoreContract struct {
 	Ready            bool   `json:"ready"`
 	BootstrapPhase   string `json:"bootstrapPhase,omitempty"`
 	BootstrapMessage string `json:"bootstrapMessage,omitempty"`
+	ConfigError      string `json:"configError,omitempty"`
 	CreatedAt        string `json:"createdAt,omitempty"`
 }
 
