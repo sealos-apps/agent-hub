@@ -81,6 +81,35 @@ export interface TemplateModelType {
   models: TemplateModelOption[];
 }
 
+export type TemplateLocalizedText = Record<string, string>;
+
+export interface TemplateModelIntegrationValueSource {
+  source: string;
+}
+
+export interface TemplateModelIntegrationProvider {
+  id: string;
+  name: TemplateLocalizedText;
+  baseURL: TemplateModelIntegrationValueSource;
+  apiKeyEnv: string;
+}
+
+export interface TemplateModelIntegrationSlot {
+  key: string;
+  label: TemplateLocalizedText;
+  required: boolean;
+  mutable: boolean;
+  defaultModels?: Record<string, string>;
+  modelTypes?: string[];
+}
+
+export interface TemplateModelIntegration {
+  type: string;
+  client: string;
+  provider: TemplateModelIntegrationProvider;
+  slots: TemplateModelIntegrationSlot[];
+}
+
 export interface TemplateSettingsSchema {
   runtime: AgentSettingField[];
   agent: AgentSettingField[];
@@ -105,6 +134,7 @@ export interface AgentTemplateCatalogItem {
   settings: TemplateSettingsSchema;
   modelOptions: TemplateModelOption[];
   modelTypes?: TemplateModelType[];
+  modelIntegration?: TemplateModelIntegration;
 }
 
 export interface AgentTemplateDefinition extends AgentTemplateCatalogItem {
@@ -124,6 +154,7 @@ export interface AgentCoreContract {
   ready: boolean;
   bootstrapPhase?: string;
   bootstrapMessage?: string;
+  configError?: string;
   createdAt?: string;
 }
 
@@ -171,7 +202,14 @@ export interface AgentRuntimeContract {
   modelBaseURL?: string;
   model?: string;
   modelAPIMode?: string;
+  modelSlots?: Record<string, ModelSlotSelection>;
   hasModelAPIKey: boolean;
+}
+
+export interface ModelSlotSelection {
+  provider: string;
+  model: string;
+  apiMode: string;
 }
 
 export interface AgentSettingsContract {
@@ -214,6 +252,7 @@ export interface AgentBlueprint {
   modelBaseURL: string;
   model: string;
   modelAPIMode: string;
+  modelSlots: Record<string, string>;
   hasModelAPIKey: boolean;
   keySource: string;
   settingsValues: Record<string, string>;
@@ -307,6 +346,7 @@ export interface AgentListItem {
   modelBaseURL: string;
   model: string;
   modelAPIMode: string;
+  modelSlots: Record<string, string>;
   hasModelAPIKey: boolean;
   keySource: string;
   ready: boolean;

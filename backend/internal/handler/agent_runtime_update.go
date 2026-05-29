@@ -127,6 +127,11 @@ func writeUpdatedAgentContract(
 		writeAppError(c, http.StatusInternalServerError, appErr.New(appErr.CodeKubernetesOperation, resolveErr.Error()))
 		return
 	}
+	contract, contractErr := buildAgentContract(view, templateDef, cfg)
+	if contractErr != nil {
+		writeAppError(c, http.StatusInternalServerError, contractErr)
+		return
+	}
 
-	writeSuccess(c, http.StatusOK, dto.AgentDetailResponse{Agent: buildAgentContract(view, templateDef, cfg)})
+	writeSuccess(c, http.StatusOK, dto.AgentDetailResponse{Agent: contract})
 }

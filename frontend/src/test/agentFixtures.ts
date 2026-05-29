@@ -152,6 +152,7 @@ export function createAgentItemFixture({
       modelBaseURL: "https://aiproxy.example.com/v1",
       model: "gpt-5.4-mini",
       modelAPIMode: "codex_responses",
+      modelSlots: {},
       hasModelAPIKey: true,
     },
     settings: {
@@ -188,6 +189,7 @@ export function createAgentItemFixture({
     modelBaseURL: "https://aiproxy.example.com/v1",
     model: "gpt-5.4-mini",
     modelAPIMode: "codex_responses",
+    modelSlots: {},
     hasModelAPIKey: true,
     keySource: "workspace-aiproxy",
     ready: true,

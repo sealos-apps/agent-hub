@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/nightwhite/Agent-Hub/internal/agenttemplate"
+	"github.com/nightwhite/Agent-Hub/internal/config"
 	"github.com/nightwhite/Agent-Hub/internal/dto"
 	appErr "github.com/nightwhite/Agent-Hub/pkg/errors"
 )
@@ -57,7 +58,7 @@ func UpdateAgentSettings(c *gin.Context) {
 		return
 	}
 
-	mapped, err := buildSettingsUpdateRequest(req, templateDef, region)
+	mapped, err := buildSettingsUpdateRequest(req, templateDef, cfg, region)
 	if err != nil {
 		writeValidationError(c, err)
 		return
@@ -79,7 +80,7 @@ func UpdateAgentSettings(c *gin.Context) {
 	if !found {
 		return
 	}
-	if syncErr := syncAgentModelConfig(ctx, clientset, factory, view.Agent, mapped); syncErr != nil {
+	if syncErr := syncAgentModelConfig(ctx, clientset, factory, view.Agent, mapped, templateDef, region); syncErr != nil {
 		if rollbackErr := rollbackAgentResourceUpdate(ctx, repo, clientset, factory.Namespace(), updateResult); rollbackErr != nil {
 			details := syncErr.Details()
 			if details == nil {
@@ -102,8 +103,13 @@ func UpdateAgentSettings(c *gin.Context) {
 	if shouldRebootstrap(mapped) {
 		scheduleAgentBootstrap(factory, cfg, templateDef, view.Agent)
 	}
+	contract, contractErr := buildAgentContract(view, templateDef, cfg)
+	if contractErr != nil {
+		writeAppError(c, http.StatusInternalServerError, contractErr)
+		return
+	}
 
-	writeSuccess(c, http.StatusOK, dto.AgentDetailResponse{Agent: buildAgentContract(view, templateDef, cfg)})
+	writeSuccess(c, http.StatusOK, dto.AgentDetailResponse{Agent: contract})
 }
 
 func validateSettingsUpdateRequest(
@@ -111,7 +117,7 @@ func validateSettingsUpdateRequest(
 	templateDef agenttemplate.Definition,
 	region string,
 ) *appErr.AppError {
-	if req.AgentAliasName == nil && len(req.Settings) == 0 {
+	if req.AgentAliasName == nil && len(req.Settings) == 0 && len(req.ModelSlots) == 0 {
 		return appErr.New(appErr.CodeValidationFailed, "settings update payload is required").WithDetails(map[string]any{
 			"field":  "settings",
 			"reason": "required",
@@ -120,12 +126,17 @@ func validateSettingsUpdateRequest(
 	if req.AgentAliasName != nil && strings.TrimSpace(*req.AgentAliasName) == "" {
 		return validationFieldError("agent-alias-name", "cannot_be_empty", *req.AgentAliasName)
 	}
-	return validateTemplateSettingsPayload(req.Settings, templateDef.Settings.Agent, templateDef, region, false, "settings.")
+	if err := validateTemplateSettingsPayload(req.Settings, templateDef.Settings.Agent, templateDef, region, false, "settings."); err != nil {
+		return err
+	}
+	_, err := resolveModelSlotSelections(req.ModelSlots, templateDef, region, false, true)
+	return err
 }
 
 func buildSettingsUpdateRequest(
 	req dto.UpdateAgentSettingsRequest,
 	templateDef agenttemplate.Definition,
+	cfg config.Config,
 	region string,
 ) (dto.UpdateAgentRequest, *appErr.AppError) {
 	mapped, err := buildTemplateSettingsUpdate(req.Settings, templateDef.Settings.Agent)
@@ -133,6 +144,11 @@ func buildSettingsUpdateRequest(
 		return dto.UpdateAgentRequest{}, err
 	}
 	applyTemplateModelMetadata(&mapped, templateDef, region)
+	modelSlotsUpdate, slotErr := buildModelSlotsUpdate(req.ModelSlots, templateDef, cfg, region, false)
+	if slotErr != nil {
+		return dto.UpdateAgentRequest{}, slotErr
+	}
+	mergeUpdateModelSlots(&mapped, modelSlotsUpdate)
 	mapped.AgentAliasName = req.AgentAliasName
 	return mapped, nil
 }

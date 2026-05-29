@@ -28,6 +28,7 @@ type Definition struct {
 	Access               []AccessDefinition       `yaml:"access"`
 	Actions              []ActionDefinition       `yaml:"actions"`
 	Settings             SettingsSchema           `yaml:"settings"`
+	ModelIntegration     ModelIntegration         `yaml:"modelIntegration"`
 	RegionModelPresets   map[string][]ModelPreset `yaml:"regionModelPresets"`
 	RegionModelTypes     map[string][]ModelType   `yaml:"regionModelTypes"`
 	Bootstrap            ScriptSpec               `yaml:"bootstrap"`
@@ -113,6 +114,35 @@ type ModelType struct {
 	Description string        `yaml:"description"`
 	Models      []ModelPreset `yaml:"models"`
 	Options     []ModelPreset `yaml:"options"`
+}
+
+type ModelIntegration struct {
+	Type     string                   `yaml:"type"`
+	Client   string                   `yaml:"client"`
+	Provider ModelIntegrationProvider `yaml:"provider"`
+	Slots    []ModelIntegrationSlot   `yaml:"slots"`
+}
+
+type LocalizedText map[string]string
+
+type ModelIntegrationProvider struct {
+	ID        string                      `yaml:"id"`
+	Name      LocalizedText               `yaml:"name"`
+	BaseURL   ModelIntegrationValueSource `yaml:"baseURL"`
+	APIKeyEnv string                      `yaml:"apiKeyEnv"`
+}
+
+type ModelIntegrationValueSource struct {
+	Source string `yaml:"source"`
+}
+
+type ModelIntegrationSlot struct {
+	Key           string            `yaml:"key"`
+	Label         LocalizedText     `yaml:"label"`
+	Required      bool              `yaml:"required"`
+	Mutable       bool              `yaml:"mutable"`
+	DefaultModels map[string]string `yaml:"defaultModels"`
+	ModelTypes    []string          `yaml:"modelTypes"`
 }
 
 func Resolve(templateID, override string) (Definition, error) {
@@ -371,6 +401,9 @@ func validateDefinition(definition Definition) error {
 			return err
 		}
 	}
+	if err := validateModelIntegration(definition.ModelIntegration); err != nil {
+		return err
+	}
 
 	if definition.BackendSupported {
 		if strings.TrimSpace(definition.ManifestDir) == "" {
@@ -384,6 +417,76 @@ func validateDefinition(definition Definition) error {
 		}
 	}
 
+	return nil
+}
+
+func validateModelIntegration(integration ModelIntegration) error {
+	if strings.TrimSpace(integration.Type) == "" &&
+		strings.TrimSpace(integration.Client) == "" &&
+		strings.TrimSpace(integration.Provider.ID) == "" &&
+		len(integration.Slots) == 0 {
+		return nil
+	}
+	if strings.TrimSpace(integration.Type) != "ai-agent-switch" {
+		return fmt.Errorf("modelIntegration.type must be ai-agent-switch")
+	}
+	if strings.TrimSpace(integration.Client) == "" {
+		return fmt.Errorf("modelIntegration.client is required")
+	}
+	if strings.TrimSpace(integration.Provider.ID) == "" {
+		return fmt.Errorf("modelIntegration.provider.id is required")
+	}
+	if strings.TrimSpace(integration.Provider.APIKeyEnv) == "" {
+		return fmt.Errorf("modelIntegration.provider.apiKeyEnv is required")
+	}
+	baseURLSource := strings.TrimSpace(integration.Provider.BaseURL.Source)
+	switch baseURLSource {
+	case "workspace", "system.aiProxyModelBaseURL":
+	case "":
+		return fmt.Errorf("modelIntegration.provider.baseURL.source is required")
+	default:
+		return fmt.Errorf("modelIntegration.provider.baseURL.source %q is not supported", baseURLSource)
+	}
+	if len(integration.Slots) == 0 {
+		return fmt.Errorf("modelIntegration.slots is required")
+	}
+	seenSlots := map[string]struct{}{}
+	hasRequiredMainSlot := false
+	for _, slot := range integration.Slots {
+		key := strings.TrimSpace(slot.Key)
+		if key == "" {
+			return fmt.Errorf("modelIntegration.slots[].key is required")
+		}
+		if key != slot.Key {
+			return fmt.Errorf("modelIntegration.slots.%s.key must not include leading or trailing whitespace", key)
+		}
+		if _, ok := seenSlots[key]; ok {
+			return fmt.Errorf("modelIntegration.slots.%s is duplicated", key)
+		}
+		seenSlots[key] = struct{}{}
+		if key == "main" && slot.Required {
+			hasRequiredMainSlot = true
+		}
+		if strings.TrimSpace(slot.Label["zh"]) == "" || strings.TrimSpace(slot.Label["en"]) == "" {
+			return fmt.Errorf("modelIntegration.slots.%s.label must include zh and en", key)
+		}
+		if len(slot.ModelTypes) == 0 {
+			return fmt.Errorf("modelIntegration.slots.%s.modelTypes is required", key)
+		}
+		hasModelType := false
+		for _, modelType := range slot.ModelTypes {
+			if strings.TrimSpace(modelType) != "" {
+				hasModelType = true
+				break
+			}
+		}
+		if !hasModelType {
+			return fmt.Errorf("modelIntegration.slots.%s.modelTypes is required", key)
+		}
+	}
+	if !hasRequiredMainSlot {
+		return fmt.Errorf("modelIntegration.slots.main is required")
+	}
 	return nil
 }
 

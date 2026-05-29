@@ -131,9 +131,9 @@ export function AgentCreatePage() {
     };
   }, [selectedTemplateId, loading, clusterContext, selectedTemplate]);
 
-  const handleBlueprintChange = (
-    field: keyof AgentBlueprint,
-    value: string,
+  const handleBlueprintChange = <K extends keyof AgentBlueprint>(
+    field: K,
+    value: AgentBlueprint[K],
   ) => {
     setBlueprint((current) => updateBlueprintField(current, field, value));
   };

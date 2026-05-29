@@ -134,7 +134,12 @@ func ListAgents(c *gin.Context) {
 			}
 			templateCache[templateID] = templateDef
 		}
-		items = append(items, buildAgentContract(view, templateDef, cfg))
+		contract, contractErr := buildAgentContract(view, templateDef, cfg)
+		if contractErr != nil {
+			log.Printf("failed to build agent contract for %s/%s: %v", view.Agent.Namespace, view.Agent.Name, contractErr)
+			contract = buildAgentContractWithConfigError(view, templateDef, cfg, contractErr)
+		}
+		items = append(items, contract)
 	}
 
 	response := dto.AgentListResponse{
@@ -357,6 +362,12 @@ func CreateAgent(c *gin.Context) {
 		return
 	}
 	applyTemplateModelMetadata(&mappedSettings, templateDef, region)
+	modelSlotsUpdate, slotErr := buildModelSlotsUpdate(req.ModelSlots, templateDef, cfg, region, true)
+	if slotErr != nil {
+		writeValidationError(c, slotErr)
+		return
+	}
+	mergeUpdateModelSlots(&mappedSettings, modelSlotsUpdate)
 
 	ingressDomain := domainPrefix + "-" + strings.TrimSpace(cfg.IngressSuffix)
 	if mappedSettings.ModelProvider != nil && mappedSettings.ModelBaseURL != nil {
@@ -371,20 +382,10 @@ func CreateAgent(c *gin.Context) {
 		)
 		cancelModelAccess()
 		if accessErr != nil {
-			fallbackAccess, fallbackErr := resolveManagedModelAccessWithoutToken(
-				cfg,
-				factory,
-				strings.TrimSpace(*mappedSettings.ModelProvider),
-				strings.TrimSpace(*mappedSettings.ModelBaseURL),
-			)
-			if fallbackErr != nil {
-				writeAppError(c, http.StatusBadGateway, appErr.New(appErr.CodeAIProxyOperation, "failed to prepare managed model access").WithDetails(map[string]any{
-					"reason": fallbackErr.Error(),
-				}))
-				return
-			}
-			log.Printf("aiproxy token unavailable during agent create; continuing without model api key: provider=%s baseURL=%s err=%v", fallbackAccess.Provider, fallbackAccess.BaseURL, accessErr)
-			modelAccess = fallbackAccess
+			writeAppError(c, http.StatusBadGateway, appErr.New(appErr.CodeAIProxyOperation, "failed to prepare managed model access").WithDetails(map[string]any{
+				"reason": accessErr.Error(),
+			}))
+			return
 		}
 		mappedSettings.ModelProvider = stringPtr(modelAccess.Provider)
 		mappedSettings.ModelBaseURL = stringPtr(modelAccess.BaseURL)
@@ -421,9 +422,18 @@ func CreateAgent(c *gin.Context) {
 		writeAppError(c, http.StatusInternalServerError, appErr.New(appErr.CodeKubernetesOperation, "failed to build kubernetes resources"))
 		return
 	}
-	applyUpdateToDevbox(objects.Devbox, mappedSettings)
-	applyUpdateToService(objects.Service, mappedSettings)
-	applyUpdateToIngress(objects.Ingress, mappedSettings)
+	if err := applyUpdateToDevbox(objects.Devbox, mappedSettings); err != nil {
+		writeValidationError(c, err)
+		return
+	}
+	if err := applyUpdateToService(objects.Service, mappedSettings); err != nil {
+		writeValidationError(c, err)
+		return
+	}
+	if err := applyUpdateToIngress(objects.Ingress, mappedSettings); err != nil {
+		writeValidationError(c, err)
+		return
+	}
 
 	createdDevbox, kErr := repo.Create(ctx, objects.Devbox)
 	if kErr != nil {
@@ -451,9 +461,14 @@ func CreateAgent(c *gin.Context) {
 	enrichAgentRuntimeStatus(ctx, clientset, createdDevbox, &view)
 	view.Agent.IngressDomain = kube.IngressDomain(createdIngress)
 	scheduleAgentBootstrap(factory, cfg, templateDef, view.Agent)
+	contract, contractErr := buildAgentContract(view, templateDef, cfg)
+	if contractErr != nil {
+		writeAppError(c, http.StatusInternalServerError, contractErr)
+		return
+	}
 
 	writeSuccess(c, http.StatusCreated, dto.CreateAgentResponse{
-		Agent: buildAgentContract(view, templateDef, cfg),
+		Agent: contract,
 	})
 }
 
@@ -485,8 +500,13 @@ func GetAgent(c *gin.Context) {
 		writeAppError(c, http.StatusInternalServerError, appErr.New(appErr.CodeKubernetesOperation, resolveErr.Error()))
 		return
 	}
+	contract, contractErr := buildAgentContract(view, templateDef, cfg)
+	if contractErr != nil {
+		writeAppError(c, http.StatusInternalServerError, contractErr)
+		return
+	}
 
-	writeSuccess(c, http.StatusOK, dto.AgentDetailResponse{Agent: buildAgentContract(view, templateDef, cfg)})
+	writeSuccess(c, http.StatusOK, dto.AgentDetailResponse{Agent: contract})
 }
 
 func UpdateAgent(c *gin.Context) {
@@ -534,6 +554,16 @@ func UpdateAgent(c *gin.Context) {
 	updatedIngress := updateResult.Ingress
 
 	cfg := runtimeConfig(c)
+	templateDef, resolveErr := resolveTemplateDefinition(cfg, currentView.Agent.TemplateID)
+	if resolveErr != nil {
+		writeAppError(c, http.StatusInternalServerError, appErr.New(appErr.CodeKubernetesOperation, resolveErr.Error()))
+		return
+	}
+	region, regionErr := requiredRegion(cfg)
+	if regionErr != nil {
+		writeAppError(c, http.StatusInternalServerError, regionErr)
+		return
+	}
 	view, convErr := kube.DevboxToAgentView(updatedDevbox)
 	if convErr != nil {
 		writeAppError(c, http.StatusInternalServerError, appErr.New(appErr.CodeKubernetesOperation, convErr.Error()))
@@ -542,7 +572,7 @@ func UpdateAgent(c *gin.Context) {
 	enrichAgentRuntimeStatus(ctx, clientset, updatedDevbox, &view)
 	view.Agent.IngressDomain = kube.IngressDomain(updatedIngress)
 
-	if syncErr := syncAgentModelConfig(ctx, clientset, factory, view.Agent, req); syncErr != nil {
+	if syncErr := syncAgentModelConfig(ctx, clientset, factory, view.Agent, req, templateDef, region); syncErr != nil {
 		if rollbackErr := rollbackAgentResourceUpdate(ctx, repo, clientset, factory.Namespace(), updateResult); rollbackErr != nil {
 			details := syncErr.Details()
 			if details == nil {
@@ -556,11 +586,6 @@ func UpdateAgent(c *gin.Context) {
 	}
 
 	if shouldRebootstrap(req) {
-		templateDef, templateErr := resolveTemplateDefinition(cfg, view.Agent.TemplateID)
-		if templateErr != nil {
-			writeAppError(c, http.StatusInternalServerError, appErr.New(appErr.CodeKubernetesOperation, templateErr.Error()))
-			return
-		}
 		if err := markAgentBootstrapPending(ctx, repo, updatedDevbox, templateDef.ID); err != nil {
 			writeKubernetesError(c, err, "failed to mark bootstrap pending")
 			return
@@ -574,14 +599,13 @@ func UpdateAgent(c *gin.Context) {
 		view.Agent.IngressDomain = kube.IngressDomain(updatedIngress)
 		scheduleAgentBootstrap(factory, cfg, templateDef, view.Agent)
 	}
-
-	templateDef, resolveErr := resolveTemplateDefinition(cfg, view.Agent.TemplateID)
-	if resolveErr != nil {
-		writeAppError(c, http.StatusInternalServerError, appErr.New(appErr.CodeKubernetesOperation, resolveErr.Error()))
+	contract, contractErr := buildAgentContract(view, templateDef, cfg)
+	if contractErr != nil {
+		writeAppError(c, http.StatusInternalServerError, contractErr)
 		return
 	}
 
-	writeSuccess(c, http.StatusOK, dto.AgentDetailResponse{Agent: buildAgentContract(view, templateDef, cfg)})
+	writeSuccess(c, http.StatusOK, dto.AgentDetailResponse{Agent: contract})
 }
 
 func retryUpdateDevbox(ctx context.Context, repo *kube.Repository, agentName string, req dto.UpdateAgentRequest) (*unstructured.Unstructured, error) {
@@ -595,7 +619,9 @@ func retryUpdateDevbox(ctx context.Context, repo *kube.Repository, agentName str
 			return apierrors.NewNotFound(kube.ResourceGVR().GroupResource(), agentName)
 		}
 
-		applyUpdateToDevbox(devbox, req)
+		if err := applyUpdateToDevbox(devbox, req); err != nil {
+			return err
+		}
 		next, updateErr := repo.Update(ctx, devbox)
 		if updateErr != nil {
 			return updateErr
@@ -612,7 +638,9 @@ func retryUpdateService(ctx context.Context, clientset kubernetes.Interface, nam
 		if err != nil {
 			return err
 		}
-		applyUpdateToService(service, req)
+		if err := applyUpdateToService(service, req); err != nil {
+			return err
+		}
 		_, err = clientset.CoreV1().Services(namespace).Update(ctx, service, metav1.UpdateOptions{})
 		return err
 	})
@@ -625,7 +653,9 @@ func retryUpdateIngress(ctx context.Context, clientset kubernetes.Interface, nam
 		if err != nil {
 			return err
 		}
-		applyUpdateToIngress(ingress, req)
+		if err := applyUpdateToIngress(ingress, req); err != nil {
+			return err
+		}
 		next, updateErr := clientset.NetworkingV1().Ingresses(namespace).Update(ctx, ingress, metav1.UpdateOptions{})
 		if updateErr != nil {
 			return updateErr
@@ -1312,7 +1342,11 @@ func validateCreateRequest(
 	if req.AgentAliasName != "" && strings.TrimSpace(req.AgentAliasName) == "" {
 		return validationFieldError("agent-alias-name", "cannot_be_empty", req.AgentAliasName)
 	}
-	return validateTemplateSettingsPayload(req.Settings, templateDef.Settings.Agent, templateDef, region, true, "settings.")
+	if err := validateTemplateSettingsPayload(req.Settings, templateDef.Settings.Agent, templateDef, region, true, "settings."); err != nil {
+		return err
+	}
+	_, err := resolveModelSlotSelections(req.ModelSlots, templateDef, region, true, false)
+	return err
 }
 
 func validateUpdateRequest(req dto.UpdateAgentRequest) *appErr.AppError {
@@ -1583,11 +1617,55 @@ func normalizeCreateRequestSettings(
 	}
 	setSetting("baseURL", baseURL)
 
+	if req.ModelSlots == nil {
+		req.ModelSlots = map[string]string{}
+	}
+	for _, slot := range templateDef.ModelIntegration.Slots {
+		key := strings.TrimSpace(slot.Key)
+		if key == "" || !slot.Required {
+			continue
+		}
+		if strings.TrimSpace(req.ModelSlots[key]) != "" {
+			continue
+		}
+		if key == "main" && model != "" {
+			req.ModelSlots[key] = model
+			continue
+		}
+		if defaultModel := strings.TrimSpace(slot.DefaultModels[region]); defaultModel != "" {
+			req.ModelSlots[key] = defaultModel
+		}
+	}
+	if mainModel := strings.TrimSpace(req.ModelSlots["main"]); mainModel != "" {
+		if readSetting("model") == "" {
+			setSetting("model", mainModel)
+		}
+		if provider == "" {
+			if selection, err := resolveMainModelSlotSelection(mainModel, templateDef, region); err == nil {
+				setSetting("provider", selection.Provider)
+			}
+		}
+	}
+
 	req.Settings = settings
 	return req
 }
 
-func applyUpdateToDevbox(devbox *unstructured.Unstructured, req dto.UpdateAgentRequest) {
+func resolveMainModelSlotSelection(
+	model string,
+	templateDef agenttemplate.Definition,
+	region string,
+) (dto.ModelSlotSelection, *appErr.AppError) {
+	for _, slot := range templateDef.ModelIntegration.Slots {
+		if strings.TrimSpace(slot.Key) != "main" {
+			continue
+		}
+		return resolveModelSlotSelection("main", strings.TrimSpace(model), slot, templateDef, region)
+	}
+	return dto.ModelSlotSelection{}, validationFieldError("modelSlots.main", "unsupported_field", model)
+}
+
+func applyUpdateToDevbox(devbox *unstructured.Unstructured, req dto.UpdateAgentRequest) *appErr.AppError {
 	if req.AgentCPU != nil {
 		_ = unstructured.SetNestedField(devbox.Object, strings.TrimSpace(*req.AgentCPU), "spec", "resource", "cpu")
 	}
@@ -1626,6 +1704,13 @@ func applyUpdateToDevbox(devbox *unstructured.Unstructured, req dto.UpdateAgentR
 		_ = kube.SetModelAPIMode(devbox, modelAPIMode)
 		_ = kube.SetEnvValue(devbox, "AGENT_MODEL_API_MODE", modelAPIMode)
 	}
+	if len(req.ModelSlots) > 0 {
+		modelSlots, err := mergeModelSlotsAnnotation(devbox.GetAnnotations()["agent.sealos.io/model-slots"], req.ModelSlots)
+		if err != nil {
+			return invalidModelSlotsAnnotationError(err)
+		}
+		_ = kube.SetModelSlots(devbox, modelSlots)
+	}
 	if req.ModelAPIKey != nil {
 		_ = kube.SetEnvValue(devbox, "AGENT_MODEL_APIKEY", strings.TrimSpace(*req.ModelAPIKey))
 	}
@@ -1643,6 +1728,7 @@ func applyUpdateToDevbox(devbox *unstructured.Unstructured, req dto.UpdateAgentR
 	}
 
 	syncDevboxModelAccessEnv(devbox)
+	return nil
 }
 
 func syncDevboxModelAccessEnv(devbox *unstructured.Unstructured) {
@@ -1692,7 +1778,7 @@ func readDevboxEnvValue(devbox *unstructured.Unstructured, name string) string {
 	return ""
 }
 
-func applyUpdateToService(service *corev1.Service, req dto.UpdateAgentRequest) {
+func applyUpdateToService(service *corev1.Service, req dto.UpdateAgentRequest) *appErr.AppError {
 	if service.Annotations == nil {
 		service.Annotations = map[string]string{}
 	}
@@ -1720,6 +1806,13 @@ func applyUpdateToService(service *corev1.Service, req dto.UpdateAgentRequest) {
 	if req.ModelAPIMode != nil {
 		service.Annotations["agent.sealos.io/model-api-mode"] = strings.TrimSpace(*req.ModelAPIMode)
 	}
+	if len(req.ModelSlots) > 0 {
+		modelSlots, err := mergeModelSlotsAnnotation(service.Annotations["agent.sealos.io/model-slots"], req.ModelSlots)
+		if err != nil {
+			return invalidModelSlotsAnnotationError(err)
+		}
+		service.Annotations["agent.sealos.io/model-slots"] = modelSlots
+	}
 	for key, value := range req.AnnotationValues {
 		if value == nil {
 			continue
@@ -1732,9 +1825,10 @@ func applyUpdateToService(service *corev1.Service, req dto.UpdateAgentRequest) {
 		}
 		service.Annotations[trimmedKey] = trimmedValue
 	}
+	return nil
 }
 
-func applyUpdateToIngress(ingress *networkingv1.Ingress, req dto.UpdateAgentRequest) {
+func applyUpdateToIngress(ingress *networkingv1.Ingress, req dto.UpdateAgentRequest) *appErr.AppError {
 	if ingress.Annotations == nil {
 		ingress.Annotations = map[string]string{}
 	}
@@ -1762,6 +1856,13 @@ func applyUpdateToIngress(ingress *networkingv1.Ingress, req dto.UpdateAgentRequ
 	if req.ModelAPIMode != nil {
 		ingress.Annotations["agent.sealos.io/model-api-mode"] = strings.TrimSpace(*req.ModelAPIMode)
 	}
+	if len(req.ModelSlots) > 0 {
+		modelSlots, err := mergeModelSlotsAnnotation(ingress.Annotations["agent.sealos.io/model-slots"], req.ModelSlots)
+		if err != nil {
+			return invalidModelSlotsAnnotationError(err)
+		}
+		ingress.Annotations["agent.sealos.io/model-slots"] = modelSlots
+	}
 	for key, value := range req.AnnotationValues {
 		if value == nil {
 			continue
@@ -1774,6 +1875,15 @@ func applyUpdateToIngress(ingress *networkingv1.Ingress, req dto.UpdateAgentRequ
 		}
 		ingress.Annotations[trimmedKey] = trimmedValue
 	}
+	return nil
+}
+
+func invalidModelSlotsAnnotationError(err error) *appErr.AppError {
+	return appErr.New(appErr.CodeValidationFailed, "invalid model slots annotation").WithDetails(map[string]any{
+		"field":  "agent.sealos.io/model-slots",
+		"reason": modelSlotsAnnotationErrorReason(err),
+		"value":  err.Error(),
+	})
 }
 
 func normalizeUpdatedModelBaseURL(value, currentProvider string, requestedProvider *string) string {
@@ -1845,6 +1955,11 @@ func changeAgentState(c *gin.Context, targetState string) {
 		writeAppError(c, http.StatusInternalServerError, appErr.New(appErr.CodeKubernetesOperation, resolveErr.Error()))
 		return
 	}
+	contract, contractErr := buildAgentContract(view, templateDef, cfg)
+	if contractErr != nil {
+		writeAppError(c, http.StatusInternalServerError, contractErr)
+		return
+	}
 
-	writeSuccess(c, http.StatusOK, dto.AgentDetailResponse{Agent: buildAgentContract(view, templateDef, cfg)})
+	writeSuccess(c, http.StatusOK, dto.AgentDetailResponse{Agent: contract})
 }

@@ -14,6 +14,7 @@ const (
 	annotationModelBaseURL     = "agent.sealos.io/model-baseurl"
 	annotationModel            = "agent.sealos.io/model"
 	annotationModelAPIMode     = "agent.sealos.io/model-api-mode"
+	annotationModelSlots       = "agent.sealos.io/model-slots"
 	annotationTemplateID       = "agent.sealos.io/template-id"
 	annotationBootstrapPhase   = "agent.sealos.io/bootstrap-phase"
 	annotationBootstrapMessage = "agent.sealos.io/bootstrap-message"

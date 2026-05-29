@@ -33,6 +33,7 @@ function createBlueprint(): AgentBlueprint {
     modelBaseURL: 'https://aiproxy.example.com/v1',
     model: 'gpt-5.4-mini',
     modelAPIMode: 'codex_responses',
+    modelSlots: {},
     hasModelAPIKey: true,
     keySource: 'workspace-aiproxy',
     settingsValues: {},
@@ -236,5 +237,117 @@ describe('AgentConfigForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /请选择模型/ }))
     expect(screen.getByText('GLM-4.6')).toBeInTheDocument()
     expect(screen.queryByText('GPT-5.4 Mini')).not.toBeInTheDocument()
+  })
+
+  it('renders model slots and updates only the selected slot', () => {
+    const template = createTemplateFixture({
+      modelIntegration: {
+        type: 'ai-agent-switch',
+        client: 'hermes-agent',
+        provider: {
+          id: 'aiproxy',
+          name: { zh: 'AI Proxy' },
+          baseURL: { source: 'system.aiProxyModelBaseURL' },
+          apiKeyEnv: 'ANTHROPIC_API_KEY',
+        },
+        slots: [
+          {
+            key: 'main',
+            label: { zh: '主模型', en: 'Main model' },
+            required: true,
+            mutable: true,
+            defaultModels: { us: 'gpt-5.4-mini' },
+            modelTypes: ['text'],
+          },
+          {
+            key: 'vision',
+            label: { zh: '视觉模型', en: 'Vision model' },
+            required: false,
+            mutable: true,
+            modelTypes: ['multimodal'],
+          },
+        ],
+      },
+      modelTypes: [
+        {
+          key: 'text',
+          label: '普通模型',
+          models: [
+            {
+              value: 'gpt-5.4-mini',
+              label: 'GPT-5.4 Mini',
+              helper: 'OpenAI',
+              provider: 'custom:aiproxy-responses',
+              apiMode: 'codex_responses',
+              category: 'text',
+            },
+          ],
+        },
+        {
+          key: 'multimodal',
+          label: '多模态模型',
+          models: [
+            {
+              value: 'gpt-5.4-vision',
+              label: 'GPT-5.4 Vision',
+              helper: 'OpenAI',
+              provider: 'custom:aiproxy-responses',
+              apiMode: 'codex_responses',
+              category: 'multimodal',
+              capabilities: ['vision'],
+              inputModalities: ['text', 'image'],
+              outputModalities: ['text'],
+            },
+          ],
+        },
+      ],
+      modelOptions: [
+        {
+          value: 'gpt-5.4-mini',
+          label: 'GPT-5.4 Mini',
+          helper: 'OpenAI',
+          provider: 'custom:aiproxy-responses',
+          apiMode: 'codex_responses',
+          category: 'text',
+        },
+        {
+          value: 'gpt-5.4-vision',
+          label: 'GPT-5.4 Vision',
+          helper: 'OpenAI',
+          provider: 'custom:aiproxy-responses',
+          apiMode: 'codex_responses',
+          category: 'multimodal',
+        },
+      ],
+    })
+    const changeCalls: Array<[keyof AgentBlueprint, AgentBlueprint[keyof AgentBlueprint]]> = []
+
+    render(
+      <AgentConfigForm
+        blueprint={{
+          ...createBlueprint(),
+          modelSlots: { main: 'gpt-5.4-mini' },
+        }}
+        mode='create'
+        onChange={(field, value) => changeCalls.push([field, value])}
+        onChangeSettingField={() => {}}
+        onSelectPreset={() => {}}
+        template={template}
+        workspaceModelBaseURL='https://aiproxy.example.com/v1'
+        workspaceModelKeyReady
+        workspaceRegion='us'
+      />,
+    )
+
+    expect(screen.getByText('主模型')).toBeInTheDocument()
+    expect(screen.getByText('视觉模型')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /请选择模型/ }))
+    expect(screen.getByText('GPT-5.4 Vision')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /GPT-5.4 Vision/ }))
+
+    expect(changeCalls).toContainEqual([
+      'modelSlots',
+      { main: 'gpt-5.4-mini', vision: 'gpt-5.4-vision' },
+    ])
   })
 })

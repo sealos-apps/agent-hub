@@ -3,6 +3,11 @@ import {
   readBlueprintSettingValue,
 } from "../../../domains/agents/blueprintFields";
 import {
+  filterModelOptionsForSlot,
+  filterModelTypesForSlot,
+  getTemplateLocalizedText,
+  getTemplateModelSlots,
+  hasTemplateModelSlots,
   RESOURCE_PRESETS,
 } from "../../../domains/agents/templates";
 import type {
@@ -10,6 +15,7 @@ import type {
   AgentSettingField,
   AgentTemplateDefinition,
 } from "../../../domains/agents/types";
+import { formatModelOptionLabel } from "../../../domains/agents/modelCapabilities";
 import { ModelCapabilitySelect } from "./ModelCapabilitySelect";
 import { useI18n } from "../../../i18n";
 import { Button } from "../../ui/Button";
@@ -89,12 +95,18 @@ export function AgentConfigEditModal({
   submitting: boolean;
   onClose: () => void;
   onRuntimePreset: (presetId: AgentBlueprint["profile"]) => void;
-  onRuntimeChange: (field: keyof AgentBlueprint, value: string) => void;
-  onSettingsChange: (field: keyof AgentBlueprint, value: string) => void;
+  onRuntimeChange: <K extends keyof AgentBlueprint>(
+    field: K,
+    value: AgentBlueprint[K],
+  ) => void;
+  onSettingsChange: <K extends keyof AgentBlueprint>(
+    field: K,
+    value: AgentBlueprint[K],
+  ) => void;
   onSettingsFieldChange: (field: AgentSettingField, value: string) => void;
   onSave: () => void;
 }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   if (!template) return null;
 
   const modelField =
@@ -114,9 +126,40 @@ export function AgentConfigEditModal({
   const presetValue = fixedPresets.some((preset) => preset.id === runtimeBlueprint.profile)
     ? runtimeBlueprint.profile
     : "";
+  const modelSlots = getTemplateModelSlots(template);
+  const usesModelSlots = hasTemplateModelSlots(template);
 
   const handleModelChange = (value: string) => {
     const option = template.modelOptions.find((entry) => entry.value === value) || null;
+    if (modelField) {
+      onSettingsFieldChange(modelField, value);
+    } else {
+      onSettingsChange("model", value);
+    }
+
+    if (modelProviderField) {
+      onSettingsFieldChange(modelProviderField, option?.provider || "");
+    } else {
+      onSettingsChange("modelProvider", option?.provider || "");
+    }
+
+    if (modelAPIModeField) {
+      onSettingsFieldChange(modelAPIModeField, option?.apiMode || "");
+    } else {
+      onSettingsChange("modelAPIMode", option?.apiMode || "");
+    }
+  };
+  const handleSlotModelChange = (slotKey: string, value: string) => {
+    const option = template.modelOptions.find((entry) => entry.value === value) || null;
+    onSettingsChange("modelSlots", {
+      ...settingsBlueprint.modelSlots,
+      [slotKey]: value,
+    });
+
+    if (slotKey !== "main") {
+      return;
+    }
+
     if (modelField) {
       onSettingsFieldChange(modelField, value);
     } else {
@@ -223,17 +266,50 @@ export function AgentConfigEditModal({
           />
         </ConfigField>
 
-        <ConfigField label={t('agent.model')}>
-          <ModelCapabilitySelect
-            modelTypes={template.modelTypes}
-            fallbackLabel={modelValue || t('summary.notSelected')}
-            onChange={handleModelChange}
-            options={template.modelOptions}
-            placeholder={t('agent.selectModel')}
-            portal
-            value={modelValue}
-          />
-        </ConfigField>
+        {usesModelSlots ? (
+          modelSlots.map((slot) => {
+            const slotValue = settingsBlueprint.modelSlots[slot.key] || "";
+            const slotOption = template.modelOptions.find((entry) => entry.value === slotValue);
+            return (
+              <ConfigField
+                key={slot.key}
+                label={getTemplateLocalizedText(slot.label, locale)}
+              >
+                {slot.mutable === false ? (
+                  <div className="text-[14px]/5 font-medium text-zinc-900">
+                    {formatModelOptionLabel(slotOption) || slotValue || t('summary.notSelected')}
+                  </div>
+                ) : (
+                  <ModelCapabilitySelect
+                    modelTypes={filterModelTypesForSlot(template.modelTypes, slot)}
+                    fallbackLabel={slotValue || t('summary.notSelected')}
+                    onChange={(value) => handleSlotModelChange(slot.key, value)}
+                    options={filterModelOptionsForSlot(
+                      template.modelOptions,
+                      template.modelTypes,
+                      slot,
+                    )}
+                    placeholder={t('agent.selectModel')}
+                    portal
+                    value={slotValue}
+                  />
+                )}
+              </ConfigField>
+            );
+          })
+        ) : (
+          <ConfigField label={t('agent.model')}>
+            <ModelCapabilitySelect
+              modelTypes={template.modelTypes}
+              fallbackLabel={modelValue || t('summary.notSelected')}
+              onChange={handleModelChange}
+              options={template.modelOptions}
+              placeholder={t('agent.selectModel')}
+              portal
+              value={modelValue}
+            />
+          </ConfigField>
+        )}
       </div>
     </Modal>
   );

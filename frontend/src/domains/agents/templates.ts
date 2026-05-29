@@ -8,6 +8,8 @@ import type {
   AgentTemplateDefinition,
   ResourcePreset,
   TemplateModelOption,
+  TemplateModelType,
+  TemplateModelIntegrationSlot,
 } from "./types";
 import {
   flattenModelTypes,
@@ -105,6 +107,61 @@ export const getModelOptionByValue = (
 ): TemplateModelOption | null =>
   template?.modelOptions?.find((option) => option.value === value) || null;
 
+export const getTemplateModelSlots = (
+  template?: Pick<AgentTemplateDefinition, "modelIntegration"> | null,
+) => template?.modelIntegration?.slots?.filter((slot) => slot.key) || [];
+
+export const hasTemplateModelSlots = (
+  template?: Pick<AgentTemplateDefinition, "modelIntegration"> | null,
+) => getTemplateModelSlots(template).length > 0;
+
+export const getTemplateLocalizedText = (
+  value: Record<string, string> | undefined,
+  locale = "zh-CN",
+) => {
+  if (locale === "en-US") {
+    return value?.en || "";
+  }
+  return value?.zh || "";
+};
+
+export const filterModelTypesForSlot = (
+  modelTypes: TemplateModelType[] = [],
+  slot: Pick<TemplateModelIntegrationSlot, "modelTypes">,
+) => {
+  const allowedTypes = new Set(slot.modelTypes || []);
+  if (!allowedTypes.size) {
+    return modelTypes;
+  }
+  return modelTypes.filter((type) => allowedTypes.has(type.key));
+};
+
+export const filterModelOptionsForSlot = (
+  modelOptions: TemplateModelOption[] = [],
+  modelTypes: TemplateModelType[] = [],
+  slot: Pick<TemplateModelIntegrationSlot, "modelTypes">,
+) => {
+  const allowedTypes = new Set(slot.modelTypes || []);
+  if (!allowedTypes.size) {
+    return modelOptions;
+  }
+  const allowedValues = new Set(
+    modelTypes
+      .filter((type) => allowedTypes.has(type.key))
+      .flatMap((type) => type.models.map((model) => model.value)),
+  );
+  return modelOptions.filter((option) => allowedValues.has(option.value));
+};
+
+export const buildModelSlotsPayload = (
+  modelSlots: Record<string, string> = {},
+) =>
+  Object.fromEntries(
+    Object.entries(modelSlots)
+      .map(([key, value]) => [key, String(value || "").trim()])
+      .filter(([, value]) => value),
+  ) as Record<string, string>;
+
 export const createEmptyBlueprint = (): AgentBlueprint => ({
   appName: "",
   aliasName: "",
@@ -131,6 +188,7 @@ export const createEmptyBlueprint = (): AgentBlueprint => ({
   modelBaseURL: "",
   model: "",
   modelAPIMode: "",
+  modelSlots: {},
   hasModelAPIKey: false,
   keySource: "unset",
   settingsValues: {},
