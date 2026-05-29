@@ -96,7 +96,7 @@ type TemplateModelIntegrationSlot struct {
 	Label         TemplateLocalizedText `json:"label"`
 	Required      bool                  `json:"required"`
 	Mutable       bool                  `json:"mutable"`
-	DefaultModels map[string]string     `json:"defaultModels"`
+	DefaultModels map[string]string     `json:"defaultModels,omitempty"`
 	ModelTypes    []string              `json:"modelTypes"`
 }
 

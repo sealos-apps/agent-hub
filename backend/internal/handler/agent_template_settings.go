@@ -271,7 +271,7 @@ func resolveModelSlotSelections(
 		trimmedKey := strings.TrimSpace(key)
 		slot, ok := slotIndex[trimmedKey]
 		if !ok {
-			return nil, validationFieldError("modelSlots."+key, "unsupported_field", value)
+			return nil, validationFieldError("modelSlots."+trimmedKey, "unsupported_field", value)
 		}
 		if requireMutable && !slot.Mutable {
 			return nil, validationFieldError("modelSlots."+trimmedKey, "read_only", value)

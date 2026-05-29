@@ -114,11 +114,6 @@ func buildAgentContract(view kube.AgentView, templateDef agenttemplate.Definitio
 }
 
 func buildAgentContractWithConfigError(view kube.AgentView, templateDef agenttemplate.Definition, cfg config.Config, configErr *appErr.AppError) dto.AgentContract {
-	contract, err := buildAgentContract(view, templateDef, cfg)
-	if err == nil {
-		return contract
-	}
-
 	region := strings.TrimSpace(cfg.Region)
 	accessItems := buildAgentAccessItems(view.Agent, templateDef, cfg)
 	actionItems := buildAgentActions(view.Agent, templateDef, accessItems)
