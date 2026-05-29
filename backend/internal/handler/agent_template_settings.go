@@ -325,6 +325,9 @@ func resolveModelSlotSelection(
 			allowedTypes[trimmedType] = true
 		}
 	}
+	if len(allowedTypes) == 0 {
+		return dto.ModelSlotSelection{}, validationFieldError("modelIntegration.slots."+slotKey+".modelTypes", "required", "")
+	}
 	for _, modelType := range templateDef.RegionModelTypes[region] {
 		if !allowedTypes[strings.TrimSpace(modelType.Key)] {
 			continue

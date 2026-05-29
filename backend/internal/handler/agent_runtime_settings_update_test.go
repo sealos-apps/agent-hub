@@ -238,6 +238,26 @@ func TestValidateSettingsUpdateRequestRejectsModelOutsideSlotTypes(t *testing.T)
 	}
 }
 
+func TestValidateSettingsUpdateRequestRejectsEmptySlotModelTypes(t *testing.T) {
+	t.Parallel()
+
+	templateDef := modelSlotsTemplateDefinition()
+	templateDef.ModelIntegration.Slots[0].ModelTypes = nil
+
+	validationErr := validateSettingsUpdateRequest(dto.UpdateAgentSettingsRequest{
+		ModelSlots: map[string]string{"main": "glm-5.1"},
+	}, templateDef, "us")
+	if validationErr == nil {
+		t.Fatal("validateSettingsUpdateRequest() error = nil, want slot modelTypes validation error")
+	}
+	if got := validationErr.Details()["field"]; got != "modelIntegration.slots.main.modelTypes" {
+		t.Fatalf("validateSettingsUpdateRequest() field = %#v, want modelIntegration.slots.main.modelTypes", got)
+	}
+	if got := validationErr.Details()["reason"]; got != "required" {
+		t.Fatalf("validateSettingsUpdateRequest() reason = %#v, want required", got)
+	}
+}
+
 func TestBuildSettingsUpdateRequestMapsModelSlots(t *testing.T) {
 	t.Parallel()
 
