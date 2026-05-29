@@ -279,6 +279,7 @@ export const updateAgentSettings = async (
   payload: {
     "agent-alias-name"?: string;
     settings?: Record<string, unknown>;
+    modelSlots?: Record<string, string>;
   },
   clusterContext: ClusterContext,
 ): Promise<{ agent: AgentContract }> =>

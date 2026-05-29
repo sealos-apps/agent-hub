@@ -47,19 +47,20 @@ type AgentWorkspaceItem struct {
 }
 
 type AgentRuntimeContract struct {
-	CPU              string `json:"cpu"`
-	Memory           string `json:"memory"`
-	Storage          string `json:"storage"`
-	RuntimeClassName string `json:"runtimeClassName,omitempty"`
-	WorkingDir       string `json:"workingDir,omitempty"`
-	User             string `json:"user,omitempty"`
-	NetworkType      string `json:"networkType,omitempty"`
-	SSHPort          int32  `json:"sshPort,omitempty"`
-	ModelProvider    string `json:"modelProvider,omitempty"`
-	ModelBaseURL     string `json:"modelBaseURL,omitempty"`
-	Model            string `json:"model,omitempty"`
-	ModelAPIMode     string `json:"modelAPIMode,omitempty"`
-	HasModelAPIKey   bool   `json:"hasModelAPIKey"`
+	CPU              string                        `json:"cpu"`
+	Memory           string                        `json:"memory"`
+	Storage          string                        `json:"storage"`
+	RuntimeClassName string                        `json:"runtimeClassName,omitempty"`
+	WorkingDir       string                        `json:"workingDir,omitempty"`
+	User             string                        `json:"user,omitempty"`
+	NetworkType      string                        `json:"networkType,omitempty"`
+	SSHPort          int32                         `json:"sshPort,omitempty"`
+	ModelProvider    string                        `json:"modelProvider,omitempty"`
+	ModelBaseURL     string                        `json:"modelBaseURL,omitempty"`
+	Model            string                        `json:"model,omitempty"`
+	ModelAPIMode     string                        `json:"modelAPIMode,omitempty"`
+	ModelSlots       map[string]ModelSlotSelection `json:"modelSlots,omitempty"`
+	HasModelAPIKey   bool                          `json:"hasModelAPIKey"`
 }
 
 type AgentSettingsContract struct {

@@ -4,14 +4,18 @@ import type { AgentBlueprint } from '../../../../domains/agents/types'
 export const updateBlueprintField = (
   current: AgentBlueprint,
   field: keyof AgentBlueprint,
-  value: string,
+  value: AgentBlueprint[keyof AgentBlueprint],
 ): AgentBlueprint => {
-  const next = { ...current, [field]: value }
+  const next =
+    field === 'modelSlots'
+      ? { ...current, modelSlots: value as AgentBlueprint['modelSlots'] }
+      : { ...current, [field]: value as string }
 
   if (field === 'cpu' || field === 'memory') {
+    const textValue = String(value || "")
     const resolvedPreset = resolveResourcePreset(
-      field === 'cpu' ? value : next.cpu,
-      field === 'memory' ? value : next.memory,
+      field === 'cpu' ? textValue : next.cpu,
+      field === 'memory' ? textValue : next.memory,
     )
     next.profile = current.profile === 'custom' ? 'custom' : resolvedPreset
   }

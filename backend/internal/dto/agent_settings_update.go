@@ -1,6 +1,7 @@
 package dto
 
 type UpdateAgentSettingsRequest struct {
-	AgentAliasName *string        `json:"agent-alias-name,omitempty"`
-	Settings       map[string]any `json:"settings,omitempty"`
+	AgentAliasName *string           `json:"agent-alias-name,omitempty"`
+	Settings       map[string]any    `json:"settings,omitempty"`
+	ModelSlots     map[string]string `json:"modelSlots,omitempty"`
 }

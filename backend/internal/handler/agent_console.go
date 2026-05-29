@@ -41,7 +41,11 @@ func GetAgentConsole(c *gin.Context) {
 		return
 	}
 
-	contract := buildAgentContract(view, templateDef, cfg)
+	contract, contractErr := buildAgentContract(view, templateDef, cfg)
+	if contractErr != nil {
+		writeAppError(c, http.StatusInternalServerError, contractErr)
+		return
+	}
 	workspaceRoot := contract.Runtime.WorkingDir
 	if workspaceRoot == "" {
 		for _, access := range contract.Access {

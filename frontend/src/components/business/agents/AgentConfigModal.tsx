@@ -18,7 +18,10 @@ interface AgentConfigModalProps {
   workspaceModelKeyReady: boolean;
   submitting: boolean;
   onClose: () => void;
-  onChange: (field: keyof AgentBlueprint, value: string) => void;
+  onChange: <K extends keyof AgentBlueprint>(
+    field: K,
+    value: AgentBlueprint[K],
+  ) => void;
   onChangeSettingField?: (field: AgentSettingField, value: string) => void;
   onSelectPreset: (presetId: AgentBlueprint["profile"]) => void;
   onSubmit: () => void;

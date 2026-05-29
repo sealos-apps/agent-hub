@@ -1,7 +1,14 @@
 import { HardDrive, Minus, Plus } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { readBlueprintSettingValue } from "../../../domains/agents/blueprintFields";
-import { RESOURCE_PRESETS } from "../../../domains/agents/templates";
+import {
+  filterModelOptionsForSlot,
+  filterModelTypesForSlot,
+  getTemplateLocalizedText,
+  getTemplateModelSlots,
+  hasTemplateModelSlots,
+  RESOURCE_PRESETS,
+} from "../../../domains/agents/templates";
 import {
   translateTemplateDescription,
   translateTemplateDocsLabel,
@@ -29,7 +36,10 @@ interface AgentConfigFormProps {
   workspaceModelBaseURL?: string;
   workspaceModelKeyReady?: boolean;
   onChangeTemplate?: () => void;
-  onChange: (field: keyof AgentBlueprint, value: string) => void;
+  onChange: <K extends keyof AgentBlueprint>(
+    field: K,
+    value: AgentBlueprint[K],
+  ) => void;
   onChangeSettingField: (field: AgentSettingField, value: string) => void;
   onSelectPreset: (presetId: AgentBlueprint["profile"]) => void;
 }
@@ -195,7 +205,7 @@ export function AgentConfigForm({
   onChangeSettingField,
   onSelectPreset,
 }: AgentConfigFormProps) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const [customResourceModalOpen, setCustomResourceModalOpen] = useState(false);
   const [customDraft, setCustomDraft] = useState(() => ({
     cpu: CPU_OPTIONS[1],
@@ -328,6 +338,48 @@ export function AgentConfigForm({
       onChange("modelAPIMode", option?.apiMode || "");
     }
   };
+  const modelSlots = getTemplateModelSlots(template);
+  const usesModelSlots = hasTemplateModelSlots(template);
+  const handleSlotModelChange = (slotKey: string, value: string) => {
+    const option =
+      template.modelOptions.find((item) => item.value === value) || null;
+    onChange("modelSlots", {
+      ...blueprint.modelSlots,
+      [slotKey]: value,
+    });
+
+    if (slotKey !== "main") {
+      return;
+    }
+
+    const modelField = template.settings.agent.find(
+      (item) => item.binding.key === "model",
+    );
+    const providerField = template.settings.agent.find(
+      (item) => item.binding.key === "modelProvider",
+    );
+    const apiModeField = template.settings.agent.find(
+      (item) => item.binding.key === "modelAPIMode",
+    );
+
+    if (modelField) {
+      onChangeSettingField(modelField, value);
+    } else {
+      onChange("model", value);
+    }
+
+    if (providerField) {
+      onChangeSettingField(providerField, option?.provider || "");
+    } else {
+      onChange("modelProvider", option?.provider || "");
+    }
+
+    if (apiModeField) {
+      onChangeSettingField(apiModeField, option?.apiMode || "");
+    } else {
+      onChange("modelAPIMode", option?.apiMode || "");
+    }
+  };
 
   const modelField = template.settings.agent.find(
     (field) => String(field.binding?.key || "").trim() === "model",
@@ -416,9 +468,32 @@ export function AgentConfigForm({
             value={blueprint.aliasName}
           />
         </FormItem>
-        {modelField ? (
+        {modelField && !usesModelSlots ? (
           <div className="min-w-0 w-full">{renderEditableAgentField(modelField)}</div>
         ) : null}
+        {modelSlots.map((slot) => {
+          const slotModelTypes = filterModelTypesForSlot(template.modelTypes, slot);
+          const slotModelOptions = filterModelOptionsForSlot(
+            template.modelOptions,
+            template.modelTypes,
+            slot,
+          );
+          return (
+            <FormItem
+              className="min-w-0 w-full"
+              key={slot.key}
+              label={getTemplateLocalizedText(slot.label, locale)}
+            >
+              <ModelCapabilitySelect
+                modelTypes={slotModelTypes}
+                onChange={(value) => handleSlotModelChange(slot.key, value)}
+                options={slotModelOptions}
+                placeholder={t('agent.selectModel')}
+                value={blueprint.modelSlots[slot.key] || ""}
+              />
+            </FormItem>
+          );
+        })}
       </div>
 
       {editableFields.length > 0 ? (

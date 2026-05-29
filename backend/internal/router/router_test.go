@@ -131,9 +131,20 @@ func TestListTemplatesReturnsRegionalCatalogWithoutAuthorization(t *testing.T) {
 	}
 
 	foundHermes := false
+	foundOpenClaw := false
 	for _, raw := range items {
 		item, ok := raw.(map[string]any)
-		if !ok || item["id"] != "hermes-agent" {
+		if !ok {
+			continue
+		}
+		if item["id"] == "openclaw" {
+			foundOpenClaw = true
+			if _, ok := item["modelIntegration"]; ok {
+				t.Fatalf("openclaw modelIntegration = %#v, want field omitted", item["modelIntegration"])
+			}
+			continue
+		}
+		if item["id"] != "hermes-agent" {
 			continue
 		}
 		foundHermes = true
@@ -145,6 +156,42 @@ func TestListTemplatesReturnsRegionalCatalogWithoutAuthorization(t *testing.T) {
 		modelTypes, ok := item["modelTypes"].([]any)
 		if !ok || len(modelTypes) == 0 {
 			t.Fatalf("hermes-agent modelTypes = %#v, want grouped model types", item["modelTypes"])
+		}
+		modelIntegration, ok := item["modelIntegration"].(map[string]any)
+		if !ok {
+			t.Fatalf("hermes-agent modelIntegration = %#v, want map", item["modelIntegration"])
+		}
+		if modelIntegration["type"] != "ai-agent-switch" {
+			t.Fatalf("hermes-agent modelIntegration.type = %#v, want ai-agent-switch", modelIntegration["type"])
+		}
+		if modelIntegration["client"] != "hermes-agent" {
+			t.Fatalf("hermes-agent modelIntegration.client = %#v, want hermes-agent", modelIntegration["client"])
+		}
+		provider, ok := modelIntegration["provider"].(map[string]any)
+		if !ok {
+			t.Fatalf("hermes-agent modelIntegration.provider = %#v, want map", modelIntegration["provider"])
+		}
+		if provider["apiKeyEnv"] != "ANTHROPIC_API_KEY" {
+			t.Fatalf("hermes-agent modelIntegration.provider.apiKeyEnv = %#v, want ANTHROPIC_API_KEY", provider["apiKeyEnv"])
+		}
+		baseURL, ok := provider["baseURL"].(map[string]any)
+		if !ok || baseURL["source"] != "system.aiProxyModelBaseURL" {
+			t.Fatalf("hermes-agent modelIntegration.provider.baseURL = %#v, want source system.aiProxyModelBaseURL", provider["baseURL"])
+		}
+		slots, ok := modelIntegration["slots"].([]any)
+		if !ok || len(slots) != 1 {
+			t.Fatalf("hermes-agent modelIntegration.slots = %#v, want one slot", modelIntegration["slots"])
+		}
+		slot, ok := slots[0].(map[string]any)
+		if !ok {
+			t.Fatalf("hermes-agent modelIntegration.slots[0] = %#v, want map", slots[0])
+		}
+		if slot["key"] != "main" {
+			t.Fatalf("hermes-agent modelIntegration.slots[0].key = %#v, want main", slot["key"])
+		}
+		defaultModels, ok := slot["defaultModels"].(map[string]any)
+		if !ok || defaultModels["cn"] != "glm-4.6" {
+			t.Fatalf("hermes-agent modelIntegration.slots[0].defaultModels = %#v, want cn glm-4.6", slot["defaultModels"])
 		}
 		foundMultimodalType := false
 		foundImageType := false
@@ -215,6 +262,9 @@ func TestListTemplatesReturnsRegionalCatalogWithoutAuthorization(t *testing.T) {
 
 	if !foundHermes {
 		t.Fatal("GET /api/v1/templates did not return hermes-agent")
+	}
+	if !foundOpenClaw {
+		t.Fatal("GET /api/v1/templates did not return openclaw")
 	}
 }
 

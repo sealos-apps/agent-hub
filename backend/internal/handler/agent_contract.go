@@ -13,6 +13,7 @@ import (
 	"github.com/nightwhite/Agent-Hub/internal/config"
 	"github.com/nightwhite/Agent-Hub/internal/dto"
 	"github.com/nightwhite/Agent-Hub/internal/kube"
+	appErr "github.com/nightwhite/Agent-Hub/pkg/errors"
 )
 
 const (
@@ -64,10 +65,14 @@ func templateSourceFromConfig(cfg config.Config) agenttemplate.Source {
 	}
 }
 
-func buildAgentContract(view kube.AgentView, templateDef agenttemplate.Definition, cfg config.Config) dto.AgentContract {
+func buildAgentContract(view kube.AgentView, templateDef agenttemplate.Definition, cfg config.Config) (dto.AgentContract, *appErr.AppError) {
 	region := strings.TrimSpace(cfg.Region)
 	accessItems := buildAgentAccessItems(view.Agent, templateDef, cfg)
 	actionItems := buildAgentActions(view.Agent, templateDef, accessItems)
+	modelSlots, err := modelSlotsFromAnnotations(view.Agent.Annotations)
+	if err != nil {
+		return dto.AgentContract{}, err
+	}
 
 	return dto.AgentContract{
 		Core: dto.AgentCoreContract{
@@ -97,6 +102,7 @@ func buildAgentContract(view kube.AgentView, templateDef agenttemplate.Definitio
 			ModelBaseURL:     view.Agent.ModelBaseURL,
 			Model:            view.Agent.Model,
 			ModelAPIMode:     view.Agent.ModelAPIMode,
+			ModelSlots:       modelSlots,
 			HasModelAPIKey:   strings.TrimSpace(view.Agent.ModelAPIKey) != "",
 		},
 		Settings: dto.AgentSettingsContract{
@@ -104,7 +110,27 @@ func buildAgentContract(view kube.AgentView, templateDef agenttemplate.Definitio
 			Agent:   toSettingFields(templateDef.Settings.Agent, templateDef, region, buildSettingValues(view.Agent, templateDef.Settings.Agent)),
 		},
 		Actions: actionItems,
+	}, nil
+}
+
+func modelSlotsFromAnnotations(annotations map[string]string) (map[string]dto.ModelSlotSelection, *appErr.AppError) {
+	value := strings.TrimSpace(annotations["agent.sealos.io/model-slots"])
+	modelSlots, err := decodeModelSlotsAnnotation(value)
+	if err != nil {
+		return nil, appErr.New(appErr.CodeKubernetesOperation, "invalid model slots annotation").WithDetails(map[string]any{
+			"field":  "agent.sealos.io/model-slots",
+			"reason": modelSlotsAnnotationErrorReason(err),
+			"value":  value,
+		})
 	}
+	return modelSlots, nil
+}
+
+func modelSlotsAnnotationErrorReason(err error) string {
+	if _, ok := err.(*json.SyntaxError); ok {
+		return "invalid_json"
+	}
+	return "invalid_slot"
 }
 
 func buildAgentAccessItems(spec agent.Agent, templateDef agenttemplate.Definition, cfg config.Config) []dto.AgentAccessItem {

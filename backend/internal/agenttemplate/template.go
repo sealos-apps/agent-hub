@@ -28,6 +28,7 @@ type Definition struct {
 	Access               []AccessDefinition       `yaml:"access"`
 	Actions              []ActionDefinition       `yaml:"actions"`
 	Settings             SettingsSchema           `yaml:"settings"`
+	ModelIntegration     ModelIntegration         `yaml:"modelIntegration"`
 	RegionModelPresets   map[string][]ModelPreset `yaml:"regionModelPresets"`
 	RegionModelTypes     map[string][]ModelType   `yaml:"regionModelTypes"`
 	Bootstrap            ScriptSpec               `yaml:"bootstrap"`
@@ -113,6 +114,35 @@ type ModelType struct {
 	Description string        `yaml:"description"`
 	Models      []ModelPreset `yaml:"models"`
 	Options     []ModelPreset `yaml:"options"`
+}
+
+type ModelIntegration struct {
+	Type     string                   `yaml:"type"`
+	Client   string                   `yaml:"client"`
+	Provider ModelIntegrationProvider `yaml:"provider"`
+	Slots    []ModelIntegrationSlot   `yaml:"slots"`
+}
+
+type LocalizedText map[string]string
+
+type ModelIntegrationProvider struct {
+	ID        string                      `yaml:"id"`
+	Name      LocalizedText               `yaml:"name"`
+	BaseURL   ModelIntegrationValueSource `yaml:"baseURL"`
+	APIKeyEnv string                      `yaml:"apiKeyEnv"`
+}
+
+type ModelIntegrationValueSource struct {
+	Source string `yaml:"source"`
+}
+
+type ModelIntegrationSlot struct {
+	Key           string            `yaml:"key"`
+	Label         LocalizedText     `yaml:"label"`
+	Required      bool              `yaml:"required"`
+	Mutable       bool              `yaml:"mutable"`
+	DefaultModels map[string]string `yaml:"defaultModels"`
+	ModelTypes    []string          `yaml:"modelTypes"`
 }
 
 func Resolve(templateID, override string) (Definition, error) {

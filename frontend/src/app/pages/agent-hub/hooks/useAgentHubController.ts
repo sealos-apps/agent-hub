@@ -27,8 +27,10 @@ import {
 } from "../../../../domains/agents/blueprintFields";
 import {
   createEmptyBlueprint,
+  buildModelSlotsPayload,
   findTemplateById,
   getDefaultModelOption,
+  getTemplateModelSlots,
   hydrateTemplateCatalog,
   indexTemplatesById,
 } from "../../../../domains/agents/templates";
@@ -429,6 +431,14 @@ export function useAgentHubController() {
       const workspaceToken = defaultModelOption
         ? await ensureWorkspaceTokenReady(currentContext)
         : null;
+      const modelSlots = Object.fromEntries(
+        getTemplateModelSlots(template)
+          .map((slot) => [
+            slot.key,
+            String(slot.defaultModels?.[workspaceRegion] || "").trim(),
+          ])
+          .filter(([, value]) => value),
+      ) as Record<string, string>;
 
       return {
         ...createEmptyBlueprint(),
@@ -452,6 +462,7 @@ export function useAgentHubController() {
         modelBaseURL,
         model: defaultModelOption?.value || "",
         modelAPIMode: defaultModelOption?.apiMode || "",
+        modelSlots,
         hasModelAPIKey: Boolean(workspaceToken?.key),
         keySource: workspaceToken?.key ? "workspace-aiproxy" : "unset",
       };
@@ -462,6 +473,7 @@ export function useAgentHubController() {
       resolveClusterContext,
       templatesById,
       workspaceAIProxyModelBaseURL,
+      workspaceRegion,
     ],
   );
 
@@ -529,10 +541,14 @@ export function useAgentHubController() {
   );
 
   const buildSettingsUpdatePayload = useCallback(
-    (template: AgentTemplateDefinition, source: AgentBlueprint) => ({
-      "agent-alias-name": source.aliasName.trim(),
-      settings: buildSettingsPayload(template, source),
-    }),
+    (template: AgentTemplateDefinition, source: AgentBlueprint) => {
+      const modelSlots = buildModelSlotsPayload(source.modelSlots);
+      return {
+        "agent-alias-name": source.aliasName.trim(),
+        settings: buildSettingsPayload(template, source),
+        ...(Object.keys(modelSlots).length ? { modelSlots } : {}),
+      };
+    },
     [buildSettingsPayload],
   );
 
@@ -604,6 +620,7 @@ export function useAgentHubController() {
               modelBaseURL: blueprint.modelBaseURL,
               model: blueprint.model,
               modelAPIMode: blueprint.modelAPIMode,
+              modelSlots: {},
               hasModelAPIKey: true,
             },
             settings: {
@@ -644,6 +661,7 @@ export function useAgentHubController() {
           await ensureWorkspaceTokenReady(currentContext);
         }
 
+        const modelSlots = buildModelSlotsPayload(blueprint.modelSlots);
         const response = await createAgent(
           {
             ...buildCreatePayload({
@@ -652,6 +670,7 @@ export function useAgentHubController() {
               aliasName,
             }),
             settings: buildSettingsPayload(template, blueprint),
+            ...(Object.keys(modelSlots).length ? { modelSlots } : {}),
           },
           currentContext,
         );

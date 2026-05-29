@@ -132,6 +132,15 @@ const collectBlueprintSettingsValues = (fields: AgentSettingField[] = []) =>
     return result;
   }, {});
 
+const collectRuntimeModelSlots = (
+  modelSlots: AgentContract["runtime"]["modelSlots"] = {},
+) =>
+  Object.fromEntries(
+    Object.entries(modelSlots || {})
+      .map(([key, selection]) => [key, String(selection?.model || "").trim()])
+      .filter(([, value]) => value),
+  ) as Record<string, string>;
+
 export const createBlueprintFromAgentItem = (
   item: AgentListItem,
 ): AgentBlueprint => {
@@ -165,6 +174,7 @@ export const createBlueprintFromAgentItem = (
     modelBaseURL: item.modelBaseURL || "",
     model: item.model || defaultModelOption?.value || "",
     modelAPIMode: item.modelAPIMode || defaultModelOption?.apiMode || "",
+    modelSlots: { ...item.modelSlots },
     hasModelAPIKey: item.hasModelAPIKey,
     keySource: item.keySource,
     settingsValues: collectBlueprintSettingsValues(
@@ -220,6 +230,7 @@ const buildAgentListItem = (
     modelBaseURL: contract.runtime.modelBaseURL || "",
     model: contract.runtime.model || "",
     modelAPIMode: contract.runtime.modelAPIMode || "",
+    modelSlots: collectRuntimeModelSlots(contract.runtime.modelSlots),
     hasModelAPIKey: Boolean(contract.runtime.hasModelAPIKey),
     keySource,
     ready: Boolean(contract.core.ready),

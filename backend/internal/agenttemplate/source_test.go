@@ -82,6 +82,64 @@ func TestGitHubSourceResolvesSingleTemplateArchive(t *testing.T) {
 	}
 }
 
+func TestGitHubSourceResolvesModelIntegration(t *testing.T) {
+	t.Parallel()
+
+	server := newSingleTemplateArchiveServer(t)
+	defer server.Close()
+
+	source := Source{
+		GitHubURL:    server.URL + "/archive.tar.gz",
+		CacheDir:     t.TempDir(),
+		ForceRefresh: true,
+	}
+
+	definition, err := ResolveFromSource("hermes-agent", source)
+	if err != nil {
+		t.Fatalf("ResolveFromSource() error = %v", err)
+	}
+	if definition.ModelIntegration.Type != "ai-agent-switch" {
+		t.Fatalf("ModelIntegration.Type = %q, want ai-agent-switch", definition.ModelIntegration.Type)
+	}
+	if definition.ModelIntegration.Client != "hermes-agent" {
+		t.Fatalf("ModelIntegration.Client = %q, want hermes-agent", definition.ModelIntegration.Client)
+	}
+	if definition.ModelIntegration.Provider.ID != "aiproxy" {
+		t.Fatalf("ModelIntegration.Provider.ID = %q, want aiproxy", definition.ModelIntegration.Provider.ID)
+	}
+	if definition.ModelIntegration.Provider.Name["zh"] != "AI Proxy" {
+		t.Fatalf("ModelIntegration.Provider.Name[zh] = %q, want AI Proxy", definition.ModelIntegration.Provider.Name["zh"])
+	}
+	if definition.ModelIntegration.Provider.BaseURL.Source != "system.aiProxyModelBaseURL" {
+		t.Fatalf("ModelIntegration.Provider.BaseURL.Source = %q, want system.aiProxyModelBaseURL", definition.ModelIntegration.Provider.BaseURL.Source)
+	}
+	if definition.ModelIntegration.Provider.APIKeyEnv != "ANTHROPIC_API_KEY" {
+		t.Fatalf("ModelIntegration.Provider.APIKeyEnv = %q, want ANTHROPIC_API_KEY", definition.ModelIntegration.Provider.APIKeyEnv)
+	}
+	if len(definition.ModelIntegration.Slots) != 1 {
+		t.Fatalf("slots len = %d, want 1", len(definition.ModelIntegration.Slots))
+	}
+	slot := definition.ModelIntegration.Slots[0]
+	if slot.Key != "main" {
+		t.Fatalf("slot.Key = %q, want main", slot.Key)
+	}
+	if slot.Label["en"] != "Primary model" {
+		t.Fatalf("slot.Label[en] = %q, want Primary model", slot.Label["en"])
+	}
+	if !slot.Required {
+		t.Fatal("slot.Required = false, want true")
+	}
+	if !slot.Mutable {
+		t.Fatal("slot.Mutable = false, want true")
+	}
+	if slot.DefaultModels["cn"] != "glm-4.6" {
+		t.Fatalf("slot.DefaultModels[cn] = %q, want glm-4.6", slot.DefaultModels["cn"])
+	}
+	if len(slot.ModelTypes) != 2 || slot.ModelTypes[0] != "text" || slot.ModelTypes[1] != "multimodal" {
+		t.Fatalf("slot.ModelTypes = %#v, want text and multimodal", slot.ModelTypes)
+	}
+}
+
 func TestGitHubSourceRejectsMismatchedSingleTemplateArchive(t *testing.T) {
 	t.Parallel()
 

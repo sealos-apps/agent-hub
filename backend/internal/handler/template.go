@@ -70,12 +70,13 @@ func toTemplateCatalogItem(definition agenttemplate.Definition, region string) d
 			BrandColor: definition.Presentation.BrandColor,
 			DocsLabel:  definition.Presentation.DocsLabel,
 		},
-		Workspaces:   toTemplateWorkspaceItems(definition.Workspaces),
-		Access:       toTemplateAccessItems(definition.Access),
-		Actions:      toTemplateActionItems(definition.Actions),
-		Settings:     toTemplateSettings(definition, region),
-		ModelOptions: toTemplateModelOptions(definition.RegionModelPresets[region]),
-		ModelTypes:   toTemplateModelTypes(definition.RegionModelTypes[region]),
+		Workspaces:       toTemplateWorkspaceItems(definition.Workspaces),
+		Access:           toTemplateAccessItems(definition.Access),
+		Actions:          toTemplateActionItems(definition.Actions),
+		Settings:         toTemplateSettings(definition, region),
+		ModelOptions:     toTemplateModelOptions(definition.RegionModelPresets[region]),
+		ModelTypes:       toTemplateModelTypes(definition.RegionModelTypes[region]),
+		ModelIntegration: toTemplateModelIntegration(definition.ModelIntegration),
 	}
 }
 
@@ -156,6 +157,53 @@ func toTemplateModelOption(item agenttemplate.ModelPreset) dto.TemplateModelOpti
 		InputModalities:  append([]string(nil), item.InputModalities...),
 		OutputModalities: append([]string(nil), item.OutputModalities...),
 	}
+}
+
+func toTemplateModelIntegration(item agenttemplate.ModelIntegration) *dto.TemplateModelIntegration {
+	if strings.TrimSpace(item.Type) == "" && strings.TrimSpace(item.Client) == "" && len(item.Slots) == 0 {
+		return nil
+	}
+	return &dto.TemplateModelIntegration{
+		Type:   item.Type,
+		Client: item.Client,
+		Provider: dto.TemplateModelIntegrationProvider{
+			ID:        item.Provider.ID,
+			Name:      toTemplateLocalizedText(item.Provider.Name),
+			BaseURL:   dto.TemplateModelIntegrationValueSource{Source: item.Provider.BaseURL.Source},
+			APIKeyEnv: item.Provider.APIKeyEnv,
+		},
+		Slots: toTemplateModelIntegrationSlots(item.Slots),
+	}
+}
+
+func toTemplateModelIntegrationSlots(items []agenttemplate.ModelIntegrationSlot) []dto.TemplateModelIntegrationSlot {
+	result := make([]dto.TemplateModelIntegrationSlot, 0, len(items))
+	for _, item := range items {
+		result = append(result, dto.TemplateModelIntegrationSlot{
+			Key:           item.Key,
+			Label:         toTemplateLocalizedText(item.Label),
+			Required:      item.Required,
+			Mutable:       item.Mutable,
+			DefaultModels: copyStringMap(item.DefaultModels),
+			ModelTypes:    append([]string(nil), item.ModelTypes...),
+		})
+	}
+	return result
+}
+
+func toTemplateLocalizedText(item agenttemplate.LocalizedText) dto.TemplateLocalizedText {
+	return dto.TemplateLocalizedText(copyStringMap(item))
+}
+
+func copyStringMap(item map[string]string) map[string]string {
+	if item == nil {
+		return nil
+	}
+	result := make(map[string]string, len(item))
+	for key, value := range item {
+		result[key] = value
+	}
+	return result
 }
 
 func toSettingFields(

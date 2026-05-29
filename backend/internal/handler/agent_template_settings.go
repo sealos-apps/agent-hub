@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -8,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/nightwhite/Agent-Hub/internal/agenttemplate"
+	"github.com/nightwhite/Agent-Hub/internal/config"
 	"github.com/nightwhite/Agent-Hub/internal/dto"
 	appErr "github.com/nightwhite/Agent-Hub/pkg/errors"
 )
@@ -198,6 +201,247 @@ func applyTemplateModelMetadata(
 		}
 		return
 	}
+}
+
+func buildModelSlotsUpdate(
+	payload map[string]string,
+	templateDef agenttemplate.Definition,
+	cfg config.Config,
+	region string,
+	requireRequired bool,
+) (dto.UpdateAgentRequest, *appErr.AppError) {
+	modelSlots, err := resolveModelSlotSelections(payload, templateDef, region, requireRequired, !requireRequired)
+	if err != nil {
+		return dto.UpdateAgentRequest{}, err
+	}
+	update := dto.UpdateAgentRequest{
+		ModelSlots: modelSlots,
+	}
+	if main, ok := modelSlots["main"]; ok {
+		update.ModelProvider = stringPtr(main.Provider)
+		update.Model = stringPtr(main.Model)
+		update.ModelAPIMode = stringPtr(main.APIMode)
+		baseURL, err := resolveModelIntegrationBaseURL(templateDef, cfg)
+		if err != nil {
+			return dto.UpdateAgentRequest{}, err
+		}
+		update.ModelBaseURL = stringPtr(baseURL)
+	}
+	return update, nil
+}
+
+func resolveModelIntegrationBaseURL(
+	templateDef agenttemplate.Definition,
+	cfg config.Config,
+) (string, *appErr.AppError) {
+	source := strings.TrimSpace(templateDef.ModelIntegration.Provider.BaseURL.Source)
+	switch source {
+	case "workspace", "system.aiProxyModelBaseURL":
+		baseURL := strings.TrimSpace(cfg.AIProxyModelBaseURL)
+		if baseURL == "" {
+			return "", validationFieldError("modelIntegration.provider.baseURL.source", "required", source)
+		}
+		return baseURL, nil
+	case "":
+		return "", validationFieldError("modelIntegration.provider.baseURL.source", "required", source)
+	default:
+		return "", validationFieldError("modelIntegration.provider.baseURL.source", "unsupported_field", source)
+	}
+}
+
+func resolveModelSlotSelections(
+	payload map[string]string,
+	templateDef agenttemplate.Definition,
+	region string,
+	requireRequired bool,
+	requireMutable bool,
+) (map[string]dto.ModelSlotSelection, *appErr.AppError) {
+	if len(templateDef.ModelIntegration.Slots) == 0 && len(payload) == 0 {
+		return nil, nil
+	}
+	slotIndex := map[string]agenttemplate.ModelIntegrationSlot{}
+	for _, slot := range templateDef.ModelIntegration.Slots {
+		key := strings.TrimSpace(slot.Key)
+		if key != "" {
+			slotIndex[key] = slot
+		}
+	}
+	result := map[string]dto.ModelSlotSelection{}
+	for key, value := range payload {
+		trimmedKey := strings.TrimSpace(key)
+		slot, ok := slotIndex[trimmedKey]
+		if !ok {
+			return nil, validationFieldError("modelSlots."+key, "unsupported_field", value)
+		}
+		if requireMutable && !slot.Mutable {
+			return nil, validationFieldError("modelSlots."+trimmedKey, "read_only", value)
+		}
+		selection, err := resolveModelSlotSelection(trimmedKey, strings.TrimSpace(value), slot, templateDef, region)
+		if err != nil {
+			return nil, err
+		}
+		result[trimmedKey] = selection
+	}
+	if requireRequired {
+		for _, slot := range templateDef.ModelIntegration.Slots {
+			key := strings.TrimSpace(slot.Key)
+			if key == "" || !slot.Required {
+				continue
+			}
+			if _, ok := result[key]; ok {
+				continue
+			}
+			defaultModel := strings.TrimSpace(slot.DefaultModels[region])
+			if defaultModel == "" {
+				return nil, validationFieldError("modelSlots."+key, "required", "")
+			}
+			selection, err := resolveModelSlotSelection(key, defaultModel, slot, templateDef, region)
+			if err != nil {
+				return nil, err
+			}
+			result[key] = selection
+		}
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
+func resolveModelSlotSelection(
+	slotKey string,
+	model string,
+	slot agenttemplate.ModelIntegrationSlot,
+	templateDef agenttemplate.Definition,
+	region string,
+) (dto.ModelSlotSelection, *appErr.AppError) {
+	if model == "" {
+		return dto.ModelSlotSelection{}, validationFieldError("modelSlots."+slotKey, "cannot_be_empty", model)
+	}
+	allowedTypes := map[string]bool{}
+	for _, modelType := range slot.ModelTypes {
+		trimmedType := strings.TrimSpace(modelType)
+		if trimmedType != "" {
+			allowedTypes[trimmedType] = true
+		}
+	}
+	for _, modelType := range templateDef.RegionModelTypes[region] {
+		if !allowedTypes[strings.TrimSpace(modelType.Key)] {
+			continue
+		}
+		for _, candidate := range modelType.Models {
+			if strings.TrimSpace(candidate.Value) != model {
+				continue
+			}
+			provider := strings.TrimSpace(candidate.Provider)
+			apiMode := strings.TrimSpace(candidate.APIMode)
+			if provider == "" || apiMode == "" {
+				return dto.ModelSlotSelection{}, validationFieldError("modelSlots."+slotKey, "unsupported_field", model)
+			}
+			return dto.ModelSlotSelection{
+				Provider: provider,
+				Model:    model,
+				APIMode:  apiMode,
+			}, nil
+		}
+	}
+	return dto.ModelSlotSelection{}, validationFieldError("modelSlots."+slotKey, "unsupported_field", model)
+}
+
+func mergeUpdateModelSlots(target *dto.UpdateAgentRequest, source dto.UpdateAgentRequest) {
+	if target == nil {
+		return
+	}
+	if len(source.ModelSlots) > 0 {
+		target.ModelSlots = source.ModelSlots
+	}
+	if source.ModelProvider != nil {
+		target.ModelProvider = source.ModelProvider
+	}
+	if source.Model != nil {
+		target.Model = source.Model
+	}
+	if source.ModelAPIMode != nil {
+		target.ModelAPIMode = source.ModelAPIMode
+	}
+	if source.ModelBaseURL != nil {
+		target.ModelBaseURL = source.ModelBaseURL
+	}
+}
+
+func encodeModelSlotsAnnotation(modelSlots map[string]dto.ModelSlotSelection) (string, error) {
+	if len(modelSlots) == 0 {
+		return "", nil
+	}
+	raw, err := json.Marshal(modelSlots)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+func mergeModelSlotsAnnotation(
+	current string,
+	updates map[string]dto.ModelSlotSelection,
+) (string, error) {
+	if len(updates) == 0 {
+		return strings.TrimSpace(current), nil
+	}
+	merged := map[string]dto.ModelSlotSelection{}
+	if strings.TrimSpace(current) != "" {
+		existing, err := decodeModelSlotsAnnotation(current)
+		if err != nil {
+			return "", err
+		}
+		for key, slot := range existing {
+			merged[key] = slot
+		}
+	}
+	for key, slot := range updates {
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedKey == "" {
+			continue
+		}
+		merged[trimmedKey] = dto.ModelSlotSelection{
+			Provider: strings.TrimSpace(slot.Provider),
+			Model:    strings.TrimSpace(slot.Model),
+			APIMode:  strings.TrimSpace(slot.APIMode),
+		}
+	}
+	return encodeModelSlotsAnnotation(merged)
+}
+
+func decodeModelSlotsAnnotation(value string) (map[string]dto.ModelSlotSelection, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil, nil
+	}
+	var modelSlots map[string]dto.ModelSlotSelection
+	if err := json.Unmarshal([]byte(trimmed), &modelSlots); err != nil {
+		return nil, err
+	}
+	if len(modelSlots) == 0 {
+		return nil, errors.New("model slots annotation must be a non-empty object")
+	}
+	result := make(map[string]dto.ModelSlotSelection, len(modelSlots))
+	for key, slot := range modelSlots {
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedKey == "" {
+			return nil, errors.New("model slot key is required")
+		}
+		provider := strings.TrimSpace(slot.Provider)
+		model := strings.TrimSpace(slot.Model)
+		apiMode := strings.TrimSpace(slot.APIMode)
+		if provider == "" || model == "" || apiMode == "" {
+			return nil, errors.New("model slot provider, model, and apiMode are required")
+		}
+		result[trimmedKey] = dto.ModelSlotSelection{
+			Provider: provider,
+			Model:    model,
+			APIMode:  apiMode,
+		}
+	}
+	return result, nil
 }
 
 func stringPtr(value string) *string {

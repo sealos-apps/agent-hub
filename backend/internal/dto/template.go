@@ -1,24 +1,25 @@
 package dto
 
 type TemplateCatalogItem struct {
-	ID                   string                  `json:"id"`
-	Name                 string                  `json:"name"`
-	ShortName            string                  `json:"shortName"`
-	Description          string                  `json:"description"`
-	Image                string                  `json:"image"`
-	Port                 int32                   `json:"port"`
-	DefaultArgs          []string                `json:"defaultArgs"`
-	WorkingDir           string                  `json:"workingDir"`
-	User                 string                  `json:"user"`
-	BackendSupported     bool                    `json:"backendSupported"`
-	CreateDisabledReason string                  `json:"createDisabledReason,omitempty"`
-	Presentation         TemplatePresentation    `json:"presentation"`
-	Workspaces           []TemplateWorkspaceItem `json:"workspaces"`
-	Access               []TemplateAccessItem    `json:"access"`
-	Actions              []TemplateActionItem    `json:"actions"`
-	Settings             TemplateSettingsSchema  `json:"settings"`
-	ModelOptions         []TemplateModelOption   `json:"modelOptions"`
-	ModelTypes           []TemplateModelType     `json:"modelTypes"`
+	ID                   string                    `json:"id"`
+	Name                 string                    `json:"name"`
+	ShortName            string                    `json:"shortName"`
+	Description          string                    `json:"description"`
+	Image                string                    `json:"image"`
+	Port                 int32                     `json:"port"`
+	DefaultArgs          []string                  `json:"defaultArgs"`
+	WorkingDir           string                    `json:"workingDir"`
+	User                 string                    `json:"user"`
+	BackendSupported     bool                      `json:"backendSupported"`
+	CreateDisabledReason string                    `json:"createDisabledReason,omitempty"`
+	Presentation         TemplatePresentation      `json:"presentation"`
+	Workspaces           []TemplateWorkspaceItem   `json:"workspaces"`
+	Access               []TemplateAccessItem      `json:"access"`
+	Actions              []TemplateActionItem      `json:"actions"`
+	Settings             TemplateSettingsSchema    `json:"settings"`
+	ModelOptions         []TemplateModelOption     `json:"modelOptions"`
+	ModelTypes           []TemplateModelType       `json:"modelTypes"`
+	ModelIntegration     *TemplateModelIntegration `json:"modelIntegration,omitempty"`
 }
 
 type TemplatePresentation struct {
@@ -68,6 +69,35 @@ type TemplateModelType struct {
 	Label       string                `json:"label"`
 	Description string                `json:"description,omitempty"`
 	Models      []TemplateModelOption `json:"models"`
+}
+
+type TemplateModelIntegration struct {
+	Type     string                           `json:"type"`
+	Client   string                           `json:"client"`
+	Provider TemplateModelIntegrationProvider `json:"provider"`
+	Slots    []TemplateModelIntegrationSlot   `json:"slots"`
+}
+
+type TemplateLocalizedText map[string]string
+
+type TemplateModelIntegrationProvider struct {
+	ID        string                              `json:"id"`
+	Name      TemplateLocalizedText               `json:"name"`
+	BaseURL   TemplateModelIntegrationValueSource `json:"baseURL"`
+	APIKeyEnv string                              `json:"apiKeyEnv"`
+}
+
+type TemplateModelIntegrationValueSource struct {
+	Source string `json:"source"`
+}
+
+type TemplateModelIntegrationSlot struct {
+	Key           string                `json:"key"`
+	Label         TemplateLocalizedText `json:"label"`
+	Required      bool                  `json:"required"`
+	Mutable       bool                  `json:"mutable"`
+	DefaultModels map[string]string     `json:"defaultModels"`
+	ModelTypes    []string              `json:"modelTypes"`
 }
 
 type TemplateCatalogResponse struct {

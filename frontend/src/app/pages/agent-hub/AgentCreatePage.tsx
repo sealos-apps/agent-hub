@@ -133,7 +133,7 @@ export function AgentCreatePage() {
 
   const handleBlueprintChange = (
     field: keyof AgentBlueprint,
-    value: string,
+    value: AgentBlueprint[keyof AgentBlueprint],
   ) => {
     setBlueprint((current) => updateBlueprintField(current, field, value));
   };

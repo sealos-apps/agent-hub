@@ -348,6 +348,7 @@ function createMockAgentItem({
     modelBaseURL,
     model,
     modelAPIMode,
+    modelSlots: {},
     hasModelAPIKey,
     keySource,
     ready: status === 'running',
@@ -596,6 +597,8 @@ export function AgentsListPage() {
       settingsEditBlueprint.modelProvider !== originalBlueprint.modelProvider ||
       settingsEditBlueprint.modelBaseURL !== originalBlueprint.modelBaseURL ||
       settingsEditBlueprint.keySource !== originalBlueprint.keySource ||
+      JSON.stringify(settingsEditBlueprint.modelSlots) !==
+        JSON.stringify(originalBlueprint.modelSlots) ||
       JSON.stringify(settingsEditBlueprint.settingsValues) !==
         JSON.stringify(originalBlueprint.settingsValues)
 

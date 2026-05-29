@@ -18,7 +18,14 @@ import {
 import { useState, type ReactNode } from "react";
 import { readBlueprintSettingValue } from "../../../../domains/agents/blueprintFields";
 import { formatModelProviderLabel } from "../../../../domains/agents/aiproxy";
-import { RESOURCE_PRESETS } from "../../../../domains/agents/templates";
+import {
+  filterModelOptionsForSlot,
+  filterModelTypesForSlot,
+  getTemplateLocalizedText,
+  getTemplateModelSlots,
+  hasTemplateModelSlots,
+  RESOURCE_PRESETS,
+} from "../../../../domains/agents/templates";
 import type {
   AgentBlueprint,
   AgentHubRegion,
@@ -47,7 +54,10 @@ interface AgentSettingsWorkspaceProps {
   workspaceModelKeyReady: boolean;
   onRuntimeChange: (field: keyof AgentBlueprint, value: string) => void;
   onRuntimePreset: (presetId: AgentBlueprint["profile"]) => void;
-  onSettingsChange: (field: keyof AgentBlueprint, value: string) => void;
+  onSettingsChange: <K extends keyof AgentBlueprint>(
+    field: K,
+    value: AgentBlueprint[K],
+  ) => void;
   onSettingsFieldChange: (field: AgentSettingField, value: string) => void;
 }
 
@@ -470,7 +480,7 @@ export function AgentSettingsWorkspace({
   onSettingsChange,
   onSettingsFieldChange,
 }: AgentSettingsWorkspaceProps) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const healthDisplay = resolveHealthDisplay(item, t);
   const HealthIcon = healthDisplay.icon;
   const [customResourceModalOpen, setCustomResourceModalOpen] = useState(false);
@@ -563,9 +573,51 @@ export function AgentSettingsWorkspace({
     if (bindingKey === "keySource") return t('agent.keySource');
     return field.label;
   };
+  const modelSlots = getTemplateModelSlots(template);
+  const usesModelSlots = hasTemplateModelSlots(template);
   const handleModelChange = (value: string) => {
     const option =
       template.modelOptions.find((entry) => entry.value === value) || null;
+    const modelField = template.settings.agent.find(
+      (item) => item.binding.key === "model",
+    );
+    const providerField = template.settings.agent.find(
+      (item) => item.binding.key === "modelProvider",
+    );
+    const apiModeField = template.settings.agent.find(
+      (item) => item.binding.key === "modelAPIMode",
+    );
+
+    if (modelField) {
+      onSettingsFieldChange(modelField, value);
+    } else {
+      onSettingsChange("model", value);
+    }
+
+    if (providerField) {
+      onSettingsFieldChange(providerField, option?.provider || "");
+    } else {
+      onSettingsChange("modelProvider", option?.provider || "");
+    }
+
+    if (apiModeField) {
+      onSettingsFieldChange(apiModeField, option?.apiMode || "");
+    } else {
+      onSettingsChange("modelAPIMode", option?.apiMode || "");
+    }
+  };
+  const handleSlotModelChange = (slotKey: string, value: string) => {
+    const option =
+      template.modelOptions.find((entry) => entry.value === value) || null;
+    onSettingsChange("modelSlots", {
+      ...settingsBlueprint.modelSlots,
+      [slotKey]: value,
+    });
+
+    if (slotKey !== "main") {
+      return;
+    }
+
     const modelField = template.settings.agent.find(
       (item) => item.binding.key === "model",
     );
@@ -649,7 +701,7 @@ export function AgentSettingsWorkspace({
       );
     }
 
-    if (bindingKey === "model") {
+    if (bindingKey === "model" && !usesModelSlots) {
       if (!editing) {
         const option = template.modelOptions.find((entry) => entry.value === fieldValue);
         return (
@@ -754,6 +806,36 @@ export function AgentSettingsWorkspace({
           value={fieldValue}
         />
       )
+    );
+  };
+  const renderModelSlotField = (slot: (typeof modelSlots)[number]) => {
+    const value = settingsBlueprint.modelSlots[slot.key] || "";
+    const option = template.modelOptions.find((entry) => entry.value === value);
+    const label = getTemplateLocalizedText(slot.label, locale);
+
+    if (!editing || slot.mutable === false) {
+      return (
+        <DisplayField
+          label={label}
+          value={formatModelOptionLabel(option) || value}
+        />
+      );
+    }
+
+    return (
+      <EditableFieldShell label={label}>
+        <ModelCapabilitySelect
+          modelTypes={filterModelTypesForSlot(template.modelTypes, slot)}
+          onChange={(nextValue) => handleSlotModelChange(slot.key, nextValue)}
+          options={filterModelOptionsForSlot(
+            template.modelOptions,
+            template.modelTypes,
+            slot,
+          )}
+          placeholder={t('agent.selectModel')}
+          value={value}
+        />
+      </EditableFieldShell>
     );
   };
 
@@ -955,7 +1037,13 @@ export function AgentSettingsWorkspace({
               ) : (
                 <DisplayField label={t('agent.alias')} value={settingsBlueprint.aliasName || item.aliasName || item.name} />
               )}
-              {editing && modelField ? (
+              {usesModelSlots ? (
+                modelSlots.map((slot) => (
+                  <div className="py-1" key={slot.key}>
+                    {renderModelSlotField(slot)}
+                  </div>
+                ))
+              ) : editing && modelField ? (
                 <div className="py-1">{renderAgentField(modelField)}</div>
               ) : (
                 <DisplayField
