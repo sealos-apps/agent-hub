@@ -140,6 +140,21 @@ func TestGitHubSourceResolvesModelIntegration(t *testing.T) {
 	}
 }
 
+func TestParseDefinitionRejectsEmptyModelIntegrationSlotModelTypes(t *testing.T) {
+	t.Parallel()
+
+	raw, err := os.ReadFile(filepath.Join(testTemplateBaseDir(t), "hermes-agent", "template.yaml"))
+	if err != nil {
+		t.Fatalf("read template fixture: %v", err)
+	}
+	invalid := strings.Replace(string(raw), "      modelTypes:\n        - text\n        - multimodal\n", "      modelTypes: []\n", 1)
+
+	_, err = parseDefinition([]byte(invalid), t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "modelIntegration.slots.main.modelTypes is required") {
+		t.Fatalf("parseDefinition() error = %v, want modelTypes required", err)
+	}
+}
+
 func TestGitHubSourceRejectsMismatchedSingleTemplateArchive(t *testing.T) {
 	t.Parallel()
 

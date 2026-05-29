@@ -401,6 +401,9 @@ func validateDefinition(definition Definition) error {
 			return err
 		}
 	}
+	if err := validateModelIntegration(definition.ModelIntegration); err != nil {
+		return err
+	}
 
 	if definition.BackendSupported {
 		if strings.TrimSpace(definition.ManifestDir) == "" {
@@ -414,6 +417,61 @@ func validateDefinition(definition Definition) error {
 		}
 	}
 
+	return nil
+}
+
+func validateModelIntegration(integration ModelIntegration) error {
+	if strings.TrimSpace(integration.Type) == "" &&
+		strings.TrimSpace(integration.Client) == "" &&
+		strings.TrimSpace(integration.Provider.ID) == "" &&
+		len(integration.Slots) == 0 {
+		return nil
+	}
+	if strings.TrimSpace(integration.Type) != "ai-agent-switch" {
+		return fmt.Errorf("modelIntegration.type must be ai-agent-switch")
+	}
+	if strings.TrimSpace(integration.Client) == "" {
+		return fmt.Errorf("modelIntegration.client is required")
+	}
+	if strings.TrimSpace(integration.Provider.ID) == "" {
+		return fmt.Errorf("modelIntegration.provider.id is required")
+	}
+	if strings.TrimSpace(integration.Provider.APIKeyEnv) == "" {
+		return fmt.Errorf("modelIntegration.provider.apiKeyEnv is required")
+	}
+	if strings.TrimSpace(integration.Provider.BaseURL.Source) == "" {
+		return fmt.Errorf("modelIntegration.provider.baseURL.source is required")
+	}
+	if len(integration.Slots) == 0 {
+		return fmt.Errorf("modelIntegration.slots is required")
+	}
+	seenSlots := map[string]struct{}{}
+	for _, slot := range integration.Slots {
+		key := strings.TrimSpace(slot.Key)
+		if key == "" {
+			return fmt.Errorf("modelIntegration.slots[].key is required")
+		}
+		if _, ok := seenSlots[key]; ok {
+			return fmt.Errorf("modelIntegration.slots.%s is duplicated", key)
+		}
+		seenSlots[key] = struct{}{}
+		if strings.TrimSpace(slot.Label["zh"]) == "" || strings.TrimSpace(slot.Label["en"]) == "" {
+			return fmt.Errorf("modelIntegration.slots.%s.label must include zh and en", key)
+		}
+		if len(slot.ModelTypes) == 0 {
+			return fmt.Errorf("modelIntegration.slots.%s.modelTypes is required", key)
+		}
+		hasModelType := false
+		for _, modelType := range slot.ModelTypes {
+			if strings.TrimSpace(modelType) != "" {
+				hasModelType = true
+				break
+			}
+		}
+		if !hasModelType {
+			return fmt.Errorf("modelIntegration.slots.%s.modelTypes is required", key)
+		}
+	}
 	return nil
 }
 
