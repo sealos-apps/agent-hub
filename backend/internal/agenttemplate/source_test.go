@@ -155,6 +155,51 @@ func TestParseDefinitionRejectsEmptyModelIntegrationSlotModelTypes(t *testing.T)
 	}
 }
 
+func TestParseDefinitionRejectsUnsupportedModelIntegrationBaseURLSource(t *testing.T) {
+	t.Parallel()
+
+	raw, err := os.ReadFile(filepath.Join(testTemplateBaseDir(t), "hermes-agent", "template.yaml"))
+	if err != nil {
+		t.Fatalf("read template fixture: %v", err)
+	}
+	invalid := strings.Replace(string(raw), "      source: system.aiProxyModelBaseURL\n", "      source: unsupported.source\n", 1)
+
+	_, err = parseDefinition([]byte(invalid), t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), `modelIntegration.provider.baseURL.source "unsupported.source" is not supported`) {
+		t.Fatalf("parseDefinition() error = %v, want unsupported baseURL source", err)
+	}
+}
+
+func TestParseDefinitionRejectsModelIntegrationSlotKeyWhitespace(t *testing.T) {
+	t.Parallel()
+
+	raw, err := os.ReadFile(filepath.Join(testTemplateBaseDir(t), "hermes-agent", "template.yaml"))
+	if err != nil {
+		t.Fatalf("read template fixture: %v", err)
+	}
+	invalid := strings.Replace(string(raw), "    - key: main\n", "    - key: \" main \"\n", 1)
+
+	_, err = parseDefinition([]byte(invalid), t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "modelIntegration.slots.main.key must not include leading or trailing whitespace") {
+		t.Fatalf("parseDefinition() error = %v, want slot key whitespace error", err)
+	}
+}
+
+func TestParseDefinitionRejectsMissingRequiredMainModelIntegrationSlot(t *testing.T) {
+	t.Parallel()
+
+	raw, err := os.ReadFile(filepath.Join(testTemplateBaseDir(t), "hermes-agent", "template.yaml"))
+	if err != nil {
+		t.Fatalf("read template fixture: %v", err)
+	}
+	invalid := strings.Replace(string(raw), "    - key: main\n", "    - key: secondary\n", 1)
+
+	_, err = parseDefinition([]byte(invalid), t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "modelIntegration.slots.main is required") {
+		t.Fatalf("parseDefinition() error = %v, want required main slot error", err)
+	}
+}
+
 func TestGitHubSourceRejectsMismatchedSingleTemplateArchive(t *testing.T) {
 	t.Parallel()
 

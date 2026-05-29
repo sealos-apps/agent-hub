@@ -439,22 +439,34 @@ func validateModelIntegration(integration ModelIntegration) error {
 	if strings.TrimSpace(integration.Provider.APIKeyEnv) == "" {
 		return fmt.Errorf("modelIntegration.provider.apiKeyEnv is required")
 	}
-	if strings.TrimSpace(integration.Provider.BaseURL.Source) == "" {
+	baseURLSource := strings.TrimSpace(integration.Provider.BaseURL.Source)
+	switch baseURLSource {
+	case "workspace", "system.aiProxyModelBaseURL":
+	case "":
 		return fmt.Errorf("modelIntegration.provider.baseURL.source is required")
+	default:
+		return fmt.Errorf("modelIntegration.provider.baseURL.source %q is not supported", baseURLSource)
 	}
 	if len(integration.Slots) == 0 {
 		return fmt.Errorf("modelIntegration.slots is required")
 	}
 	seenSlots := map[string]struct{}{}
+	hasRequiredMainSlot := false
 	for _, slot := range integration.Slots {
 		key := strings.TrimSpace(slot.Key)
 		if key == "" {
 			return fmt.Errorf("modelIntegration.slots[].key is required")
 		}
+		if key != slot.Key {
+			return fmt.Errorf("modelIntegration.slots.%s.key must not include leading or trailing whitespace", key)
+		}
 		if _, ok := seenSlots[key]; ok {
 			return fmt.Errorf("modelIntegration.slots.%s is duplicated", key)
 		}
 		seenSlots[key] = struct{}{}
+		if key == "main" && slot.Required {
+			hasRequiredMainSlot = true
+		}
 		if strings.TrimSpace(slot.Label["zh"]) == "" || strings.TrimSpace(slot.Label["en"]) == "" {
 			return fmt.Errorf("modelIntegration.slots.%s.label must include zh and en", key)
 		}
@@ -471,6 +483,9 @@ func validateModelIntegration(integration ModelIntegration) error {
 		if !hasModelType {
 			return fmt.Errorf("modelIntegration.slots.%s.modelTypes is required", key)
 		}
+	}
+	if !hasRequiredMainSlot {
+		return fmt.Errorf("modelIntegration.slots.main is required")
 	}
 	return nil
 }
