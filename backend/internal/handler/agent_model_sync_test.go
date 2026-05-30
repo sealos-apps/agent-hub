@@ -116,7 +116,7 @@ func TestBuildAgentModelSyncInputUsesTemplateModelList(t *testing.T) {
 				{Value: "glm-5.1", Provider: aiproxyChatProvider, APIMode: "chat_completions"},
 				{Value: "kimi-k2.6", Provider: aiproxyChatProvider, APIMode: "chat_completions"},
 				{Value: "deepseek-v4-pro", Provider: aiproxyChatProvider, APIMode: "chat_completions"},
-				{Value: "qwen3-max", Provider: aiproxyChatProvider, APIMode: "chat_completions"},
+				{Value: "deepseek-v4-flash", Provider: aiproxyChatProvider, APIMode: "chat_completions"},
 			},
 		},
 	}
@@ -129,7 +129,7 @@ func TestBuildAgentModelSyncInputUsesTemplateModelList(t *testing.T) {
 		"glm-5.1:chat_completions",
 		"kimi-k2.6:chat_completions",
 		"deepseek-v4-pro:chat_completions",
-		"qwen3-max:chat_completions",
+		"deepseek-v4-flash:chat_completions",
 	}
 	if strings.Join(input.Models, ",") != strings.Join(want, ",") {
 		t.Fatalf("Models = %#v, want %#v", input.Models, want)
@@ -213,6 +213,53 @@ func TestBuildAgentModelSyncScriptUsesProviderInitThenClientConfigure(t *testing
 	}
 	if strings.Contains(script, "ai-agent-switch switch") {
 		t.Fatalf("sync script contains deprecated switch command:\n%s", script)
+	}
+}
+
+func TestBuildAgentModelSyncScriptIncludesAllCowAgentSlots(t *testing.T) {
+	t.Parallel()
+
+	script := buildAgentModelSyncScript(agentModelSyncInput{
+		Client:       "cowagent",
+		ProviderID:   "aiproxy",
+		ProviderName: "AI Proxy",
+		BaseURL:      "https://aiproxy.usw-1.sealos.io/v1",
+		APIKeyEnv:    "OPEN_AI_API_KEY",
+		APIKeyValue:  "sk-test",
+		Model:        "glm-5.1",
+		APIMode:      "chat_completions",
+		Models: []string{
+			"glm-5.1:chat_completions",
+			"qwen3.6-plus:chat_completions",
+			"qwen-image-2.0-pro:openai_compatible",
+			"qwen3-asr-flash:openai_compatible",
+			"qwen3-tts-flash:openai_compatible",
+			"text-embedding-v4:openai_compatible",
+		},
+		Slots: []agentModelSyncSlot{
+			{Key: "main", ProviderID: "aiproxy", Model: "glm-5.1"},
+			{Key: "vision", ProviderID: "aiproxy", Model: "qwen3.6-plus"},
+			{Key: "image", ProviderID: "aiproxy", Model: "qwen-image-2.0-pro"},
+			{Key: "asr", ProviderID: "aiproxy", Model: "qwen3-asr-flash"},
+			{Key: "tts", ProviderID: "aiproxy", Model: "qwen3-tts-flash"},
+			{Key: "embedding", ProviderID: "aiproxy", Model: "text-embedding-v4"},
+		},
+	})
+	for _, want := range []string{
+		"export OPEN_AI_API_KEY='sk-test'",
+		"--model 'qwen-image-2.0-pro:openai_compatible'",
+		"--default-model 'glm-5.1'",
+		"--client 'cowagent'",
+		"--slot 'main=aiproxy/glm-5.1'",
+		"--slot 'vision=aiproxy/qwen3.6-plus'",
+		"--slot 'image=aiproxy/qwen-image-2.0-pro'",
+		"--slot 'asr=aiproxy/qwen3-asr-flash'",
+		"--slot 'tts=aiproxy/qwen3-tts-flash'",
+		"--slot 'embedding=aiproxy/text-embedding-v4'",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("sync script does not contain %q:\n%s", want, script)
+		}
 	}
 }
 

@@ -1622,7 +1622,7 @@ func normalizeCreateRequestSettings(
 	}
 	for _, slot := range templateDef.ModelIntegration.Slots {
 		key := strings.TrimSpace(slot.Key)
-		if key == "" || !slot.Required {
+		if key == "" {
 			continue
 		}
 		if strings.TrimSpace(req.ModelSlots[key]) != "" {

@@ -93,6 +93,22 @@ func TestNormalizeCreateRequestSettingsFillsDefaultModelSlot(t *testing.T) {
 	}
 }
 
+func TestNormalizeCreateRequestSettingsFillsOptionalDefaultModelSlots(t *testing.T) {
+	t.Parallel()
+
+	templateDef := modelSlotsTemplateDefinition()
+	normalized := normalizeCreateRequestSettings(
+		dto.CreateAgentRequest{},
+		templateDef,
+		config.Config{AIProxyModelBaseURL: "https://aiproxy.usw-1.sealos.io/v1"},
+		"us",
+	)
+
+	if got := normalized.ModelSlots["locked"]; got != "deepseek-v4-flash" {
+		t.Fatalf("normalizeCreateRequestSettings() optional slot = %q, want deepseek-v4-flash", got)
+	}
+}
+
 func TestBuildCreateModelSlotsUpdatePersistsSlotsAndMainModel(t *testing.T) {
 	t.Parallel()
 
@@ -133,6 +149,43 @@ func TestBuildCreateModelSlotsUpdatePersistsSlotsAndMainModel(t *testing.T) {
 	}
 	if persisted["main"].Model != "deepseek-v4-flash" {
 		t.Fatalf("persisted main model = %q, want deepseek-v4-flash", persisted["main"].Model)
+	}
+}
+
+func TestBuildCreateModelSlotsUpdatePersistsOptionalDefaultSlots(t *testing.T) {
+	t.Parallel()
+
+	normalized := normalizeCreateRequestSettings(
+		dto.CreateAgentRequest{},
+		modelSlotsTemplateDefinition(),
+		config.Config{AIProxyModelBaseURL: "https://aiproxy.usw-1.sealos.io/v1"},
+		"us",
+	)
+	mapped, validationErr := buildModelSlotsUpdate(
+		normalized.ModelSlots,
+		modelSlotsTemplateDefinition(),
+		config.Config{AIProxyModelBaseURL: "https://aiproxy.usw-1.sealos.io/v1"},
+		"us",
+		true,
+	)
+	if validationErr != nil {
+		t.Fatalf("buildModelSlotsUpdate() error = %v, want nil", validationErr)
+	}
+	if got := mapped.ModelSlots["locked"].Model; got != "deepseek-v4-flash" {
+		t.Fatalf("mapped.ModelSlots[locked].Model = %q, want deepseek-v4-flash", got)
+	}
+
+	devbox := &unstructured.Unstructured{}
+	devbox.SetAnnotations(map[string]string{})
+	if err := applyUpdateToDevbox(devbox, mapped); err != nil {
+		t.Fatalf("applyUpdateToDevbox() error = %v, want nil", err)
+	}
+	var persisted map[string]dto.ModelSlotSelection
+	if err := json.Unmarshal([]byte(devbox.GetAnnotations()["agent.sealos.io/model-slots"]), &persisted); err != nil {
+		t.Fatalf("model-slots annotation is invalid JSON: %v", err)
+	}
+	if got := persisted["locked"].Model; got != "deepseek-v4-flash" {
+		t.Fatalf("persisted locked model = %q, want deepseek-v4-flash", got)
 	}
 }
 
