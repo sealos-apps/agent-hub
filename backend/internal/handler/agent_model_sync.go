@@ -94,6 +94,45 @@ func syncAgentModelConfig(
 	return nil
 }
 
+func syncAgentBootstrapModelConfig(
+	ctx context.Context,
+	clientset kubernetes.Interface,
+	factory *kube.Factory,
+	current agent.Agent,
+	templateDef agenttemplate.Definition,
+	region string,
+) error {
+	if templateDef.ModelIntegration.Type == "" && len(templateDef.ModelIntegration.Slots) == 0 {
+		return nil
+	}
+	input, err := buildAgentModelSyncInput(current, dto.UpdateAgentRequest{}, templateDef, region)
+	if err != nil {
+		return fmt.Errorf("build bootstrap model sync command: %w", err)
+	}
+
+	syncCtx, cancel := context.WithTimeout(ctx, agentModelSyncTimeout)
+	defer cancel()
+
+	_, stderr, execErr := execAgentCommandWithRetry(
+		syncCtx,
+		clientset,
+		factory,
+		current.Name,
+		[]string{"sh", "-s"},
+		[]byte(buildAgentModelSyncScript(input)),
+		false,
+		nil,
+	)
+	if execErr != nil {
+		message := execErr.Error()
+		if trimmed := strings.TrimSpace(stderr); trimmed != "" {
+			message += ": " + trimmed
+		}
+		return fmt.Errorf("sync bootstrap model config: %s", message)
+	}
+	return nil
+}
+
 func hasModelUpdate(req dto.UpdateAgentRequest) bool {
 	return req.ModelProvider != nil || req.ModelBaseURL != nil || req.Model != nil || req.ModelAPIKey != nil || req.ModelAPIMode != nil || len(req.ModelSlots) > 0
 }
@@ -326,6 +365,8 @@ func agentHubProviderModels(templateDef agenttemplate.Definition, region string,
 
 func normalizeAgentModelAPIMode(value string) string {
 	switch strings.TrimSpace(value) {
+	case "openai_compatible", "openai-compatible":
+		return "openai_compatible"
 	case "openai-responses", "responses":
 		return "codex_responses"
 	case "anthropic":

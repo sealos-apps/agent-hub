@@ -13,11 +13,25 @@ import (
 	"github.com/nightwhite/Agent-Hub/internal/config"
 	"github.com/nightwhite/Agent-Hub/internal/kube"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
 )
 
 const bootstrapPollInterval = 3 * time.Second
+
+type bootstrapDynamicFactory func(*kube.Factory) (dynamic.Interface, error)
+type bootstrapKubernetesFactory func(*kube.Factory) (kubernetes.Interface, error)
+
+var bootstrapDynamicClient bootstrapDynamicFactory = func(factory *kube.Factory) (dynamic.Interface, error) {
+	return factory.Dynamic()
+}
+
+var bootstrapKubernetesClient bootstrapKubernetesFactory = func(factory *kube.Factory) (kubernetes.Interface, error) {
+	return factory.Kubernetes()
+}
+
+var readTemplateScriptFile = readTemplateScript
 
 func scheduleAgentBootstrap(factory *kube.Factory, cfg config.Config, templateDef agenttemplate.Definition, spec agent.Agent) {
 	if factory == nil || strings.TrimSpace(spec.Name) == "" {
@@ -50,11 +64,11 @@ func runAgentBootstrapLifecycle(
 	templateDef agenttemplate.Definition,
 	spec agent.Agent,
 ) error {
-	dynamicClient, err := factory.Dynamic()
+	dynamicClient, err := bootstrapDynamicClient(factory)
 	if err != nil {
 		return fmt.Errorf("build dynamic client: %w", err)
 	}
-	clientset, err := factory.Kubernetes()
+	clientset, err := bootstrapKubernetesClient(factory)
 	if err != nil {
 		return fmt.Errorf("build kubernetes clientset: %w", err)
 	}
@@ -83,6 +97,19 @@ func runAgentBootstrapLifecycle(
 		}
 	}
 
+	latestSpec, err := bootstrapAgentSpec(ctx, repo, spec.Name)
+	if err != nil {
+		message := truncateBootstrapMessage(err.Error())
+		_ = persistBootstrapStatus(context.Background(), repo, spec.Name, kube.BootstrapPhaseFailed, message)
+		return err
+	}
+
+	if err := syncAgentBootstrapModelConfig(ctx, clientset, factory, latestSpec, templateDef, cfg.Region); err != nil {
+		message := truncateBootstrapMessage(err.Error())
+		_ = persistBootstrapStatus(context.Background(), repo, spec.Name, kube.BootstrapPhaseFailed, message)
+		return err
+	}
+
 	if agenttemplate.HasScriptSpec(templateDef.Healthcheck) {
 		if err := persistBootstrapStatus(ctx, repo, spec.Name, kube.BootstrapPhaseRunning, "等待健康检查通过"); err != nil {
 			return err
@@ -100,6 +127,18 @@ func runAgentBootstrapLifecycle(
 	}
 
 	return nil
+}
+
+func bootstrapAgentSpec(ctx context.Context, repo *kube.Repository, agentName string) (agent.Agent, error) {
+	devbox, err := repo.Get(ctx, agentName)
+	if err != nil {
+		return agent.Agent{}, fmt.Errorf("read agent after bootstrap script: %w", err)
+	}
+	view, err := kube.DevboxToAgentView(devbox)
+	if err != nil {
+		return agent.Agent{}, fmt.Errorf("read agent model metadata after bootstrap script: %w", err)
+	}
+	return view.Agent, nil
 }
 
 func runBootstrapFallback(ctx context.Context, factory *kube.Factory, spec agent.Agent, bootstrapErr error) error {
@@ -122,7 +161,7 @@ func waitForTemplateHealthcheck(
 	agentName string,
 	templateDef agenttemplate.Definition,
 ) error {
-	healthcheckScript, err := readTemplateScript(templateDef.Healthcheck.Script, templateDef.HealthcheckScriptPath())
+	healthcheckScript, err := readTemplateScriptFile(templateDef.Healthcheck.Script, templateDef.HealthcheckScriptPath())
 	if err != nil {
 		return err
 	}
@@ -171,7 +210,7 @@ func executeTemplateScript(
 	scriptPath string,
 	timeoutSeconds int,
 ) error {
-	raw, err := readTemplateScript(scriptName, scriptPath)
+	raw, err := readTemplateScriptFile(scriptName, scriptPath)
 	if err != nil {
 		return err
 	}
@@ -213,7 +252,7 @@ func executeTemplateScriptContent(
 
 	command := []string{"bash", "-se"}
 
-	stdout, stderr, err := execInAgentPodWithRetry(
+	stdout, stderr, err := execAgentCommandWithRetry(
 		execCtx,
 		clientset,
 		factory,
