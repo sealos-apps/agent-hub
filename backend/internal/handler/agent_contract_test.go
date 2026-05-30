@@ -57,12 +57,12 @@ func TestTemplateSourceFromConfigKeepsGitHubWhenLocalDirIsSet(t *testing.T) {
 
 	source := templateSourceFromConfig(config.Config{
 		AgentTemplateDir:         "/tmp/local-agent-templates",
-		AgentTemplateGitHubURL:   "https://github.com/gitlayzer/Agent-Hub-Template",
+		AgentTemplateGitHubURL:   "https://github.com/nightwhite/Agent-Hub-Template",
 		AgentTemplateGitHubToken: "token",
 		AgentTemplateCacheDir:    "/tmp/agenthub-template-cache",
 	})
 
-	if source.GitHubURL != "https://github.com/gitlayzer/Agent-Hub-Template" {
+	if source.GitHubURL != "https://github.com/nightwhite/Agent-Hub-Template" {
 		t.Fatalf("templateSourceFromConfig().GitHubURL = %q, want configured GitHub URL", source.GitHubURL)
 	}
 	if source.Dir != "/tmp/local-agent-templates" {
