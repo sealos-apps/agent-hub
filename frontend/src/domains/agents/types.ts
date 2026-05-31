@@ -68,6 +68,7 @@ export interface TemplateModelOption {
   helper?: string;
   provider: string;
   apiMode: string;
+  kind?: string;
   category?: string;
   capabilities?: string[];
   inputModalities?: string[];
@@ -210,6 +211,7 @@ export interface ModelSlotSelection {
   provider: string;
   model: string;
   apiMode: string;
+  kind?: string;
 }
 
 export interface AgentSettingsContract {

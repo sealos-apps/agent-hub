@@ -82,7 +82,7 @@ func TestUpdateAgentResourcesRollsBackDevboxAndServiceWhenIngressUpdateFails(t *
 	}
 }
 
-func TestUpdateAgentResourcesRejectsCowAgentNonChatAPI(t *testing.T) {
+func TestUpdateAgentResourcesAllowsCowAgentOpenAICompatibleAPI(t *testing.T) {
 	t.Parallel()
 
 	const namespace = "ns-test"
@@ -105,19 +105,19 @@ func TestUpdateAgentResourcesRejectsCowAgentNonChatAPI(t *testing.T) {
 		t.Fatalf("repo.Update() error = %v", err)
 	}
 
-	apiMode := "codex_responses"
+	apiMode := "openai_compatible"
 	_, err := updateAgentResources(context.Background(), repo, clientset, namespace, agentName, dto.UpdateAgentRequest{
 		ModelAPIMode: &apiMode,
 	})
-	if err == nil {
-		t.Fatal("updateAgentResources() error = nil, want CowAgent api mode validation error")
+	if err != nil {
+		t.Fatalf("updateAgentResources() error = %v, want nil", err)
 	}
 	persisted, getErr := repo.Get(context.Background(), agentName)
 	if getErr != nil {
 		t.Fatalf("repo.Get() error = %v", getErr)
 	}
-	if got := readDevboxEnvValue(persisted, "AGENT_MODEL_API_MODE"); got != "" {
-		t.Fatalf("AGENT_MODEL_API_MODE = %q, want unchanged empty", got)
+	if got := readDevboxEnvValue(persisted, "AGENT_MODEL_API_MODE"); got != "openai_compatible" {
+		t.Fatalf("AGENT_MODEL_API_MODE = %q, want openai_compatible", got)
 	}
 }
 
@@ -132,6 +132,38 @@ func TestValidateModelUpdateCompatibilityAllowsCowAgentChatAlias(t *testing.T) {
 
 	if err := validateModelUpdateCompatibility(devbox, dto.UpdateAgentRequest{ModelAPIMode: &apiMode}); err != nil {
 		t.Fatalf("validateModelUpdateCompatibility() error = %v, want nil for chat alias", err)
+	}
+}
+
+func TestValidateModelUpdateCompatibilityAllowsCowAgentOpenAICompatible(t *testing.T) {
+	t.Parallel()
+
+	devbox := newModelUpdateDevbox("custom:aiproxy-chat", "https://aiproxy.usw-1.sealos.io/v1", "qwen-image-2.0-pro", "aiproxy-key")
+	devbox.SetLabels(map[string]string{
+		"app.kubernetes.io/name": "cowagent",
+	})
+	apiMode := "openai_compatible"
+
+	if err := validateModelUpdateCompatibility(devbox, dto.UpdateAgentRequest{ModelAPIMode: &apiMode}); err != nil {
+		t.Fatalf("validateModelUpdateCompatibility() error = %v, want nil for openai_compatible", err)
+	}
+}
+
+func TestValidateModelUpdateCompatibilityAllowsCowAgentNonLLMEndpoints(t *testing.T) {
+	t.Parallel()
+
+	for _, apiMode := range []string{"image_generation", "audio_transcriptions", "audio_speech", "embeddings"} {
+		t.Run(apiMode, func(t *testing.T) {
+			devbox := newModelUpdateDevbox("custom:aiproxy-chat", "https://aiproxy.usw-1.sealos.io/v1", "qwen-image-2.0-pro", "aiproxy-key")
+			devbox.SetLabels(map[string]string{
+				"app.kubernetes.io/name": "cowagent",
+			})
+			apiMode := apiMode
+
+			if err := validateModelUpdateCompatibility(devbox, dto.UpdateAgentRequest{ModelAPIMode: &apiMode}); err != nil {
+				t.Fatalf("validateModelUpdateCompatibility() error = %v, want nil", err)
+			}
+		})
 	}
 }
 

@@ -20,6 +20,10 @@ const capabilityLabelMap: Record<string, string> = {
   image_generation: "生图",
   image: "图像",
   audio: "音频",
+  asr: "语音识别",
+  tts: "语音合成",
+  speech_to_text: "语音识别",
+  text_to_speech: "语音合成",
   tool: "工具",
   code: "代码",
 };
@@ -46,6 +50,7 @@ export function inferModelCategory(option: TemplateModelOption) {
   const capabilities = uniqueModelCapabilityTokens([
     ...(option.capabilities || []),
     option.apiMode || "",
+    option.kind || "",
   ]);
   const inputModalities = uniqueModelCapabilityTokens(option.inputModalities || []);
   const outputModalities = uniqueModelCapabilityTokens(option.outputModalities || []);
@@ -93,6 +98,7 @@ export function getModelCapabilitySummary(option: TemplateModelOption) {
     option.helper,
     formatModelProviderLabel(option.provider),
     option.apiMode,
+    option.kind,
   ]
     .map((item) => String(item || "").trim())
     .filter(Boolean);
@@ -113,6 +119,10 @@ export function getModelTypeLabel(type: string) {
     case "image":
     case "image_generation":
       return "生图模型";
+    case "asr":
+      return "语音识别模型";
+    case "tts":
+      return "语音合成模型";
     case "audio":
       return "音频模型";
     case "embedding":
@@ -124,7 +134,7 @@ export function getModelTypeLabel(type: string) {
   }
 }
 
-const modelTypeOrder = ["text", "multimodal", "image", "audio", "embedding", "other"];
+const modelTypeOrder = ["text", "multimodal", "image", "asr", "tts", "audio", "embedding", "other"];
 
 export function groupModelOptionsByType(
   options: TemplateModelOption[] = [],

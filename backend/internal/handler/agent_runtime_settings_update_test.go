@@ -42,11 +42,13 @@ func modelSlotsTemplateDefinition() agenttemplate.Definition {
 							Value:    "glm-5.1",
 							Provider: "custom:aiproxy-chat",
 							APIMode:  "chat_completions",
+							Kind:     "llm",
 						},
 						{
 							Value:    "deepseek-v4-flash",
 							Provider: "custom:aiproxy-chat",
 							APIMode:  "chat_completions",
+							Kind:     "llm",
 						},
 					},
 				},
@@ -57,6 +59,29 @@ func modelSlotsTemplateDefinition() agenttemplate.Definition {
 							Value:    "cogview-4",
 							Provider: "custom:aiproxy-responses",
 							APIMode:  "image_generation",
+							Kind:     "image_generation",
+						},
+					},
+				},
+				{
+					Key: "asr",
+					Models: []agenttemplate.ModelPreset{
+						{
+							Value:    "qwen3-asr-flash",
+							Provider: "custom:aiproxy-chat",
+							APIMode:  "audio_transcriptions",
+							Kind:     "asr",
+						},
+					},
+				},
+				{
+					Key: "tts",
+					Models: []agenttemplate.ModelPreset{
+						{
+							Value:    "qwen3-tts-flash",
+							Provider: "custom:aiproxy-chat",
+							APIMode:  "audio_speech",
+							Kind:     "tts",
 						},
 					},
 				},
@@ -168,22 +193,28 @@ func TestBuildSettingsUpdateRequestMapsSupportedFields(t *testing.T) {
 	}
 }
 
-func TestBuildSettingsUpdateRequestMapsImageGenerationAPIMode(t *testing.T) {
+func TestBuildSettingsUpdateRequestMapsImageGenerationSlotAPIMode(t *testing.T) {
 	t.Parallel()
 
 	templateDef := modelSlotsTemplateDefinition()
-	templateDef.ModelIntegration.Slots[0].ModelTypes = []string{"image"}
+	templateDef.ModelIntegration.Slots = append(templateDef.ModelIntegration.Slots, agenttemplate.ModelIntegrationSlot{
+		Key:           "image",
+		Required:      false,
+		Mutable:       true,
+		DefaultModels: map[string]string{"us": "cogview-4"},
+		ModelTypes:    []string{"image"},
+	})
 
 	req := dto.UpdateAgentSettingsRequest{
-		ModelSlots: map[string]string{"main": "cogview-4"},
+		ModelSlots: map[string]string{"image": "cogview-4"},
 	}
 
 	mapped, validationErr := buildSettingsUpdateRequest(req, templateDef, config.Config{AIProxyModelBaseURL: "https://aiproxy.usw-1.sealos.io/v1"}, "us")
 	if validationErr != nil {
 		t.Fatalf("buildSettingsUpdateRequest() error = %v, want nil", validationErr)
 	}
-	if mapped.ModelAPIMode == nil || *mapped.ModelAPIMode != "image_generation" {
-		t.Fatalf("mapped.ModelAPIMode = %#v, want image_generation", mapped.ModelAPIMode)
+	if mapped.ModelSlots["image"].APIMode != "image_generation" {
+		t.Fatalf("mapped.ModelSlots[image].APIMode = %q, want image_generation", mapped.ModelSlots["image"].APIMode)
 	}
 }
 
@@ -238,6 +269,39 @@ func TestValidateSettingsUpdateRequestRejectsModelOutsideSlotTypes(t *testing.T)
 	}
 }
 
+func TestValidateSettingsUpdateRequestRejectsModelOutsideSlotKind(t *testing.T) {
+	t.Parallel()
+
+	templateDef := modelSlotsTemplateDefinition()
+	templateDef.RegionModelTypes["us"] = append(templateDef.RegionModelTypes["us"], agenttemplate.ModelType{
+		Key: "audio",
+		Models: []agenttemplate.ModelPreset{
+			{Value: "qwen3-asr-flash", Provider: "custom:aiproxy-chat", APIMode: "audio_transcriptions", Kind: "asr"},
+			{Value: "qwen3-tts-flash", Provider: "custom:aiproxy-chat", APIMode: "audio_speech", Kind: "tts"},
+		},
+	})
+	templateDef.ModelIntegration.Slots = append(templateDef.ModelIntegration.Slots, agenttemplate.ModelIntegrationSlot{
+		Key:           "asr",
+		Required:      false,
+		Mutable:       true,
+		DefaultModels: map[string]string{"us": "qwen3-asr-flash"},
+		ModelTypes:    []string{"audio"},
+	})
+
+	validationErr := validateSettingsUpdateRequest(dto.UpdateAgentSettingsRequest{
+		ModelSlots: map[string]string{"asr": "qwen3-tts-flash"},
+	}, templateDef, "us")
+	if validationErr == nil {
+		t.Fatal("validateSettingsUpdateRequest() error = nil, want slot kind validation error")
+	}
+	if got := validationErr.Details()["field"]; got != "modelSlots.asr" {
+		t.Fatalf("validateSettingsUpdateRequest() field = %#v, want modelSlots.asr", got)
+	}
+	if got := validationErr.Details()["reason"]; got != "unsupported_field" {
+		t.Fatalf("validateSettingsUpdateRequest() reason = %#v, want unsupported_field", got)
+	}
+}
+
 func TestValidateSettingsUpdateRequestRejectsEmptySlotModelTypes(t *testing.T) {
 	t.Parallel()
 
@@ -280,7 +344,7 @@ func TestApplyUpdateToDevboxMergesModelSlotsAnnotation(t *testing.T) {
 
 	devbox := &unstructured.Unstructured{}
 	devbox.SetAnnotations(map[string]string{
-		"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions"},"vision":{"provider":"custom:aiproxy-chat","model":"glm-4.6v","apiMode":"chat_completions"}}`,
+		"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions","kind":"llm"},"vision":{"provider":"custom:aiproxy-chat","model":"glm-4.6v","apiMode":"chat_completions","kind":"llm"}}`,
 	})
 	if err := applyUpdateToDevbox(devbox, dto.UpdateAgentRequest{
 		ModelSlots: map[string]dto.ModelSlotSelection{
@@ -288,6 +352,7 @@ func TestApplyUpdateToDevboxMergesModelSlotsAnnotation(t *testing.T) {
 				Provider: "custom:aiproxy-chat",
 				Model:    "deepseek-v4-flash",
 				APIMode:  "chat_completions",
+				Kind:     "llm",
 			},
 		},
 	}); err != nil {
@@ -320,6 +385,7 @@ func TestApplyUpdateToDevboxRejectsInvalidModelSlotsAnnotation(t *testing.T) {
 				Provider: "custom:aiproxy-chat",
 				Model:    "glm-5.1",
 				APIMode:  "chat_completions",
+				Kind:     "llm",
 			},
 		},
 	})
@@ -342,6 +408,7 @@ func TestApplyUpdateToDevboxRejectsEmptyModelSlotsAnnotationFields(t *testing.T)
 				Provider: "custom:aiproxy-chat",
 				Model:    "glm-4.6v",
 				APIMode:  "chat_completions",
+				Kind:     "llm",
 			},
 		},
 	})

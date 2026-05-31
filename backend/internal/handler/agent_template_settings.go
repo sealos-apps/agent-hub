@@ -338,17 +338,43 @@ func resolveModelSlotSelection(
 			}
 			provider := strings.TrimSpace(candidate.Provider)
 			apiMode := strings.TrimSpace(candidate.APIMode)
-			if provider == "" || apiMode == "" {
+			kind := strings.TrimSpace(candidate.Kind)
+			if provider == "" || apiMode == "" || kind == "" {
+				return dto.ModelSlotSelection{}, validationFieldError("modelSlots."+slotKey, "unsupported_field", model)
+			}
+			if !modelKindAllowedForSlot(slotKey, kind) {
 				return dto.ModelSlotSelection{}, validationFieldError("modelSlots."+slotKey, "unsupported_field", model)
 			}
 			return dto.ModelSlotSelection{
 				Provider: provider,
 				Model:    model,
 				APIMode:  apiMode,
+				Kind:     kind,
 			}, nil
 		}
 	}
 	return dto.ModelSlotSelection{}, validationFieldError("modelSlots."+slotKey, "unsupported_field", model)
+}
+
+func modelKindAllowedForSlot(slotKey, kind string) bool {
+	switch strings.TrimSpace(slotKey) {
+	case "main":
+		return kind == "llm" || kind == "vision"
+	case "vision":
+		return kind == "llm" || kind == "vision"
+	case "image":
+		return kind == "image_generation"
+	case "video":
+		return kind == "video_generation"
+	case "asr":
+		return kind == "asr"
+	case "tts":
+		return kind == "tts"
+	case "embedding":
+		return kind == "embedding"
+	default:
+		return true
+	}
 }
 
 func mergeUpdateModelSlots(target *dto.UpdateAgentRequest, source dto.UpdateAgentRequest) {
@@ -409,6 +435,7 @@ func mergeModelSlotsAnnotation(
 			Provider: strings.TrimSpace(slot.Provider),
 			Model:    strings.TrimSpace(slot.Model),
 			APIMode:  strings.TrimSpace(slot.APIMode),
+			Kind:     strings.TrimSpace(slot.Kind),
 		}
 	}
 	return encodeModelSlotsAnnotation(merged)
@@ -435,13 +462,15 @@ func decodeModelSlotsAnnotation(value string) (map[string]dto.ModelSlotSelection
 		provider := strings.TrimSpace(slot.Provider)
 		model := strings.TrimSpace(slot.Model)
 		apiMode := strings.TrimSpace(slot.APIMode)
-		if provider == "" || model == "" || apiMode == "" {
-			return nil, errors.New("model slot provider, model, and apiMode are required")
+		kind := strings.TrimSpace(slot.Kind)
+		if provider == "" || model == "" || apiMode == "" || kind == "" {
+			return nil, errors.New("model slot provider, model, apiMode, and kind are required")
 		}
 		result[trimmedKey] = dto.ModelSlotSelection{
 			Provider: provider,
 			Model:    model,
 			APIMode:  apiMode,
+			Kind:     kind,
 		}
 	}
 	return result, nil

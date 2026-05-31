@@ -35,6 +35,7 @@ type agentModelSyncSlot struct {
 	Key        string
 	ProviderID string
 	Model      string
+	Kind       string
 }
 
 type agentExecFunc func(
@@ -210,7 +211,11 @@ func buildAgentModelSyncInput(
 	}
 	models := []string{model + ":" + apiMode}
 	if hasModelIntegration {
-		models = agentHubProviderModels(templateDef, region, providerID)
+		var modelErr error
+		models, modelErr = agentHubProviderModels(templateDef, region, providerID)
+		if modelErr != nil {
+			return agentModelSyncInput{}, modelErr
+		}
 		if len(models) == 0 {
 			return agentModelSyncInput{}, fmt.Errorf("provider models are empty for provider %s in region %s", providerID, strings.TrimSpace(region))
 		}
@@ -302,6 +307,7 @@ func buildAgentModelSyncSlots(current agent.Agent, templateDef agenttemplate.Def
 			Key:        key,
 			ProviderID: providerID,
 			Model:      selection.Model,
+			Kind:       strings.TrimSpace(selection.Kind),
 		})
 	}
 	for key := range modelSlots {
@@ -340,7 +346,7 @@ func agentModelSyncProviderName(provider string, providerID string, templateDef 
 	return agentHubProviderName(provider, providerID)
 }
 
-func agentHubProviderModels(templateDef agenttemplate.Definition, region string, providerID string) []string {
+func agentHubProviderModels(templateDef agenttemplate.Definition, region string, providerID string) ([]string, error) {
 	presets := templateDef.RegionModelPresets[strings.TrimSpace(region)]
 	result := make([]string, 0, len(presets))
 	seen := map[string]bool{}
@@ -353,20 +359,32 @@ func agentHubProviderModels(templateDef agenttemplate.Definition, region string,
 		if agentHubProviderID(preset.Provider) != providerID {
 			continue
 		}
-		model := value + ":" + apiMode
+		kind := strings.TrimSpace(preset.Kind)
+		if kind == "" {
+			return nil, fmt.Errorf("provider model %s is missing kind", value)
+		}
+		model := value + ":" + apiMode + ":" + kind
 		if seen[model] {
 			continue
 		}
 		seen[model] = true
 		result = append(result, model)
 	}
-	return result
+	return result, nil
 }
 
 func normalizeAgentModelAPIMode(value string) string {
 	switch strings.TrimSpace(value) {
 	case "openai_compatible", "openai-compatible":
 		return "openai_compatible"
+	case "image-generation", "images_generations", "images/generations":
+		return "image_generation"
+	case "video-generation", "videos_generations", "video/generations":
+		return "video_generation"
+	case "audio-transcriptions", "audio/transcriptions":
+		return "audio_transcriptions"
+	case "audio-speech", "audio/speech":
+		return "audio_speech"
 	case "openai-responses", "responses":
 		return "codex_responses"
 	case "anthropic":

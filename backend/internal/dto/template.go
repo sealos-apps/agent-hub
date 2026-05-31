@@ -58,6 +58,7 @@ type TemplateModelOption struct {
 	Helper           string   `json:"helper,omitempty"`
 	Provider         string   `json:"provider"`
 	APIMode          string   `json:"apiMode"`
+	Kind             string   `json:"kind,omitempty"`
 	Category         string   `json:"category,omitempty"`
 	Capabilities     []string `json:"capabilities,omitempty"`
 	InputModalities  []string `json:"inputModalities,omitempty"`

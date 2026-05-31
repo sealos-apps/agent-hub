@@ -170,6 +170,21 @@ func TestParseDefinitionRejectsUnsupportedModelIntegrationBaseURLSource(t *testi
 	}
 }
 
+func TestParseDefinitionRejectsModelPresetWithoutKind(t *testing.T) {
+	t.Parallel()
+
+	raw, err := os.ReadFile(filepath.Join(testTemplateBaseDir(t), "hermes-agent", "template.yaml"))
+	if err != nil {
+		t.Fatalf("read template fixture: %v", err)
+	}
+	invalid := strings.Replace(string(raw), "      kind: llm\n", "", 1)
+
+	_, err = parseDefinition([]byte(invalid), t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "regionModelPresets.us.gpt-5.4 kind is required") {
+		t.Fatalf("parseDefinition() error = %v, want model kind required", err)
+	}
+}
+
 func TestParseDefinitionRejectsModelIntegrationSlotKeyWhitespace(t *testing.T) {
 	t.Parallel()
 

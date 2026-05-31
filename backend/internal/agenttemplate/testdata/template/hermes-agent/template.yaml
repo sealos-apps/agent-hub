@@ -120,6 +120,7 @@ regionModelPresets:
       helper: OpenAI
       provider: custom:aiproxy-responses
       apiMode: codex_responses
+      kind: llm
       category: text
       capabilities:
         - reasoning
@@ -133,6 +134,7 @@ regionModelPresets:
       helper: OpenAI
       provider: custom:aiproxy-responses
       apiMode: codex_responses
+      kind: llm
       category: text
       capabilities:
         - reasoning
@@ -146,6 +148,7 @@ regionModelPresets:
       helper: OpenAI
       provider: custom:aiproxy-responses
       apiMode: codex_responses
+      kind: llm
       category: multimodal
       capabilities:
         - reasoning
@@ -161,6 +164,7 @@ regionModelPresets:
       helper: OpenAI
       provider: custom:aiproxy-responses
       apiMode: image_generation
+      kind: image_generation
       category: image
       capabilities:
         - image_generation
@@ -174,6 +178,7 @@ regionModelPresets:
       helper: OpenAI
       provider: custom:aiproxy-responses
       apiMode: codex_responses
+      kind: llm
       category: text
       capabilities:
         - reasoning
@@ -186,6 +191,7 @@ regionModelPresets:
       helper: Anthropic
       provider: custom:aiproxy-anthropic
       apiMode: anthropic_messages
+      kind: llm
       category: multimodal
       capabilities:
         - reasoning
@@ -200,6 +206,7 @@ regionModelPresets:
       helper: Anthropic
       provider: custom:aiproxy-anthropic
       apiMode: anthropic_messages
+      kind: llm
       category: multimodal
       capabilities:
         - reasoning
@@ -214,6 +221,7 @@ regionModelPresets:
       helper: GLM
       provider: custom:aiproxy-chat
       apiMode: chat_completions
+      kind: llm
       category: text
       capabilities:
         - chat
@@ -226,6 +234,7 @@ regionModelPresets:
       helper: MiniMax
       provider: custom:aiproxy-chat
       apiMode: chat_completions
+      kind: llm
       category: text
       capabilities:
         - chat
@@ -238,6 +247,7 @@ regionModelPresets:
       helper: Qwen
       provider: custom:aiproxy-chat
       apiMode: chat_completions
+      kind: llm
       category: text
       capabilities:
         - code
@@ -251,6 +261,7 @@ regionModelPresets:
       helper: GLM
       provider: custom:aiproxy-chat
       apiMode: chat_completions
+      kind: llm
       category: text
       capabilities:
         - chat
@@ -263,6 +274,7 @@ regionModelPresets:
       helper: GLM
       provider: custom:aiproxy-chat
       apiMode: chat_completions
+      kind: llm
       category: multimodal
       capabilities:
         - vision
@@ -277,6 +289,7 @@ regionModelPresets:
       helper: GLM
       provider: custom:aiproxy-chat
       apiMode: image_generation
+      kind: image_generation
       category: image
       capabilities:
         - image_generation
@@ -289,6 +302,7 @@ regionModelPresets:
       helper: MiniMax
       provider: custom:aiproxy-chat
       apiMode: chat_completions
+      kind: llm
       category: text
       capabilities:
         - chat
@@ -301,6 +315,7 @@ regionModelPresets:
       helper: Qwen
       provider: custom:aiproxy-chat
       apiMode: chat_completions
+      kind: llm
       category: text
       capabilities:
         - code
