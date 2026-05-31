@@ -60,7 +60,7 @@ func TestRunAgentBootstrapLifecycleSyncsModelBeforeHealthcheck(t *testing.T) {
 		ModelAPIKey:   "sk-test",
 		Model:         "glm-5.1",
 		Annotations: map[string]string{
-			"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions"},"vision":{"provider":"custom:aiproxy-chat","model":"gpt-5.4-mini","apiMode":"chat_completions"}}`,
+			"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions","kind":"llm"},"vision":{"provider":"custom:aiproxy-chat","model":"gpt-5.4-mini","apiMode":"chat_completions","kind":"llm"}}`,
 		},
 	}
 
@@ -122,7 +122,7 @@ func fakeBootstrapDynamicClient(t *testing.T, namespace, name string) dynamic.In
 				"agent.sealos.io/model-provider":  "custom:aiproxy-chat",
 				"agent.sealos.io/model-baseurl":   "https://aiproxy.usw-1.sealos.io/v1",
 				"agent.sealos.io/model":           "glm-5.1",
-				"agent.sealos.io/model-slots":     `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions"},"vision":{"provider":"custom:aiproxy-chat","model":"gpt-5.4-mini","apiMode":"chat_completions"}}`,
+				"agent.sealos.io/model-slots":     `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions","kind":"llm"},"vision":{"provider":"custom:aiproxy-chat","model":"gpt-5.4-mini","apiMode":"chat_completions","kind":"llm"}}`,
 				"agent.sealos.io/bootstrap-phase": "pending",
 			},
 		},
@@ -186,7 +186,7 @@ func TestRunAgentBootstrapLifecycleFailsWhenInitialModelSyncFails(t *testing.T) 
 		ModelAPIKey:   "sk-test",
 		Model:         "glm-5.1",
 		Annotations: map[string]string{
-			"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions"}}`,
+			"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions","kind":"llm"}}`,
 		},
 	}
 

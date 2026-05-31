@@ -152,6 +152,7 @@ func toTemplateModelOption(item agenttemplate.ModelPreset) dto.TemplateModelOpti
 		Helper:           item.Helper,
 		Provider:         item.Provider,
 		APIMode:          item.APIMode,
+		Kind:             item.Kind,
 		Category:         item.Category,
 		Capabilities:     append([]string(nil), item.Capabilities...),
 		InputModalities:  append([]string(nil), item.InputModalities...),

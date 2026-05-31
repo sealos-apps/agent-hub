@@ -102,6 +102,7 @@ type ModelPreset struct {
 	Helper           string   `yaml:"helper"`
 	Provider         string   `yaml:"provider"`
 	APIMode          string   `yaml:"apiMode"`
+	Kind             string   `yaml:"kind"`
 	Category         string   `yaml:"category"`
 	Capabilities     []string `yaml:"capabilities"`
 	InputModalities  []string `yaml:"inputModalities"`
@@ -401,6 +402,9 @@ func validateDefinition(definition Definition) error {
 			return err
 		}
 	}
+	if err := validateModelPresets(definition.RegionModelPresets); err != nil {
+		return err
+	}
 	if err := validateModelIntegration(definition.ModelIntegration); err != nil {
 		return err
 	}
@@ -418,6 +422,66 @@ func validateDefinition(definition Definition) error {
 	}
 
 	return nil
+}
+
+func validateModelPresets(regions map[string][]ModelPreset) error {
+	for region, presets := range regions {
+		for _, preset := range presets {
+			value := strings.TrimSpace(preset.Value)
+			if value == "" {
+				continue
+			}
+			location := fmt.Sprintf("regionModelPresets.%s.%s", region, value)
+			apiMode := normalizeModelContractToken(preset.APIMode)
+			kind := normalizeModelContractToken(preset.Kind)
+			if apiMode == "" {
+				return fmt.Errorf("%s apiMode is required", location)
+			}
+			allowedKinds, ok := modelAPIModeKinds(apiMode)
+			if !ok {
+				return fmt.Errorf("%s apiMode %q is not supported", location, apiMode)
+			}
+			if kind == "" {
+				return fmt.Errorf("%s kind is required", location)
+			}
+			if !containsString(allowedKinds, kind) {
+				return fmt.Errorf("%s kind %q is incompatible with apiMode %q", location, kind, apiMode)
+			}
+		}
+	}
+	return nil
+}
+
+func modelAPIModeKinds(apiMode string) ([]string, bool) {
+	switch normalizeModelContractToken(apiMode) {
+	case "chat_completions", "openai_compatible", "codex_responses", "anthropic_messages":
+		return []string{"llm", "vision"}, true
+	case "image_generation":
+		return []string{"image_generation"}, true
+	case "video_generation":
+		return []string{"video_generation"}, true
+	case "audio_transcriptions":
+		return []string{"asr"}, true
+	case "audio_speech":
+		return []string{"tts"}, true
+	case "embeddings":
+		return []string{"embedding"}, true
+	default:
+		return nil, false
+	}
+}
+
+func normalizeModelContractToken(value string) string {
+	return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(value)), "-", "_")
+}
+
+func containsString(items []string, value string) bool {
+	for _, item := range items {
+		if item == value {
+			return true
+		}
+	}
+	return false
 }
 
 func validateModelIntegration(integration ModelIntegration) error {

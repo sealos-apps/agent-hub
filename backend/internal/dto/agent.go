@@ -37,6 +37,7 @@ type ModelSlotSelection struct {
 	Provider string `json:"provider"`
 	Model    string `json:"model"`
 	APIMode  string `json:"apiMode"`
+	Kind     string `json:"kind,omitempty"`
 }
 
 type AgentListResponse struct {

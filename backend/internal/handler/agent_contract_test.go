@@ -79,7 +79,7 @@ func TestBuildAgentContractReturnsModelSlots(t *testing.T) {
 			TemplateID: "template-test",
 			Namespace:  "ns-test",
 			Annotations: map[string]string{
-				"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions"}}`,
+				"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions","kind":"llm"}}`,
 			},
 		},
 	}, agenttemplate.Definition{}, config.Config{})
@@ -127,6 +127,23 @@ func TestModelSlotsFromAnnotationsRejectsEmptySlotObject(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("modelSlotsFromAnnotations() error = nil, want invalid slot error")
+	}
+	if got := err.Details()["field"]; got != "agent.sealos.io/model-slots" {
+		t.Fatalf("modelSlotsFromAnnotations() field = %#v, want agent.sealos.io/model-slots", got)
+	}
+	if got := err.Details()["reason"]; got != "invalid_slot" {
+		t.Fatalf("modelSlotsFromAnnotations() reason = %#v, want invalid_slot", got)
+	}
+}
+
+func TestModelSlotsFromAnnotationsRejectsSlotWithoutKind(t *testing.T) {
+	t.Parallel()
+
+	_, err := modelSlotsFromAnnotations(map[string]string{
+		"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions"}}`,
+	})
+	if err == nil {
+		t.Fatal("modelSlotsFromAnnotations() error = nil, want missing kind error")
 	}
 	if got := err.Details()["field"]; got != "agent.sealos.io/model-slots" {
 		t.Fatalf("modelSlotsFromAnnotations() field = %#v, want agent.sealos.io/model-slots", got)

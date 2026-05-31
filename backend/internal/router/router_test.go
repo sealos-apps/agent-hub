@@ -246,6 +246,9 @@ func TestListTemplatesReturnsRegionalCatalogWithoutAuthorization(t *testing.T) {
 				if option["apiMode"] != "image_generation" {
 					t.Fatalf("cogview-4 apiMode = %#v, want image_generation", option["apiMode"])
 				}
+				if option["kind"] != "image_generation" {
+					t.Fatalf("cogview-4 kind = %#v, want image_generation", option["kind"])
+				}
 				outputModalities, ok := option["outputModalities"].([]any)
 				if !ok || !containsAnyString(outputModalities, "image") {
 					t.Fatalf("cogview-4 outputModalities = %#v, want image", option["outputModalities"])

@@ -33,7 +33,7 @@ func TestHasModelUpdateIncludesModelSlots(t *testing.T) {
 
 	if !hasModelUpdate(dto.UpdateAgentRequest{
 		ModelSlots: map[string]dto.ModelSlotSelection{
-			"main": {Provider: aiproxyChatProvider, Model: "glm-5.1", APIMode: "chat_completions"},
+			"main": {Provider: aiproxyChatProvider, Model: "glm-5.1", APIMode: "chat_completions", Kind: "llm"},
 		},
 	}) {
 		t.Fatal("hasModelUpdate() = false for modelSlots update, want true")
@@ -96,7 +96,7 @@ func TestBuildAgentModelSyncInputUsesTemplateModelList(t *testing.T) {
 		Model:         "glm-5.1",
 		ModelAPIMode:  "chat_completions",
 		Annotations: map[string]string{
-			"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions"}}`,
+			"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions","kind":"llm"}}`,
 		},
 	}
 	templateDef := agenttemplate.Definition{
@@ -113,10 +113,10 @@ func TestBuildAgentModelSyncInputUsesTemplateModelList(t *testing.T) {
 		},
 		RegionModelPresets: map[string][]agenttemplate.ModelPreset{
 			"cn": {
-				{Value: "glm-5.1", Provider: aiproxyChatProvider, APIMode: "chat_completions"},
-				{Value: "kimi-k2.6", Provider: aiproxyChatProvider, APIMode: "chat_completions"},
-				{Value: "deepseek-v4-pro", Provider: aiproxyChatProvider, APIMode: "chat_completions"},
-				{Value: "deepseek-v4-flash", Provider: aiproxyChatProvider, APIMode: "chat_completions"},
+				{Value: "glm-5.1", Provider: aiproxyChatProvider, APIMode: "chat_completions", Kind: "llm"},
+				{Value: "kimi-k2.6", Provider: aiproxyChatProvider, APIMode: "chat_completions", Kind: "llm"},
+				{Value: "deepseek-v4-pro", Provider: aiproxyChatProvider, APIMode: "chat_completions", Kind: "llm"},
+				{Value: "deepseek-v4-flash", Provider: aiproxyChatProvider, APIMode: "chat_completions", Kind: "llm"},
 			},
 		},
 	}
@@ -126,10 +126,10 @@ func TestBuildAgentModelSyncInputUsesTemplateModelList(t *testing.T) {
 		t.Fatalf("buildAgentModelSyncInput() error = %v", err)
 	}
 	want := []string{
-		"glm-5.1:chat_completions",
-		"kimi-k2.6:chat_completions",
-		"deepseek-v4-pro:chat_completions",
-		"deepseek-v4-flash:chat_completions",
+		"glm-5.1:chat_completions:llm",
+		"kimi-k2.6:chat_completions:llm",
+		"deepseek-v4-pro:chat_completions:llm",
+		"deepseek-v4-flash:chat_completions:llm",
 	}
 	if strings.Join(input.Models, ",") != strings.Join(want, ",") {
 		t.Fatalf("Models = %#v, want %#v", input.Models, want)
@@ -192,7 +192,7 @@ func TestBuildAgentModelSyncScriptUsesProviderInitThenClientConfigure(t *testing
 		APIKeyValue:  "sk-test",
 		Model:        "gpt-5.4-mini",
 		APIMode:      "codex_responses",
-		Models:       []string{"gpt-5.4-mini:codex_responses"},
+		Models:       []string{"gpt-5.4-mini:codex_responses:llm"},
 		Slots: []agentModelSyncSlot{
 			{Key: "main", ProviderID: "aiproxy", Model: "gpt-5.4-mini"},
 		},
@@ -201,7 +201,7 @@ func TestBuildAgentModelSyncScriptUsesProviderInitThenClientConfigure(t *testing
 		"export AIPROXY_API_KEY='sk-test'",
 		"ai-agent-switch provider init",
 		"--id 'aiproxy'",
-		"--model 'gpt-5.4-mini:codex_responses'",
+		"--model 'gpt-5.4-mini:codex_responses:llm'",
 		"--default-model 'gpt-5.4-mini'",
 		"ai-agent-switch client configure",
 		"--client 'hermes'",
@@ -213,6 +213,50 @@ func TestBuildAgentModelSyncScriptUsesProviderInitThenClientConfigure(t *testing
 	}
 	if strings.Contains(script, "ai-agent-switch switch") {
 		t.Fatalf("sync script contains deprecated switch command:\n%s", script)
+	}
+}
+
+func TestBuildAgentModelSyncInputIncludesModelKind(t *testing.T) {
+	t.Parallel()
+
+	templateDef := agenttemplate.Definition{
+		ModelIntegration: agenttemplate.ModelIntegration{
+			Type:   "ai-agent-switch",
+			Client: "cowagent",
+			Provider: agenttemplate.ModelIntegrationProvider{
+				ID:        "aiproxy",
+				APIKeyEnv: "OPEN_AI_API_KEY",
+			},
+			Slots: []agenttemplate.ModelIntegrationSlot{
+				{Key: "main", Required: true},
+				{Key: "image", Required: true},
+			},
+		},
+		RegionModelPresets: map[string][]agenttemplate.ModelPreset{
+			"cn": {
+				{Value: "glm-5.1", Provider: aiproxyChatProvider, APIMode: "chat_completions", Kind: "llm"},
+				{Value: "qwen-image-2.0-pro", Provider: aiproxyChatProvider, APIMode: "image_generation", Kind: "image_generation"},
+			},
+		},
+	}
+	input, err := buildAgentModelSyncInput(agent.Agent{
+		Name:         "demo-agent",
+		TemplateID:   "cowagent",
+		ModelBaseURL: "https://aiproxy.usw-1.sealos.io/v1",
+		ModelAPIKey:  "sk-test",
+		Annotations: map[string]string{
+			"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions","kind":"llm"},"image":{"provider":"custom:aiproxy-chat","model":"qwen-image-2.0-pro","apiMode":"image_generation","kind":"image_generation"}}`,
+		},
+	}, dto.UpdateAgentRequest{}, templateDef, "cn")
+	if err != nil {
+		t.Fatalf("buildAgentModelSyncInput() error = %v", err)
+	}
+	want := []string{
+		"glm-5.1:chat_completions:llm",
+		"qwen-image-2.0-pro:image_generation:image_generation",
+	}
+	if strings.Join(input.Models, ",") != strings.Join(want, ",") {
+		t.Fatalf("Models = %#v, want %#v", input.Models, want)
 	}
 }
 
@@ -229,12 +273,12 @@ func TestBuildAgentModelSyncScriptIncludesAllCowAgentSlots(t *testing.T) {
 		Model:        "glm-5.1",
 		APIMode:      "chat_completions",
 		Models: []string{
-			"glm-5.1:chat_completions",
-			"qwen3.6-plus:chat_completions",
-			"qwen-image-2.0-pro:openai_compatible",
-			"qwen3-asr-flash:openai_compatible",
-			"qwen3-tts-flash:openai_compatible",
-			"text-embedding-v4:openai_compatible",
+			"glm-5.1:chat_completions:llm",
+			"qwen3.6-plus:chat_completions:llm",
+			"qwen-image-2.0-pro:image_generation:image_generation",
+			"qwen3-asr-flash:audio_transcriptions:asr",
+			"qwen3-tts-flash:audio_speech:tts",
+			"text-embedding-v4:embeddings:embedding",
 		},
 		Slots: []agentModelSyncSlot{
 			{Key: "main", ProviderID: "aiproxy", Model: "glm-5.1"},
@@ -247,7 +291,7 @@ func TestBuildAgentModelSyncScriptIncludesAllCowAgentSlots(t *testing.T) {
 	})
 	for _, want := range []string{
 		"export OPEN_AI_API_KEY='sk-test'",
-		"--model 'qwen-image-2.0-pro:openai_compatible'",
+		"--model 'qwen-image-2.0-pro:image_generation:image_generation'",
 		"--default-model 'glm-5.1'",
 		"--client 'cowagent'",
 		"--slot 'main=aiproxy/glm-5.1'",
@@ -274,7 +318,7 @@ func TestBuildAgentModelSyncScriptQuotesShellArguments(t *testing.T) {
 		APIKeyEnv:    "AIPROXY_API_KEY",
 		APIKeyValue:  "sk 'test",
 		Model:        "gpt model",
-		Models:       []string{"gpt model:chat_completions"},
+		Models:       []string{"gpt model:chat_completions:llm"},
 		Slots: []agentModelSyncSlot{
 			{Key: "main", ProviderID: "aiproxy", Model: "gpt model"},
 		},
@@ -283,7 +327,7 @@ func TestBuildAgentModelSyncScriptQuotesShellArguments(t *testing.T) {
 		"export AIPROXY_API_KEY='sk '\"'\"'test'",
 		"--name 'AI Proxy'\"'\"'s'",
 		"--base-url 'https://example.test/v1?name=two words'",
-		"--model 'gpt model:chat_completions'",
+		"--model 'gpt model:chat_completions:llm'",
 		"--client 'client with space'",
 		"--slot 'main=aiproxy/gpt model'",
 	} {
@@ -321,12 +365,12 @@ func TestSyncAgentModelConfigExecutesClientConfigureCommand(t *testing.T) {
 		ModelAPIKey:   "sk-test",
 		Model:         "glm-5.1",
 		Annotations: map[string]string{
-			"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-anthropic","model":"claude-opus-4-7","apiMode":"anthropic_messages"},"vision":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions"}}`,
+			"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-anthropic","model":"claude-opus-4-7","apiMode":"anthropic_messages","kind":"llm"},"vision":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions","kind":"llm"}}`,
 		},
 	}, dto.UpdateAgentRequest{
 		ModelSlots: map[string]dto.ModelSlotSelection{
-			"main":   {Provider: aiproxyAnthropicProvider, Model: "claude-opus-4-7", APIMode: "anthropic_messages"},
-			"vision": {Provider: aiproxyChatProvider, Model: "glm-5.1", APIMode: "chat_completions"},
+			"main":   {Provider: aiproxyAnthropicProvider, Model: "claude-opus-4-7", APIMode: "anthropic_messages", Kind: "llm"},
+			"vision": {Provider: aiproxyChatProvider, Model: "glm-5.1", APIMode: "chat_completions", Kind: "llm"},
 		},
 	}, testModelSyncIntegrationTemplate(), "us")
 	if err != nil {
@@ -340,9 +384,9 @@ func TestSyncAgentModelConfigExecutesClientConfigureCommand(t *testing.T) {
 	}
 	stdin := string(gotStdin)
 	for _, want := range []string{
-		"--model 'glm-5.1:chat_completions'",
-		"--model 'gpt-5.4-mini:codex_responses'",
-		"--model 'claude-opus-4-7:anthropic_messages'",
+		"--model 'glm-5.1:chat_completions:llm'",
+		"--model 'gpt-5.4-mini:codex_responses:llm'",
+		"--model 'claude-opus-4-7:anthropic_messages:llm'",
 		"--name 'AI Proxy'",
 		"--default-model 'claude-opus-4-7'",
 		"ai-agent-switch client configure",
@@ -435,11 +479,11 @@ func TestSyncAgentModelConfigReturnsValidationErrorForInvalidAPIKeyEnv(t *testin
 				ModelAPIKey:   "sk-test",
 				Model:         "glm-5.1",
 				Annotations: map[string]string{
-					"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions"}}`,
+					"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions","kind":"llm"}}`,
 				},
 			}, dto.UpdateAgentRequest{
 				ModelSlots: map[string]dto.ModelSlotSelection{
-					"main": {Provider: aiproxyChatProvider, Model: "glm-5.1", APIMode: "chat_completions"},
+					"main": {Provider: aiproxyChatProvider, Model: "glm-5.1", APIMode: "chat_completions", Kind: "llm"},
 				},
 			}, templateDef, "us")
 			if err == nil {
@@ -481,11 +525,11 @@ func TestSyncAgentModelConfigRequiresModelIntegrationAPIKeyEnv(t *testing.T) {
 		ModelAPIKey:   "sk-test",
 		Model:         "glm-5.1",
 		Annotations: map[string]string{
-			"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions"}}`,
+			"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions","kind":"llm"}}`,
 		},
 	}, dto.UpdateAgentRequest{
 		ModelSlots: map[string]dto.ModelSlotSelection{
-			"main": {Provider: aiproxyChatProvider, Model: "glm-5.1", APIMode: "chat_completions"},
+			"main": {Provider: aiproxyChatProvider, Model: "glm-5.1", APIMode: "chat_completions", Kind: "llm"},
 		},
 	}, templateDef, "us")
 	if err == nil {
@@ -521,7 +565,7 @@ func TestSyncAgentModelConfigReturnsValidationErrorForMissingProviderModelsWithM
 	templateDef := testModelSyncIntegrationTemplate()
 	templateDef.RegionModelPresets = map[string][]agenttemplate.ModelPreset{
 		"us": {
-			{Value: "other-model", Provider: "custom:other", APIMode: "chat_completions"},
+			{Value: "other-model", Provider: "custom:other", APIMode: "chat_completions", Kind: "llm"},
 		},
 	}
 	err := syncAgentModelConfig(context.Background(), fake.NewSimpleClientset(), factory, agent.Agent{
@@ -532,11 +576,11 @@ func TestSyncAgentModelConfigReturnsValidationErrorForMissingProviderModelsWithM
 		ModelAPIKey:   "sk-test",
 		Model:         "glm-5.1",
 		Annotations: map[string]string{
-			"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions"}}`,
+			"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions","kind":"llm"}}`,
 		},
 	}, dto.UpdateAgentRequest{
 		ModelSlots: map[string]dto.ModelSlotSelection{
-			"main": {Provider: aiproxyChatProvider, Model: "glm-5.1", APIMode: "chat_completions"},
+			"main": {Provider: aiproxyChatProvider, Model: "glm-5.1", APIMode: "chat_completions", Kind: "llm"},
 		},
 	}, templateDef, "us")
 	if err == nil {
@@ -684,9 +728,9 @@ func testModelSyncTemplate() agenttemplate.Definition {
 	return agenttemplate.Definition{
 		RegionModelPresets: map[string][]agenttemplate.ModelPreset{
 			"us": {
-				{Value: "glm-5.1", Provider: aiproxyChatProvider, APIMode: "chat_completions"},
-				{Value: "gpt-5.4-mini", Provider: aiproxyResponsesProvider, APIMode: "codex_responses"},
-				{Value: "claude-opus-4-7", Provider: aiproxyAnthropicProvider, APIMode: "anthropic_messages"},
+				{Value: "glm-5.1", Provider: aiproxyChatProvider, APIMode: "chat_completions", Kind: "llm"},
+				{Value: "gpt-5.4-mini", Provider: aiproxyResponsesProvider, APIMode: "codex_responses", Kind: "llm"},
+				{Value: "claude-opus-4-7", Provider: aiproxyAnthropicProvider, APIMode: "anthropic_messages", Kind: "llm"},
 			},
 		},
 	}

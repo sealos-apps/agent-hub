@@ -3,7 +3,7 @@ import type { AgentTemplateDefinition, TemplateModelOption } from './types'
 export interface AIProxyProviderProfile {
   id: string
   name: string
-  apiMode: 'chat_completions' | 'codex_responses' | 'anthropic_messages'
+  apiMode: 'chat_completions' | 'openai_compatible' | 'codex_responses' | 'anthropic_messages' | 'image_generation' | 'video_generation' | 'audio_transcriptions' | 'audio_speech' | 'embeddings'
   label: string
 }
 
