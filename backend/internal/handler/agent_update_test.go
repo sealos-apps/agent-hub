@@ -383,10 +383,10 @@ func TestRollbackAgentResourceUpdateRestoresAllResources(t *testing.T) {
 	}
 }
 
-func TestValidateModelUpdateCompatibilityRejectsCowAgentNonChatAPI(t *testing.T) {
+func TestValidateModelUpdateCompatibilityAllowsCowAgentAnthropicMessages(t *testing.T) {
 	t.Parallel()
 
-	devbox := newModelUpdateDevbox("custom:aiproxy-chat", "https://aiproxy.usw-1.sealos.io/v1", "glm-5.1", "aiproxy-key")
+	devbox := newModelUpdateDevbox("custom:aiproxy-anthropic", "https://aiproxy.usw-1.sealos.io/v1", "claude-sonnet-4-6", "aiproxy-key")
 	devbox.SetLabels(map[string]string{
 		"app.kubernetes.io/name": "cowagent",
 	})
@@ -394,15 +394,8 @@ func TestValidateModelUpdateCompatibilityRejectsCowAgentNonChatAPI(t *testing.T)
 	apiMode := "anthropic_messages"
 	req.ModelAPIMode = &apiMode
 
-	err := validateModelUpdateCompatibility(devbox, req)
-	if err == nil {
-		t.Fatal("validateModelUpdateCompatibility() error = nil, want CowAgent api mode validation error")
-	}
-	if got := err.Details()["field"]; got != "agent-model-api-mode" {
-		t.Fatalf("validation field = %#v, want agent-model-api-mode", got)
-	}
-	if got := err.Details()["reason"]; got != "unsupported_field" {
-		t.Fatalf("validation reason = %#v, want unsupported_field", got)
+	if err := validateModelUpdateCompatibility(devbox, req); err != nil {
+		t.Fatalf("validateModelUpdateCompatibility() error = %v, want nil", err)
 	}
 }
 
