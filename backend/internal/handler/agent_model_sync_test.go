@@ -219,6 +219,27 @@ func TestBuildAgentModelSyncScriptUsesProviderInitThenClientConfigure(t *testing
 	}
 }
 
+func TestCowAgentModelAPIWaitScriptFailsBeforeExecTimeout(t *testing.T) {
+	t.Parallel()
+
+	script := buildCowAgentModelAPIWaitScript()
+	if !strings.Contains(script, "seq 1 25") {
+		t.Fatalf("wait script = %q, want 25 attempts so script exits before 30s exec timeout", script)
+	}
+	if strings.Contains(script, "curl") {
+		t.Fatalf("wait script = %q, want dependency-free probe without curl", script)
+	}
+	if !strings.Contains(script, "WEB_PORT") {
+		t.Fatalf("wait script = %q, want WEB_PORT support", script)
+	}
+	if !strings.Contains(script, "HTTPError") {
+		t.Fatalf("wait script = %q, want 4xx auth responses treated as ready", script)
+	}
+	if !strings.Contains(script, "CowAgent web API did not become ready") {
+		t.Fatalf("wait script = %q, want explicit readiness failure message", script)
+	}
+}
+
 func TestBuildAgentModelSyncInputIncludesModelKind(t *testing.T) {
 	t.Parallel()
 

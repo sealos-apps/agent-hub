@@ -112,6 +112,12 @@ func syncAgentBootstrapModelConfig(
 		return fmt.Errorf("build bootstrap model sync command: %w", err)
 	}
 
+	if input.Client == "cowagent" {
+		if err := waitForCowAgentModelAPI(ctx, clientset, factory, current.Name); err != nil {
+			return err
+		}
+	}
+
 	syncCtx, cancel := context.WithTimeout(ctx, agentModelSyncTimeout)
 	defer cancel()
 
@@ -133,6 +139,39 @@ func syncAgentBootstrapModelConfig(
 		return fmt.Errorf("sync bootstrap model config: %s", message)
 	}
 	return nil
+}
+
+func waitForCowAgentModelAPI(
+	ctx context.Context,
+	clientset kubernetes.Interface,
+	factory *kube.Factory,
+	agentName string,
+) error {
+	waitCtx, cancel := context.WithTimeout(ctx, agentModelSyncTimeout)
+	defer cancel()
+
+	_, stderr, execErr := execAgentCommandWithRetry(
+		waitCtx,
+		clientset,
+		factory,
+		agentName,
+		[]string{"sh", "-s"},
+		[]byte(buildCowAgentModelAPIWaitScript()),
+		false,
+		nil,
+	)
+	if execErr != nil {
+		message := execErr.Error()
+		if trimmed := strings.TrimSpace(stderr); trimmed != "" {
+			message += ": " + trimmed
+		}
+		return fmt.Errorf("wait for CowAgent model API: %s", message)
+	}
+	return nil
+}
+
+func buildCowAgentModelAPIWaitScript() string {
+	return "set -eu\nfor i in $(seq 1 25); do\n  if python3 - <<'PY' >/dev/null 2>&1\nimport os\nfrom urllib.error import HTTPError\nfrom urllib.request import urlopen\nport = os.environ.get('WEB_PORT') or os.environ.get('AGENT_PORT') or '9899'\ntry:\n    with urlopen(f'http://127.0.0.1:{port}/auth/check', timeout=1) as response:\n        raise SystemExit(0 if response.status < 500 else 1)\nexcept HTTPError as err:\n    raise SystemExit(0 if err.code < 500 else 1)\nPY\n  then\n    exit 0\n  fi\n  sleep 1\ndone\necho 'CowAgent web API did not become ready' >&2\nexit 1\n"
 }
 
 func hasModelUpdate(req dto.UpdateAgentRequest) bool {
