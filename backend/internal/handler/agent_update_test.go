@@ -399,6 +399,191 @@ func TestValidateModelUpdateCompatibilityAllowsCowAgentAnthropicMessages(t *test
 	}
 }
 
+func TestApplyUpdateToDevboxSyncsCowAgentAnthropicRuntimeEnv(t *testing.T) {
+	t.Parallel()
+
+	devbox := newModelUpdateDevbox("custom:aiproxy-chat", "https://aiproxy.usw-1.sealos.io/v1", "glm-5.1", "old-key")
+	devbox.SetLabels(map[string]string{
+		"app.kubernetes.io/name": "cowagent",
+	})
+	provider := aiproxyAnthropicProvider
+	baseURL := "https://aiproxy.usw-1.sealos.io"
+	model := "claude-sonnet-4-6"
+	apiKey := "anthropic-key"
+	apiMode := "anthropic_messages"
+
+	if err := applyUpdateToDevbox(devbox, dto.UpdateAgentRequest{
+		ModelProvider: &provider,
+		ModelBaseURL:  &baseURL,
+		Model:         &model,
+		ModelAPIKey:   &apiKey,
+		ModelAPIMode:  &apiMode,
+	}); err != nil {
+		t.Fatalf("applyUpdateToDevbox() error = %v, want nil", err)
+	}
+
+	if got := readDevboxEnvValue(devbox, "CLAUDE_API_KEY"); got != apiKey {
+		t.Fatalf("CLAUDE_API_KEY = %q, want %q", got, apiKey)
+	}
+	if got := readDevboxEnvValue(devbox, "CLAUDE_API_BASE"); got != "https://aiproxy.usw-1.sealos.io/anthropic" {
+		t.Fatalf("CLAUDE_API_BASE = %q, want normalized anthropic base URL", got)
+	}
+	if got := readDevboxEnvValue(devbox, "OPEN_AI_API_KEY"); got != "" {
+		t.Fatalf("OPEN_AI_API_KEY = %q, want empty for CowAgent anthropic mode", got)
+	}
+	if got := readDevboxEnvValue(devbox, "OPEN_AI_API_BASE"); got != "" {
+		t.Fatalf("OPEN_AI_API_BASE = %q, want empty for CowAgent anthropic mode", got)
+	}
+	if got := readDevboxEnvValue(devbox, "OPENAI_API_KEY"); got != "" {
+		t.Fatalf("OPENAI_API_KEY = %q, want empty for CowAgent anthropic mode", got)
+	}
+	if got := readDevboxEnvValue(devbox, "OPENAI_BASE_URL"); got != "" {
+		t.Fatalf("OPENAI_BASE_URL = %q, want empty for CowAgent anthropic mode", got)
+	}
+	if got := readDevboxEnvValue(devbox, "AIPROXY_API_KEY"); got != "" {
+		t.Fatalf("AIPROXY_API_KEY = %q, want empty for CowAgent anthropic mode", got)
+	}
+}
+
+func TestApplyUpdateToDevboxKeepsCowAgentDirectAnthropicBaseURL(t *testing.T) {
+	t.Parallel()
+
+	devbox := newModelUpdateDevbox("custom:aiproxy-chat", "https://aiproxy.usw-1.sealos.io/v1", "glm-5.1", "old-key")
+	devbox.SetLabels(map[string]string{
+		"app.kubernetes.io/name": "cowagent",
+	})
+	provider := "anthropic"
+	baseURL := "https://api.anthropic.com"
+	model := "claude-sonnet-4-6"
+	apiKey := "anthropic-key"
+	apiMode := "anthropic_messages"
+
+	if err := applyUpdateToDevbox(devbox, dto.UpdateAgentRequest{
+		ModelProvider: &provider,
+		ModelBaseURL:  &baseURL,
+		Model:         &model,
+		ModelAPIKey:   &apiKey,
+		ModelAPIMode:  &apiMode,
+	}); err != nil {
+		t.Fatalf("applyUpdateToDevbox() error = %v, want nil", err)
+	}
+
+	if got := readDevboxEnvValue(devbox, "CLAUDE_API_BASE"); got != baseURL {
+		t.Fatalf("CLAUDE_API_BASE = %q, want direct Anthropic base URL unchanged", got)
+	}
+}
+
+func TestApplyUpdateToDevboxPrefersCowAgentAPIModeAnnotationOverStaleEnv(t *testing.T) {
+	t.Parallel()
+
+	devbox := newModelUpdateDevbox(aiproxyAnthropicProvider, "https://aiproxy.usw-1.sealos.io/anthropic", "claude-sonnet-4-6", "old-key")
+	devbox.SetLabels(map[string]string{
+		"app.kubernetes.io/name": "cowagent",
+	})
+	_ = kube.SetEnvValue(devbox, "AGENT_MODEL_API_MODE", "anthropic_messages")
+	_ = kube.SetEnvValue(devbox, "CLAUDE_API_KEY", "old-key")
+	_ = kube.SetEnvValue(devbox, "CLAUDE_API_BASE", "https://aiproxy.usw-1.sealos.io/anthropic")
+	annotations := devbox.GetAnnotations()
+	annotations["agent.sealos.io/model-api-mode"] = "chat_completions"
+	devbox.SetAnnotations(annotations)
+	provider := aiproxyChatProvider
+	baseURL := "https://aiproxy.usw-1.sealos.io"
+	apiKey := "chat-key"
+
+	if err := applyUpdateToDevbox(devbox, dto.UpdateAgentRequest{
+		ModelProvider: &provider,
+		ModelBaseURL:  &baseURL,
+		ModelAPIKey:   &apiKey,
+	}); err != nil {
+		t.Fatalf("applyUpdateToDevbox() error = %v, want nil", err)
+	}
+
+	if got := readDevboxEnvValue(devbox, "OPEN_AI_API_KEY"); got != apiKey {
+		t.Fatalf("OPEN_AI_API_KEY = %q, want %q", got, apiKey)
+	}
+	if got := readDevboxEnvValue(devbox, "CLAUDE_API_KEY"); got != "" {
+		t.Fatalf("CLAUDE_API_KEY = %q, want empty after annotation selects chat mode", got)
+	}
+	if got := readDevboxEnvValue(devbox, "AGENT_MODEL_API_MODE"); got != "chat_completions" {
+		t.Fatalf("AGENT_MODEL_API_MODE = %q, want refreshed annotation mode", got)
+	}
+}
+
+func TestApplyUpdateToDevboxNormalizesCowAgentAIProxyAnthropicBaseForChatMode(t *testing.T) {
+	t.Parallel()
+
+	devbox := newModelUpdateDevbox(aiproxyAnthropicProvider, "https://aiproxy.usw-1.sealos.io/anthropic", "claude-sonnet-4-6", "old-key")
+	devbox.SetLabels(map[string]string{
+		"app.kubernetes.io/name": "cowagent",
+	})
+	provider := aiproxyChatProvider
+	apiMode := "chat_completions"
+	apiKey := "chat-key"
+
+	if err := applyUpdateToDevbox(devbox, dto.UpdateAgentRequest{
+		ModelProvider: &provider,
+		ModelAPIMode:  &apiMode,
+		ModelAPIKey:   &apiKey,
+	}); err != nil {
+		t.Fatalf("applyUpdateToDevbox() error = %v, want nil", err)
+	}
+
+	if got := readDevboxEnvValue(devbox, "OPEN_AI_API_BASE"); got != "https://aiproxy.usw-1.sealos.io/v1" {
+		t.Fatalf("OPEN_AI_API_BASE = %q, want AIProxy /v1 base URL after leaving Anthropic mode", got)
+	}
+	if got := readDevboxEnvValue(devbox, "OPENAI_BASE_URL"); got != "https://aiproxy.usw-1.sealos.io/v1" {
+		t.Fatalf("OPENAI_BASE_URL = %q, want AIProxy /v1 base URL after leaving Anthropic mode", got)
+	}
+}
+
+func TestApplyUpdateToDevboxClearsCowAgentClaudeEnvForChatMode(t *testing.T) {
+	t.Parallel()
+
+	devbox := newModelUpdateDevbox(aiproxyAnthropicProvider, "https://aiproxy.usw-1.sealos.io/anthropic", "claude-sonnet-4-6", "old-key")
+	devbox.SetLabels(map[string]string{
+		"app.kubernetes.io/name": "cowagent",
+	})
+	_ = kube.SetEnvValue(devbox, "CLAUDE_API_KEY", "old-key")
+	_ = kube.SetEnvValue(devbox, "CLAUDE_API_BASE", "https://aiproxy.usw-1.sealos.io/anthropic")
+	provider := aiproxyChatProvider
+	baseURL := "https://aiproxy.usw-1.sealos.io"
+	model := "glm-5.1"
+	apiKey := "chat-key"
+	apiMode := "chat_completions"
+
+	if err := applyUpdateToDevbox(devbox, dto.UpdateAgentRequest{
+		ModelProvider: &provider,
+		ModelBaseURL:  &baseURL,
+		Model:         &model,
+		ModelAPIKey:   &apiKey,
+		ModelAPIMode:  &apiMode,
+	}); err != nil {
+		t.Fatalf("applyUpdateToDevbox() error = %v, want nil", err)
+	}
+
+	if got := readDevboxEnvValue(devbox, "OPEN_AI_API_KEY"); got != apiKey {
+		t.Fatalf("OPEN_AI_API_KEY = %q, want %q", got, apiKey)
+	}
+	if got := readDevboxEnvValue(devbox, "OPEN_AI_API_BASE"); got != "https://aiproxy.usw-1.sealos.io/v1" {
+		t.Fatalf("OPEN_AI_API_BASE = %q, want normalized OpenAI base URL", got)
+	}
+	if got := readDevboxEnvValue(devbox, "OPENAI_API_KEY"); got != apiKey {
+		t.Fatalf("OPENAI_API_KEY = %q, want %q", got, apiKey)
+	}
+	if got := readDevboxEnvValue(devbox, "OPENAI_BASE_URL"); got != "https://aiproxy.usw-1.sealos.io/v1" {
+		t.Fatalf("OPENAI_BASE_URL = %q, want normalized OpenAI base URL", got)
+	}
+	if got := readDevboxEnvValue(devbox, "CLAUDE_API_KEY"); got != "" {
+		t.Fatalf("CLAUDE_API_KEY = %q, want empty for CowAgent chat mode", got)
+	}
+	if got := readDevboxEnvValue(devbox, "CLAUDE_API_BASE"); got != "" {
+		t.Fatalf("CLAUDE_API_BASE = %q, want empty for CowAgent chat mode", got)
+	}
+	if got := readDevboxEnvValue(devbox, "AIPROXY_API_KEY"); got != "" {
+		t.Fatalf("AIPROXY_API_KEY = %q, want empty for CowAgent chat mode", got)
+	}
+}
+
 func newModelUpdateDevbox(provider, baseURL, model, apiKey string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{
 		Object: map[string]any{

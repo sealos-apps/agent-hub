@@ -83,6 +83,8 @@ func TestRunAgentBootstrapLifecycleSyncsModelBeforeHealthcheck(t *testing.T) {
 	execAgentCommandWithRetry = func(ctx context.Context, clientset kubernetes.Interface, factory *kube.Factory, agentName string, command []string, stdinPayload []byte, tty bool, sizeQueue remotecommand.TerminalSizeQueue) (string, string, error) {
 		stdin := string(stdinPayload)
 		switch {
+		case strings.Contains(stdin, "/auth/check"):
+			calls = append(calls, "wait-model-api")
 		case strings.Contains(stdin, "ai-agent-switch provider init"):
 			calls = append(calls, "model-sync")
 		case strings.Contains(stdin, "bootstrap.sh"):
@@ -99,7 +101,7 @@ func TestRunAgentBootstrapLifecycleSyncsModelBeforeHealthcheck(t *testing.T) {
 		t.Fatalf("runAgentBootstrapLifecycle() error = %v", err)
 	}
 
-	want := "bootstrap,model-sync,healthcheck"
+	want := "bootstrap,wait-model-api,model-sync,healthcheck"
 	if got := strings.Join(calls, ","); got != want {
 		t.Fatalf("exec order = %s, want %s", got, want)
 	}
