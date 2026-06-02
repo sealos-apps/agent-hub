@@ -1388,7 +1388,7 @@ func validateModelUpdateCompatibility(devbox *unstructured.Unstructured, req dto
 	}
 	apiMode := normalizeAgentModelAPIMode(*req.ModelAPIMode)
 	switch apiMode {
-	case "", "chat_completions", "openai_compatible", "image_generation", "video_generation", "audio_transcriptions", "audio_speech", "embeddings":
+	case "", "chat_completions", "openai_compatible", "anthropic_messages", "image_generation", "video_generation", "audio_transcriptions", "audio_speech", "embeddings":
 		return nil
 	default:
 		return validationFieldError("agent-model-api-mode", "unsupported_field", apiMode)
