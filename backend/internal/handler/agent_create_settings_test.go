@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/nightwhite/Agent-Hub/internal/agent"
 	"github.com/nightwhite/Agent-Hub/internal/agenttemplate"
 	"github.com/nightwhite/Agent-Hub/internal/config"
 	"github.com/nightwhite/Agent-Hub/internal/dto"
+	"github.com/nightwhite/Agent-Hub/internal/kube"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -149,6 +151,53 @@ func TestBuildCreateModelSlotsUpdatePersistsSlotsAndMainModel(t *testing.T) {
 	}
 	if persisted["main"].Model != "deepseek-v4-flash" {
 		t.Fatalf("persisted main model = %q, want deepseek-v4-flash", persisted["main"].Model)
+	}
+}
+
+func TestNormalizeCowAgentCreateModelUpdateAppliesAnthropicModeToAllResources(t *testing.T) {
+	t.Parallel()
+
+	provider := aiproxyAnthropicProvider
+	baseURL := "https://aiproxy.usw-1.sealos.io"
+	apiKey := "anthropic-key"
+	mapped := dto.UpdateAgentRequest{
+		ModelProvider: &provider,
+		ModelBaseURL:  &baseURL,
+		ModelAPIKey:   &apiKey,
+	}
+	mapped = normalizeCowAgentModelUpdateRequest(true, mapped)
+	objects, err := kube.Build(agent.Agent{
+		Name:          "demo-agent",
+		TemplateID:    "cowagent",
+		ModelProvider: provider,
+		ModelBaseURL:  baseURL,
+		ModelAPIKey:   apiKey,
+	}, kube.BuildOptions{
+		IngressDomain: "demo-agent.example.test",
+		Image:         "example/cowagent:latest",
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v, want nil", err)
+	}
+
+	if err := applyUpdateToDevbox(objects.Devbox, mapped); err != nil {
+		t.Fatalf("applyUpdateToDevbox() error = %v, want nil", err)
+	}
+	if err := applyUpdateToService(objects.Service, mapped); err != nil {
+		t.Fatalf("applyUpdateToService() error = %v, want nil", err)
+	}
+	if err := applyUpdateToIngress(objects.Ingress, mapped); err != nil {
+		t.Fatalf("applyUpdateToIngress() error = %v, want nil", err)
+	}
+
+	if got := objects.Devbox.GetAnnotations()["agent.sealos.io/model-api-mode"]; got != "anthropic_messages" {
+		t.Fatalf("devbox model-api-mode = %q, want anthropic_messages", got)
+	}
+	if got := objects.Service.Annotations["agent.sealos.io/model-api-mode"]; got != "anthropic_messages" {
+		t.Fatalf("service model-api-mode = %q, want anthropic_messages", got)
+	}
+	if got := objects.Ingress.Annotations["agent.sealos.io/model-api-mode"]; got != "anthropic_messages" {
+		t.Fatalf("ingress model-api-mode = %q, want anthropic_messages", got)
 	}
 }
 
