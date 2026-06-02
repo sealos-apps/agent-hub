@@ -7,6 +7,7 @@ import (
 	"github.com/nightwhite/Agent-Hub/internal/agenttemplate"
 	"github.com/nightwhite/Agent-Hub/internal/config"
 	"github.com/nightwhite/Agent-Hub/internal/dto"
+	"github.com/nightwhite/Agent-Hub/internal/kube"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -414,5 +415,39 @@ func TestApplyUpdateToDevboxRejectsEmptyModelSlotsAnnotationFields(t *testing.T)
 	})
 	if err == nil {
 		t.Fatal("applyUpdateToDevbox() error = nil, want invalid annotation error")
+	}
+}
+
+func TestBuildSettingsUpdateRequestKeepsModelSlotsOutOfDevboxEnv(t *testing.T) {
+	t.Parallel()
+
+	templateDef := modelSlotsTemplateDefinition()
+	mapped, validationErr := buildSettingsUpdateRequest(dto.UpdateAgentSettingsRequest{
+		ModelSlots: map[string]string{"main": "glm-5.1"},
+	}, templateDef, config.Config{AIProxyModelBaseURL: "https://aiproxy.usw-1.sealos.io/v1"}, "us")
+	if validationErr != nil {
+		t.Fatalf("buildSettingsUpdateRequest() error = %v, want nil", validationErr)
+	}
+
+	devbox := &unstructured.Unstructured{}
+	devbox.Object = map[string]any{}
+	if err := kube.SetEnvValue(devbox, "AGENT_MODEL", "old-model"); err != nil {
+		t.Fatalf("SetEnvValue() error = %v", err)
+	}
+	if err := kube.SetEnvValue(devbox, "AGENT_MODEL_API_MODE", "chat_completions"); err != nil {
+		t.Fatalf("SetEnvValue() error = %v", err)
+	}
+	if err := applyUpdateToDevbox(devbox, mapped); err != nil {
+		t.Fatalf("applyUpdateToDevbox() error = %v, want nil", err)
+	}
+
+	if got := readDevboxEnvValue(devbox, "AGENT_MODEL"); got != "old-model" {
+		t.Fatalf("AGENT_MODEL = %q, want unchanged old-model", got)
+	}
+	if got := readDevboxEnvValue(devbox, "AGENT_MODEL_API_MODE"); got != "chat_completions" {
+		t.Fatalf("AGENT_MODEL_API_MODE = %q, want unchanged chat_completions", got)
+	}
+	if got := devbox.GetAnnotations()["agent.sealos.io/model"]; got != "glm-5.1" {
+		t.Fatalf("model annotation = %q, want glm-5.1", got)
 	}
 }

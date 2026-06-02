@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -197,6 +198,7 @@ func buildAgentModelSyncInput(
 		model = mainSlot.Model
 		provider = templateDef.ModelIntegration.Provider.ID
 		apiMode = ""
+		baseURL = normalizeAgentModelSyncBaseURL(provider, providerID, baseURL)
 	} else if provider == "" || model == "" {
 		return agentModelSyncInput{}, fmt.Errorf("provider, base URL, and model are required")
 	}
@@ -246,13 +248,19 @@ func buildAgentModelSyncScript(input agentModelSyncInput) string {
 	if configureArgs == "" {
 		configureArgs = " --slot " + shellQuote("main="+input.ProviderID+"/"+input.Model)
 	}
+	liveApplyExport := ""
+	if input.Client == "cowagent" {
+		liveApplyExport = "export AI_AGENT_SWITCH_COWAGENT_LIVE_APPLY='required'\n"
+	}
 	return fmt.Sprintf(
 		"set -eu\n"+
 			"export %s=%s\n"+
+			"%s"+
 			"ai-agent-switch provider init --id %s --name %s --base-url %s --api-key-env %s%s --default-model %s --json >/dev/null\n"+
 			"ai-agent-switch client configure --client %s%s -y --json >/dev/null\n",
 		input.APIKeyEnv,
 		shellQuote(input.APIKeyValue),
+		liveApplyExport,
 		shellQuote(input.ProviderID),
 		shellQuote(input.ProviderName),
 		shellQuote(input.BaseURL),
@@ -319,6 +327,25 @@ func buildAgentModelSyncSlots(current agent.Agent, templateDef agenttemplate.Def
 		return nil, errors.New("agent.sealos.io/model-slots has no configurable slots")
 	}
 	return result, nil
+}
+
+func normalizeAgentModelSyncBaseURL(provider string, providerID string, baseURL string) string {
+	if providerID != "aiproxy" || agentHubProviderID(provider) != providerID {
+		return baseURL
+	}
+	normalized := normalizeAIProxyModelBaseURL(baseURL)
+	parsed, err := url.Parse(normalized)
+	if err != nil {
+		return normalized
+	}
+	if strings.TrimSpace(parsed.Scheme) == "" || strings.TrimSpace(parsed.Host) == "" {
+		return normalized
+	}
+	if strings.TrimRight(strings.TrimSpace(parsed.Path), "/") == "/anthropic" {
+		parsed.Path = "/v1"
+		return strings.TrimRight(parsed.String(), "/")
+	}
+	return normalized
 }
 
 func mainAgentModelSyncSlot(slots []agentModelSyncSlot) (agentModelSyncSlot, bool) {

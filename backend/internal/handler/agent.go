@@ -1668,6 +1668,7 @@ func resolveMainModelSlotSelection(
 }
 
 func applyUpdateToDevbox(devbox *unstructured.Unstructured, req dto.UpdateAgentRequest) *appErr.AppError {
+	hasSlotUpdate := len(req.ModelSlots) > 0
 	if req.AgentCPU != nil {
 		_ = unstructured.SetNestedField(devbox.Object, strings.TrimSpace(*req.AgentCPU), "spec", "resource", "cpu")
 	}
@@ -1686,7 +1687,9 @@ func applyUpdateToDevbox(devbox *unstructured.Unstructured, req dto.UpdateAgentR
 	if req.ModelProvider != nil {
 		modelProvider := strings.TrimSpace(*req.ModelProvider)
 		_ = kube.SetModelProvider(devbox, modelProvider)
-		_ = kube.SetEnvValue(devbox, "AGENT_MODEL_PROVIDER", modelProvider)
+		if !hasSlotUpdate {
+			_ = kube.SetEnvValue(devbox, "AGENT_MODEL_PROVIDER", modelProvider)
+		}
 	}
 	if req.ModelBaseURL != nil {
 		modelBaseURL := normalizeUpdatedModelBaseURL(
@@ -1695,18 +1698,24 @@ func applyUpdateToDevbox(devbox *unstructured.Unstructured, req dto.UpdateAgentR
 			req.ModelProvider,
 		)
 		_ = kube.SetModelBaseURL(devbox, modelBaseURL)
-		_ = kube.SetEnvValue(devbox, "AGENT_MODEL_BASEURL", modelBaseURL)
+		if !hasSlotUpdate {
+			_ = kube.SetEnvValue(devbox, "AGENT_MODEL_BASEURL", modelBaseURL)
+		}
 	}
 	if req.Model != nil {
 		_ = kube.SetModelName(devbox, strings.TrimSpace(*req.Model))
-		_ = kube.SetEnvValue(devbox, "AGENT_MODEL", strings.TrimSpace(*req.Model))
+		if !hasSlotUpdate {
+			_ = kube.SetEnvValue(devbox, "AGENT_MODEL", strings.TrimSpace(*req.Model))
+		}
 	}
 	if req.ModelAPIMode != nil {
 		modelAPIMode := strings.TrimSpace(*req.ModelAPIMode)
 		_ = kube.SetModelAPIMode(devbox, modelAPIMode)
-		_ = kube.SetEnvValue(devbox, "AGENT_MODEL_API_MODE", modelAPIMode)
+		if !hasSlotUpdate {
+			_ = kube.SetEnvValue(devbox, "AGENT_MODEL_API_MODE", modelAPIMode)
+		}
 	}
-	if len(req.ModelSlots) > 0 {
+	if hasSlotUpdate {
 		modelSlots, err := mergeModelSlotsAnnotation(devbox.GetAnnotations()["agent.sealos.io/model-slots"], req.ModelSlots)
 		if err != nil {
 			return invalidModelSlotsAnnotationError(err)
@@ -1714,7 +1723,9 @@ func applyUpdateToDevbox(devbox *unstructured.Unstructured, req dto.UpdateAgentR
 		_ = kube.SetModelSlots(devbox, modelSlots)
 	}
 	if req.ModelAPIKey != nil {
-		_ = kube.SetEnvValue(devbox, "AGENT_MODEL_APIKEY", strings.TrimSpace(*req.ModelAPIKey))
+		if !hasSlotUpdate {
+			_ = kube.SetEnvValue(devbox, "AGENT_MODEL_APIKEY", strings.TrimSpace(*req.ModelAPIKey))
+		}
 	}
 	for key, value := range req.AnnotationValues {
 		if value == nil {
@@ -1729,7 +1740,9 @@ func applyUpdateToDevbox(devbox *unstructured.Unstructured, req dto.UpdateAgentR
 		_ = kube.SetEnvValue(devbox, strings.TrimSpace(key), strings.TrimSpace(*value))
 	}
 
-	syncDevboxModelAccessEnv(devbox)
+	if !hasSlotUpdate {
+		syncDevboxModelAccessEnv(devbox)
+	}
 	return nil
 }
 

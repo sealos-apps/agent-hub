@@ -214,6 +214,9 @@ func TestBuildAgentModelSyncScriptUsesProviderInitThenClientConfigure(t *testing
 	if strings.Contains(script, "ai-agent-switch switch") {
 		t.Fatalf("sync script contains deprecated switch command:\n%s", script)
 	}
+	if strings.Contains(script, "%!") {
+		t.Fatalf("sync script contains fmt formatting artifact:\n%s", script)
+	}
 }
 
 func TestBuildAgentModelSyncInputIncludesModelKind(t *testing.T) {
@@ -384,6 +387,7 @@ func TestSyncAgentModelConfigExecutesClientConfigureCommand(t *testing.T) {
 	}
 	stdin := string(gotStdin)
 	for _, want := range []string{
+		"--base-url 'https://aiproxy.usw-1.sealos.io/v1'",
 		"--model 'glm-5.1:chat_completions:llm'",
 		"--model 'gpt-5.4-mini:codex_responses:llm'",
 		"--model 'claude-opus-4-7:anthropic_messages:llm'",
@@ -752,4 +756,26 @@ func testModelSyncIntegrationTemplate() agenttemplate.Definition {
 		},
 	}
 	return templateDef
+}
+
+func TestBuildAgentModelSyncScriptRequiresCowAgentLiveApply(t *testing.T) {
+	t.Parallel()
+
+	script := buildAgentModelSyncScript(agentModelSyncInput{
+		Client:       "cowagent",
+		ProviderID:   "aiproxy",
+		ProviderName: "AI Proxy",
+		BaseURL:      "https://aiproxy.usw-1.sealos.io/v1",
+		APIKeyEnv:    "OPEN_AI_API_KEY",
+		APIKeyValue:  "sk-test",
+		Model:        "glm-5.1",
+		Models:       []string{"glm-5.1:chat_completions:llm"},
+		Slots: []agentModelSyncSlot{
+			{Key: "main", ProviderID: "aiproxy", Model: "glm-5.1"},
+		},
+	})
+
+	if !strings.Contains(script, "export AI_AGENT_SWITCH_COWAGENT_LIVE_APPLY='required'") {
+		t.Fatalf("sync script does not require CowAgent live apply:\n%s", script)
+	}
 }
