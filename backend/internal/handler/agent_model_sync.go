@@ -282,7 +282,7 @@ func buildAgentModelSyncInput(
 			}
 			mainProvider, ok := findAgentModelSyncProvider(providers, providerID)
 			if !ok {
-				return agentModelSyncInput{}, fmt.Errorf("provider models are empty for provider %s in region %s", providerID, strings.TrimSpace(region))
+				return agentModelSyncInput{}, fmt.Errorf("provider %s is missing from model sync providers for provider %s in region %s", providerID, templateDef.ModelIntegration.Provider.ID, strings.TrimSpace(region))
 			}
 			providerType = mainProvider.ProviderType
 			baseURL = mainProvider.BaseURL

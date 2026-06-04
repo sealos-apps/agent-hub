@@ -790,6 +790,38 @@ func TestSyncAgentModelConfigReturnsValidationErrorForMissingProviderModelsWithM
 	}
 }
 
+func TestBuildAgentModelSyncInputReportsMissingCowAgentMainProvider(t *testing.T) {
+	t.Parallel()
+
+	templateDef := testModelSyncIntegrationTemplate()
+	templateDef.RegionModelPresets = map[string][]agenttemplate.ModelPreset{
+		"us": {
+			{Value: "other-model", Provider: "custom:other", APIMode: "chat_completions", Kind: "llm"},
+		},
+	}
+	_, err := buildAgentModelSyncInput(agent.Agent{
+		Name:          "demo-agent",
+		TemplateID:    "cowagent",
+		ModelProvider: aiproxyChatProvider,
+		ModelBaseURL:  "https://aiproxy.usw-1.sealos.io/v1",
+		ModelAPIKey:   "sk-test",
+		Model:         "glm-5.1",
+		Annotations: map[string]string{
+			"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"glm-5.1","apiMode":"chat_completions","kind":"llm"}}`,
+		},
+	}, dto.UpdateAgentRequest{
+		ModelSlots: map[string]dto.ModelSlotSelection{
+			"main": {Provider: aiproxyChatProvider, Model: "glm-5.1", APIMode: "chat_completions", Kind: "llm"},
+		},
+	}, templateDef, "us")
+	if err == nil {
+		t.Fatal("buildAgentModelSyncInput() error = nil, want missing provider error")
+	}
+	if !strings.Contains(err.Error(), "provider aiproxy is missing from model sync providers") {
+		t.Fatalf("buildAgentModelSyncInput() error = %q, want missing provider message", err.Error())
+	}
+}
+
 func TestSyncAgentModelConfigReturnsValidationErrorForMissingSlotsWithModelIntegration(t *testing.T) {
 	factory, appErr := kube.NewFactoryFromEncodedKubeconfig(testEncodedKubeconfig())
 	if appErr != nil {
