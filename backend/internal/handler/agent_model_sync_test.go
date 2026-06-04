@@ -331,6 +331,128 @@ func TestBuildAgentModelSyncScriptIncludesAllCowAgentSlots(t *testing.T) {
 	}
 }
 
+func TestBuildAgentModelSyncInputUsesCowAgentRuntimeProviders(t *testing.T) {
+	t.Parallel()
+
+	templateDef := agenttemplate.Definition{
+		ModelIntegration: agenttemplate.ModelIntegration{
+			Type:   "ai-agent-switch",
+			Client: "cowagent",
+			Provider: agenttemplate.ModelIntegrationProvider{
+				ID:        "aiproxy",
+				Name:      agenttemplate.LocalizedText{"en": "AI Proxy", "zh": "AI Proxy"},
+				APIKeyEnv: "OPEN_AI_API_KEY",
+			},
+			Slots: []agenttemplate.ModelIntegrationSlot{
+				{Key: "main", Required: true},
+				{Key: "image", Required: true},
+				{Key: "tts", Required: false},
+			},
+		},
+		RegionModelPresets: map[string][]agenttemplate.ModelPreset{
+			"us": {
+				{Value: "gpt-5.4", Provider: aiproxyChatProvider, APIMode: "chat_completions", Kind: "llm", RuntimeProvider: "openai"},
+				{Value: "gemini-3.1-flash-image-preview", Provider: aiproxyChatProvider, APIMode: "image_generation", Kind: "image_generation", RuntimeProvider: "gemini"},
+				{Value: "qwen3-tts-flash", Provider: aiproxyChatProvider, APIMode: "audio_speech", Kind: "tts", RuntimeProvider: "dashscope"},
+			},
+		},
+	}
+
+	input, err := buildAgentModelSyncInput(agent.Agent{
+		Name:         "demo-agent",
+		TemplateID:   "cowagent",
+		ModelBaseURL: "https://aiproxy.usw-1.sealos.io/v1",
+		ModelAPIKey:  "sk-test",
+		Annotations: map[string]string{
+			"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"gpt-5.4","apiMode":"chat_completions","kind":"llm"},"image":{"provider":"custom:aiproxy-chat","model":"gemini-3.1-flash-image-preview","apiMode":"image_generation","kind":"image_generation"},"tts":{"provider":"custom:aiproxy-chat","model":"qwen3-tts-flash","apiMode":"audio_speech","kind":"tts"}}`,
+		},
+	}, dto.UpdateAgentRequest{}, templateDef, "us")
+	if err != nil {
+		t.Fatalf("buildAgentModelSyncInput() error = %v", err)
+	}
+	if input.ProviderID != "aiproxy-openai" {
+		t.Fatalf("ProviderID = %q, want aiproxy-openai", input.ProviderID)
+	}
+	if input.ProviderType != "openai-chat-compatible" {
+		t.Fatalf("ProviderType = %q, want openai-chat-compatible", input.ProviderType)
+	}
+	if strings.Join(input.Models, ",") != "gpt-5.4:chat_completions:llm" {
+		t.Fatalf("Models = %#v, want only openai runtime models", input.Models)
+	}
+	if len(input.ExtraProviders) != 2 {
+		t.Fatalf("ExtraProviders = %#v, want 2 providers", input.ExtraProviders)
+	}
+	gemini := input.ExtraProviders[0]
+	if gemini.ProviderID != "aiproxy-gemini" || gemini.ProviderType != "gemini" || gemini.APIKeyEnv != "GEMINI_API_KEY" {
+		t.Fatalf("Gemini provider = %#v, want aiproxy-gemini/gemini/GEMINI_API_KEY", gemini)
+	}
+	if strings.Join(gemini.Models, ",") != "gemini-3.1-flash-image-preview:image_generation:image_generation" {
+		t.Fatalf("Gemini models = %#v", gemini.Models)
+	}
+	dashscope := input.ExtraProviders[1]
+	if dashscope.ProviderID != "aiproxy-dashscope" || dashscope.ProviderType != "dashscope" || dashscope.APIKeyEnv != "DASHSCOPE_API_KEY" {
+		t.Fatalf("DashScope provider = %#v, want aiproxy-dashscope/dashscope/DASHSCOPE_API_KEY", dashscope)
+	}
+	if strings.Join(dashscope.Models, ",") != "qwen3-tts-flash:audio_speech:tts" {
+		t.Fatalf("DashScope models = %#v", dashscope.Models)
+	}
+	wantSlots := []agentModelSyncSlot{
+		{Key: "main", ProviderID: "aiproxy-openai", Model: "gpt-5.4", Kind: "llm"},
+		{Key: "image", ProviderID: "aiproxy-gemini", Model: "gemini-3.1-flash-image-preview", Kind: "image_generation"},
+		{Key: "tts", ProviderID: "aiproxy-dashscope", Model: "qwen3-tts-flash", Kind: "tts"},
+	}
+	if strings.Join(formatAgentModelSyncSlots(input.Slots), ",") != strings.Join(formatAgentModelSyncSlots(wantSlots), ",") {
+		t.Fatalf("Slots = %#v, want %#v", input.Slots, wantSlots)
+	}
+}
+
+func TestBuildAgentModelSyncScriptInitializesCowAgentRuntimeProviders(t *testing.T) {
+	t.Parallel()
+
+	script := buildAgentModelSyncScript(agentModelSyncInput{
+		Client:       "cowagent",
+		ProviderID:   "aiproxy-openai",
+		ProviderName: "AI Proxy OpenAI",
+		ProviderType: "openai-chat-compatible",
+		BaseURL:      "https://aiproxy.usw-1.sealos.io/v1",
+		APIKeyEnv:    "OPEN_AI_API_KEY",
+		APIKeyValue:  "sk-test",
+		Model:        "gpt-5.4",
+		Models:       []string{"gpt-5.4:chat_completions:llm"},
+		ExtraProviders: []agentModelSyncProvider{
+			{
+				ProviderID:   "aiproxy-gemini",
+				ProviderName: "AI Proxy Gemini",
+				ProviderType: "gemini",
+				BaseURL:      "https://aiproxy.usw-1.sealos.io",
+				APIKeyEnv:    "GEMINI_API_KEY",
+				APIKeyValue:  "sk-test",
+				Models:       []string{"gemini-3.1-flash-image-preview:image_generation:image_generation"},
+			},
+		},
+		Slots: []agentModelSyncSlot{
+			{Key: "main", ProviderID: "aiproxy-openai", Model: "gpt-5.4"},
+			{Key: "image", ProviderID: "aiproxy-gemini", Model: "gemini-3.1-flash-image-preview"},
+		},
+	})
+	for _, want := range []string{
+		"export OPEN_AI_API_KEY='sk-test'",
+		"export GEMINI_API_KEY='sk-test'",
+		"--id 'aiproxy-openai'",
+		"--type 'openai-chat-compatible'",
+		"--id 'aiproxy-gemini'",
+		"--type 'gemini'",
+		"--base-url 'https://aiproxy.usw-1.sealos.io'",
+		"--model 'gemini-3.1-flash-image-preview:image_generation:image_generation'",
+		"--slot 'main=aiproxy-openai/gpt-5.4'",
+		"--slot 'image=aiproxy-gemini/gemini-3.1-flash-image-preview'",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("sync script does not contain %q:\n%s", want, script)
+		}
+	}
+}
+
 func TestBuildAgentModelSyncScriptQuotesShellArguments(t *testing.T) {
 	t.Parallel()
 
@@ -799,4 +921,12 @@ func TestBuildAgentModelSyncScriptRequiresCowAgentLiveApply(t *testing.T) {
 	if !strings.Contains(script, "export AI_AGENT_SWITCH_COWAGENT_LIVE_APPLY='required'") {
 		t.Fatalf("sync script does not require CowAgent live apply:\n%s", script)
 	}
+}
+
+func formatAgentModelSyncSlots(slots []agentModelSyncSlot) []string {
+	result := make([]string, 0, len(slots))
+	for _, slot := range slots {
+		result = append(result, slot.Key+"="+slot.ProviderID+"/"+slot.Model+":"+slot.Kind)
+	}
+	return result
 }

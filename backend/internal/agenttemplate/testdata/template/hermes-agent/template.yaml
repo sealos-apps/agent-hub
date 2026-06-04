@@ -290,6 +290,7 @@ regionModelPresets:
       provider: custom:aiproxy-chat
       apiMode: image_generation
       kind: image_generation
+      runtimeProvider: dashscope
       category: image
       capabilities:
         - image_generation
