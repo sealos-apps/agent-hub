@@ -38,6 +38,18 @@ type FileSearchResult = {
   items: AgentFileItem[]
 }
 
+export type UploadFileEntry = {
+  file: File
+  relativePath?: string
+}
+
+type UploadFilesOptions = {
+  refresh?: boolean
+}
+
+const isUploadFileEntry = (entry: File | UploadFileEntry): entry is UploadFileEntry =>
+  typeof entry === 'object' && entry !== null && 'file' in entry
+
 type ReadyGate = {
   promise: Promise<void>
   resolve: () => void
@@ -270,6 +282,19 @@ const sanitizeNameInput = (value: string) =>
     .trim()
     .replace(/^\/+/, '')
     .replace(/\/+$/, '')
+
+const sanitizeUploadRelativePath = (value: string, fallback: string) => {
+  const raw = String(value || fallback)
+  if (raw.startsWith('/') || raw.split(/[\\/]+/).some((segment) => segment.trim() === '..')) {
+    return ''
+  }
+  const segments = raw
+    .replace(/\\/g, '/')
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter((segment) => segment && segment !== '.' && segment !== '..')
+  return segments.join('/') || sanitizeNameInput(fallback)
+}
 
 const getFileExtension = (value = '') => {
   const match = String(value || '').toLowerCase().match(/\.([^.]+)$/)
@@ -698,7 +723,10 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
   )
 
   const listDirectory = useCallback(
-    async (targetPath?: string, options?: { force?: boolean; preserveSelectedItem?: boolean; preserveOpenedItem?: boolean }) => {
+    async (
+      targetPath?: string,
+      options?: { force?: boolean; preserveSelectedItem?: boolean; preserveOpenedItem?: boolean; silent?: boolean },
+    ) => {
       const current = filesSessionRef.current
       if (!current) return
 
@@ -706,8 +734,10 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
         targetPath || current.currentPath || current.rootPath || fallbackRootPath,
         fallbackRootPath,
       )
-      browseRequestSeqRef.current += 1
-      const browseRequestSeq = browseRequestSeqRef.current
+      const browseRequestSeq = options?.silent ? browseRequestSeqRef.current : browseRequestSeqRef.current + 1
+      if (!options?.silent) {
+        browseRequestSeqRef.current = browseRequestSeq
+      }
 
       if (!options?.force) {
         const cached = directoryCacheRef.current.get(requestedPath)
@@ -717,26 +747,34 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
         }
       }
 
-      syncSession((session) =>
-        session
-          ? {
-              ...session,
-              status: 'working',
-              error: '',
-              activity: `正在载入目录 ${requestedPath}...`,
-              browsing: true,
-            }
-          : session,
-      )
+      if (!options?.silent) {
+        syncSession((session) =>
+          session
+            ? {
+                ...session,
+                status: 'working',
+                error: '',
+                activity: `正在载入目录 ${requestedPath}...`,
+                browsing: true,
+              }
+            : session,
+        )
+      }
 
       try {
         const listing = await fetchDirectoryListing(requestedPath, options)
-        if (browseRequestSeq !== browseRequestSeqRef.current) {
+        if (!options?.silent && browseRequestSeq !== browseRequestSeqRef.current) {
+          return
+        }
+        if (options?.silent) {
           return
         }
         applyDirectoryListing(listing, options)
       } catch (error) {
-        if (browseRequestSeq !== browseRequestSeqRef.current) {
+        if (!options?.silent && browseRequestSeq !== browseRequestSeqRef.current) {
+          return
+        }
+        if (options?.silent) {
           return
         }
         syncSession((session) =>
@@ -881,10 +919,10 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
     [sendRequest],
   )
 
-  const refreshDirectory = useCallback(() => {
+  const refreshDirectory = useCallback((targetPath?: string) => {
     const current = filesSessionRef.current
     if (!current) return
-    void listDirectory(current.currentPath, { force: true, preserveSelectedItem: true, preserveOpenedItem: true })
+    void listDirectory(targetPath || current.currentPath, { force: true, preserveSelectedItem: true, preserveOpenedItem: true })
   }, [listDirectory])
 
   const loadTextFile = useCallback(
@@ -1300,14 +1338,14 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
         session
           ? {
               ...session,
-                status: 'error',
-                saving: false,
-                error: error instanceof Error ? error.message : '保存文件失败',
-                activity: error instanceof Error ? error.message : '保存文件失败',
-              }
-            : session,
-        )
-      }
+              status: 'error',
+              saving: false,
+              error: error instanceof Error ? error.message : '保存文件失败',
+              activity: error instanceof Error ? error.message : '保存文件失败',
+            }
+          : session,
+      )
+    }
   }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession])
 
   const saveFile = useCallback(async (path: string, content: string) => {
@@ -1322,32 +1360,33 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
     invalidateDirectoryListing(parentFilePath(normalizedPath))
   }, [invalidateDirectoryListing, invalidateFileReadCache, sendRequest])
 
-  const createEmptyFile = useCallback(async (name: string) => {
+  const createEmptyFile = useCallback(async (name: string, targetDirectory?: string) => {
     const current = filesSessionRef.current
     const nextName = sanitizeNameInput(name)
     if (!current || !nextName) return
 
-    const path = joinFilePath(current.currentPath, nextName)
+    const directory = normalizePath(targetDirectory || current.currentPath, fallbackRootPath)
+    const path = joinFilePath(directory, nextName)
     invalidateFileReadCache(path)
-    invalidateDirectoryListing(current.currentPath)
+    invalidateDirectoryListing(directory)
 
     syncSession((session) =>
       session
-          ? {
-              ...session,
-              status: 'working',
-              error: '',
-              activity: `正在创建文件 ${nextName}...`,
-            }
-          : session,
-      )
+        ? {
+            ...session,
+            status: 'working',
+            error: '',
+            activity: `正在创建文件 ${nextName}...`,
+          }
+        : session,
+    )
 
-      try {
+    try {
       await sendRequest('file.write', {
-          path,
-          content: '',
-        })
-      await listDirectory(current.currentPath, { force: true })
+        path,
+        content: '',
+      })
+      await listDirectory(directory, { force: true })
       await editEntry({
         name: nextName,
         path,
@@ -1359,68 +1398,69 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
         session
           ? {
               ...session,
-                status: 'error',
-                error: error instanceof Error ? error.message : '创建文件失败',
-                activity: error instanceof Error ? error.message : '创建文件失败',
-              }
-            : session,
-        )
-      }
-  }, [editEntry, invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession])
-
-  const createDirectory = useCallback(async (name: string) => {
-    const current = filesSessionRef.current
-    const nextName = sanitizeNameInput(name)
-    if (!current || !nextName) return
-    invalidateDirectoryListing(current.currentPath)
-
-    syncSession((session) =>
-      session
-          ? {
-              ...session,
-              status: 'working',
-              error: '',
-              activity: `正在创建目录 ${nextName}...`,
+              status: 'error',
+              error: error instanceof Error ? error.message : '创建文件失败',
+              activity: error instanceof Error ? error.message : '创建文件失败',
             }
           : session,
       )
+    }
+  }, [editEntry, invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession])
 
-      try {
+  const createDirectory = useCallback(async (name: string, targetDirectory?: string) => {
+    const current = filesSessionRef.current
+    const nextName = sanitizeNameInput(name)
+    if (!current || !nextName) return
+    const directory = normalizePath(targetDirectory || current.currentPath, fallbackRootPath)
+    invalidateDirectoryListing(directory)
+
+    syncSession((session) =>
+      session
+        ? {
+            ...session,
+            status: 'working',
+            error: '',
+            activity: `正在创建目录 ${nextName}...`,
+          }
+        : session,
+    )
+
+    try {
       await sendRequest('file.mkdir', {
-        path: joinFilePath(current.currentPath, nextName),
+        path: joinFilePath(directory, nextName),
       })
-      await listDirectory(current.currentPath, { force: true })
+      await listDirectory(directory, { force: true })
     } catch (error) {
-        syncSession((session) =>
-          session
-            ? {
+      syncSession((session) =>
+        session
+          ? {
               ...session,
               status: 'error',
               error: error instanceof Error ? error.message : '创建目录失败',
               activity: error instanceof Error ? error.message : '创建目录失败',
             }
-            : session,
-        )
-      }
+          : session,
+      )
+    }
   }, [invalidateDirectoryListing, listDirectory, sendRequest, syncSession])
 
   const deleteEntry = useCallback(async (path: string) => {
     const current = filesSessionRef.current
-    if (!current || !path) return
+    if (!current || !path) return false
     invalidateFileReadCache(path)
     invalidateDirectoryListing(current.currentPath)
     invalidateDirectoryListing(path)
 
     syncSession((session) =>
       session
-          ? {
-              ...session,
-              status: 'working',
-              error: '',
-              activity: `正在删除 ${path}...`,
-            }
-          : session,
-      )
+        ? {
+            ...session,
+            status: 'working',
+            error: '',
+            activity: `正在删除 ${path}...`,
+          }
+        : session,
+    )
 
     try {
       await sendRequest('file.delete', { path })
@@ -1463,7 +1503,8 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
           : session,
       )
       revokeObjectUrl(previousObjectUrl)
-      await listDirectory(current.currentPath, { force: true })
+      void listDirectory(current.currentPath, { force: true }).catch(() => {})
+      return true
     } catch (error) {
       syncSession((session) =>
         session
@@ -1475,6 +1516,74 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
             }
           : session,
       )
+      return false
+    }
+  }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession])
+
+  const renameEntry = useCallback(async (fromPath: string, toPath: string) => {
+    const from = normalizePath(fromPath, '')
+    const to = normalizePath(toPath, '')
+    if (!from || !to || from === to) return false
+    const fromParent = parentFilePath(from)
+    const toParent = parentFilePath(to)
+    const nextName = to.split('/').filter(Boolean).pop() || to
+    invalidateFileReadCache(from)
+    invalidateFileReadCache(to)
+    invalidateDirectoryListing(fromParent)
+    invalidateDirectoryListing(toParent)
+
+    syncSession((session) =>
+      session
+        ? {
+            ...session,
+            status: 'working',
+            error: '',
+            activity: `正在重命名 ${from}...`,
+          }
+        : session,
+    )
+
+    try {
+      await sendRequest('file.rename', { from, to })
+      syncSession((session) =>
+        session
+          ? {
+              ...session,
+              status: 'connected',
+              error: '',
+              selectedItem: session.selectedItem?.path === from ? { ...session.selectedItem, path: to, name: nextName } : session.selectedItem,
+              openedItem: session.openedItem?.path === from ? { ...session.openedItem, path: to, name: nextName } : session.openedItem,
+              activity: `已重命名 ${from}`,
+            }
+          : session,
+      )
+      void listDirectory(fromParent, {
+        force: true,
+        preserveSelectedItem: true,
+        preserveOpenedItem: true,
+        silent: true,
+      }).catch(() => {})
+      if (toParent !== fromParent) {
+        void listDirectory(toParent, {
+          force: true,
+          preserveSelectedItem: true,
+          preserveOpenedItem: true,
+          silent: true,
+        }).catch(() => {})
+      }
+      return true
+    } catch (error) {
+      syncSession((session) =>
+        session
+          ? {
+              ...session,
+              status: 'error',
+              error: error instanceof Error ? error.message : '重命名失败',
+              activity: error instanceof Error ? error.message : '重命名失败',
+            }
+          : session,
+      )
+      return false
     }
   }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession])
 
@@ -1483,15 +1592,15 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
 
     syncSession((session) =>
       session
-          ? {
-              ...session,
-              status: 'working',
-              error: '',
-              downloading: true,
-              activity: `正在下载 ${path}...`,
-            }
-          : session,
-      )
+        ? {
+            ...session,
+            status: 'working',
+            error: '',
+            downloading: true,
+            activity: `正在下载 ${path}...`,
+          }
+        : session,
+    )
 
     try {
       const response = await sendRequest('file.download', { path })
@@ -1534,30 +1643,49 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
     }
   }, [sendRequest, syncSession])
 
-  const uploadFiles = useCallback(async (files: FileList | File[]) => {
+  const uploadFiles = useCallback(async (
+    files: FileList | File[] | UploadFileEntry[],
+    targetDirectory?: string,
+    options?: UploadFilesOptions,
+  ) => {
     const current = filesSessionRef.current
-    const fileList = Array.from(files || [])
-    if (!current || !fileList.length) return
-    invalidateFileReadCache(current.currentPath)
-    invalidateDirectoryListing(current.currentPath)
+    const fileItems = Array.from(files as unknown as ArrayLike<File | UploadFileEntry>)
+    const uploadEntries = fileItems
+      .map((entry) => {
+        if (isUploadFileEntry(entry)) {
+          return {
+            file: entry.file,
+            relativePath: sanitizeUploadRelativePath(entry.relativePath || entry.file.name, entry.file.name),
+          }
+        }
+        return {
+          file: entry,
+          relativePath: sanitizeUploadRelativePath(entry.webkitRelativePath || entry.name, entry.name),
+        }
+      })
+      .filter((entry) => entry.file && entry.relativePath)
+    if (!current || !uploadEntries.length) return false
+    const uploadDirectory = normalizePath(targetDirectory || current.currentPath, fallbackRootPath)
+    invalidateFileReadCache(uploadDirectory)
+    invalidateDirectoryListing(uploadDirectory)
 
     syncSession((session) =>
       session
-          ? {
-              ...session,
-              status: 'working',
-              error: '',
-              uploading: true,
-              activity: `正在上传 ${fileList.length} 个文件...`,
-            }
-          : session,
-      )
+        ? {
+            ...session,
+            status: 'working',
+            error: '',
+            uploading: true,
+            activity: `正在上传 ${uploadEntries.length} 个文件...`,
+          }
+        : session,
+    )
 
-      try {
-      for (const file of fileList) {
+    try {
+      for (const entry of uploadEntries) {
         const uploadID = nextRequestId('upload')
-        const targetPath = joinFilePath(current.currentPath, file.name)
-        const bytes = new Uint8Array(await file.arrayBuffer())
+        const targetPath = joinFilePath(uploadDirectory, entry.relativePath || entry.file.name)
+        const bytes = new Uint8Array(await entry.file.arrayBuffer())
 
         await sendRequest('file.upload.begin', {
           id: uploadID,
@@ -1576,23 +1704,26 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
         await sendRequest('file.upload.end', {
           id: uploadID,
         })
-        }
+      }
 
       syncSession((session) =>
         session
           ? {
               ...session,
               uploading: false,
-              activity: `上传完成，已写入 ${current.currentPath}`,
+              activity: `上传完成，已写入 ${uploadDirectory}`,
             }
           : session,
       )
 
-      await listDirectory(current.currentPath, {
-        force: true,
-        preserveSelectedItem: true,
-        preserveOpenedItem: true,
-      })
+      if (options?.refresh !== false) {
+        await listDirectory(uploadDirectory, {
+          force: true,
+          preserveSelectedItem: true,
+          preserveOpenedItem: true,
+        })
+      }
+      return true
     } catch (error) {
       syncSession((session) =>
         session
@@ -1605,6 +1736,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
             }
           : session,
       )
+      return false
     }
   }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, nextRequestId, sendRequest, syncSession])
 
@@ -1902,6 +2034,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
     previewEntry,
     readDirectory,
     readFile,
+    renameEntry,
     refreshDirectory,
     searchFiles,
     saveFile,
@@ -1914,6 +2047,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
 
 export const __agentFilesTestables = {
   createReadyGate,
+  sanitizeUploadRelativePath,
   reconnectDelaySchedule,
   maxReconnectAttempts,
 }

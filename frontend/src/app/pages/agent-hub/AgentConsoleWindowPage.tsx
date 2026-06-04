@@ -6,6 +6,7 @@ import {
   FileText,
   Folder,
   FolderOpen,
+  FolderUp,
   Globe,
   Home,
   LoaderCircle,
@@ -13,9 +14,11 @@ import {
   Search,
   Terminal,
   Undo2,
+  Upload,
+  Check,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   createAgentPreview,
@@ -30,6 +33,8 @@ import { APP_NAME, APP_TERMINAL_ICON_URL } from '../../../branding'
 import { AgentFileCodeEditor } from '../../../components/business/files/AgentFileCodeEditor'
 import { isTextPreviewableFile } from '../../../components/business/files/fileHelpers'
 import { AgentTerminalWorkspace } from '../../../components/business/terminal/AgentTerminalWorkspace'
+import { Button } from '../../../components/ui/Button'
+import { Modal } from '../../../components/ui/Modal'
 import { mapBackendAgentsToListItems } from '../../../domains/agents/mappers'
 import { hydrateTemplateCatalog } from '../../../domains/agents/templates'
 import type {
@@ -41,7 +46,7 @@ import type {
 } from '../../../domains/agents/types'
 import { useI18n } from '../../../i18n'
 import { addSealosAppEventListener, getSealosSession } from '../../../sealosSdk'
-import { useAgentFiles } from './hooks/useAgentFiles'
+import { useAgentFiles, type UploadFileEntry } from './hooks/useAgentFiles'
 import { useAgentTerminal } from './hooks/useAgentTerminal'
 import {
   applyAutoExpandChain,
@@ -71,6 +76,7 @@ type FileTab = {
   title: string
   path: string
   entry: AgentFileItem
+  editable: boolean
   loading: boolean
   loaded: boolean
   error: string
@@ -87,6 +93,12 @@ type ExplorerChildrenMap = Record<string, AgentFileItem[]>
 type ExplorerFlagMap = Record<string, boolean>
 type ExplorerErrorMap = Record<string, string>
 type MobileConsolePane = 'explorer' | 'workspace'
+type UploadQueueItem = UploadFileEntry & { id: string; status: 'pending' | 'uploading' | 'done' }
+type ExplorerContextMenuState = {
+  entry: AgentFileItem | null
+  x: number
+  y: number
+}
 
 const fileSystemRootPath = explorerFileSystemRootPath
 const defaultWorkspaceRoot = '/workspace'
@@ -179,6 +191,41 @@ const parentPath = (path: string) => {
   return next || fileSystemRootPath
 }
 
+const renameExplorerChildrenEntry = (
+  childrenMap: ExplorerChildrenMap,
+  fromPath: string,
+  toPath: string,
+  nextName: string,
+) => {
+  const previousPath = normalizeExplorerPath(fromPath)
+  const renamedPath = normalizeExplorerPath(toPath)
+  const updated: ExplorerChildrenMap = {}
+
+  Object.entries(childrenMap).forEach(([path, children]) => {
+    const normalizedPath = normalizeExplorerPath(path)
+    const nextPath = normalizedPath === previousPath
+      ? renamedPath
+      : normalizedPath.startsWith(`${previousPath}/`)
+        ? `${renamedPath}${normalizedPath.slice(previousPath.length)}`
+        : normalizedPath
+
+    updated[nextPath] = sortEntries(
+      children.map((child) => {
+        const childPath = normalizeExplorerPath(child.path)
+        if (childPath === previousPath) {
+          return { ...child, name: nextName, path: renamedPath }
+        }
+        if (childPath.startsWith(`${previousPath}/`)) {
+          return { ...child, path: `${renamedPath}${childPath.slice(previousPath.length)}` }
+        }
+        return child
+      }),
+    )
+  })
+
+  return updated
+}
+
 const buildPathSegments = (path: string) => {
   const normalized = normalizeExplorerPath(path || fileSystemRootPath)
   const parts = normalized.split('/').filter(Boolean).slice(0, 2)
@@ -197,6 +244,119 @@ const pathDepth = (path: string) => normalizeExplorerPath(path).split('/').filte
 
 const isMockClusterContext = (context: ClusterContext | null) =>
   !context || context.server.includes('mock-cluster') || context.token === 'mock-token'
+
+type FileSystemEntryLike = {
+  isDirectory: boolean
+  isFile: boolean
+  name: string
+}
+
+type FileSystemFileEntryLike = FileSystemEntryLike & {
+  file: (success: (file: File) => void, error?: (error: unknown) => void) => void
+}
+
+type FileSystemDirectoryEntryLike = FileSystemEntryLike & {
+  createReader: () => {
+    readEntries: (success: (entries: FileSystemEntryLike[]) => void, error?: (error: unknown) => void) => void
+  }
+}
+
+type DataTransferItemWithEntry = DataTransferItem & {
+  webkitGetAsEntry?: () => FileSystemEntryLike | null
+}
+
+const readDirectoryEntries = (entry: FileSystemDirectoryEntryLike) =>
+  new Promise<FileSystemEntryLike[]>((resolve, reject) => {
+    const reader = entry.createReader()
+    const result: FileSystemEntryLike[] = []
+    const readBatch = () => {
+      reader.readEntries((entries) => {
+        if (!entries.length) {
+          resolve(result)
+          return
+        }
+        result.push(...entries)
+        readBatch()
+      }, reject)
+    }
+    readBatch()
+  })
+
+const readFileFromEntry = (entry: FileSystemFileEntryLike) =>
+  new Promise<File>((resolve, reject) => {
+    entry.file(resolve, reject)
+  })
+
+const collectUploadEntriesFromFileSystemEntry = async (
+  entry: FileSystemEntryLike,
+  parentPath = '',
+): Promise<UploadFileEntry[]> => {
+  const relativePath = parentPath ? `${parentPath}/${entry.name}` : entry.name
+  if (entry.isFile) {
+    return [{ file: await readFileFromEntry(entry as FileSystemFileEntryLike), relativePath }]
+  }
+  if (!entry.isDirectory) return []
+
+  const children = await readDirectoryEntries(entry as FileSystemDirectoryEntryLike)
+  const nested = await Promise.all(
+    children.map((child) => collectUploadEntriesFromFileSystemEntry(child, relativePath)),
+  )
+  return nested.flat()
+}
+
+const collectUploadEntriesFromDataTransfer = async (dataTransfer: DataTransfer | null): Promise<UploadFileEntry[]> => {
+  if (!dataTransfer) return []
+  const transferItems = Array.from(dataTransfer.items || [])
+  const entries = transferItems
+    .map((item) => (item as DataTransferItemWithEntry).webkitGetAsEntry?.())
+    .filter(Boolean) as unknown as FileSystemEntryLike[]
+
+  if (entries.length) {
+    const nested = await Promise.all(
+      entries.map((entry) => collectUploadEntriesFromFileSystemEntry(entry)),
+    )
+    return nested.flat()
+  }
+
+  return Array.from(dataTransfer.files || []).map((file) => ({
+    file,
+    relativePath: file.webkitRelativePath || file.name,
+  }))
+}
+
+const uploadEntriesFromFiles = (files: FileList | File[]) =>
+  Array.from(files || []).map((file) => ({
+    file,
+    relativePath: file.webkitRelativePath || file.name,
+  }))
+
+const joinExplorerPath = (directory: string, name: string) => {
+  const base = normalizeExplorerPath(directory || fileSystemRootPath)
+  const child = String(name || '').trim().replace(/^\/+|\/+$/g, '')
+  if (!child) return base
+  return base === fileSystemRootPath ? `/${child}` : `${base}/${child}`
+}
+
+const uploadRefreshDirectories = (targetPath: string, items: UploadQueueItem[], cachedDirectories: ExplorerChildrenMap) => {
+  const targetDirectory = normalizeExplorerPath(targetPath)
+  const directories = new Set<string>([targetDirectory])
+  items.forEach((item) => {
+    const relativePath = normalizeExplorerPath(item.relativePath || item.file.name)
+    const relativeParent = parentPath(relativePath)
+    if (relativeParent === fileSystemRootPath) return
+    buildExplorerPathChain(relativeParent)
+      .filter((path) => path !== fileSystemRootPath)
+      .map((path) => joinExplorerPath(targetDirectory, path.slice(1)))
+      .filter((path) => Boolean(cachedDirectories[path]))
+      .forEach((path) => directories.add(path))
+  })
+  return Array.from(directories)
+}
+
+const sanitizeExplorerEntryName = (value: string) => {
+  const name = String(value || '').trim().split('/').filter(Boolean).pop() || ''
+  return name === '.' || name === '..' ? '' : name
+}
 
 const isTransientFileConnectionError = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error || '')
@@ -360,7 +520,7 @@ function FileTabPane({
     )
   }
 
-  if (!isTextPreviewableFile(tab.title)) {
+  if (!tab.editable) {
     return (
       <div className="flex h-full items-center justify-center bg-[#05070a] px-8 text-center text-sm text-zinc-400">
         当前文件类型暂不支持预览。
@@ -376,6 +536,142 @@ function FileTabPane({
       theme="dark"
       value={tab.content || ''}
     />
+  )
+}
+
+function ExplorerUploadModal({
+  currentPath,
+  items,
+  onAddFiles,
+  onClose,
+  onDropItems,
+  onRemoveItem,
+  onSubmit,
+  open,
+  uploading,
+}: {
+  currentPath: string
+  items: UploadQueueItem[]
+  onAddFiles: (files: FileList | File[]) => void
+  onClose: () => void
+  onDropItems: (dataTransfer: DataTransfer | null) => void
+  onRemoveItem: (id: string) => void
+  onSubmit: () => void
+  open: boolean
+  uploading: boolean
+}) {
+  const { t } = useI18n()
+  const [dropActive, setDropActive] = useState(false)
+  const pickerRef = useRef<HTMLInputElement | null>(null)
+  const allDone = items.length > 0 && items.every((item) => item.status === 'done')
+
+  return (
+    <Modal
+      description={t('console.uploadDialogDesc', { path: currentPath })}
+      footer={(
+        <>
+          <Button disabled={uploading} onClick={onClose} type="button" variant="secondary">
+            {t('common.cancel')}
+          </Button>
+          <Button disabled={!items.length || uploading || allDone} onClick={onSubmit} type="button">
+            {uploading ? t('console.uploading') : allDone ? t('console.uploadAllDone') : t('console.uploadDialogSubmit', { count: items.length })}
+          </Button>
+        </>
+      )}
+      onClose={onClose}
+      open={open}
+      title={t('console.uploadDialogTitle')}
+      widthClassName="max-w-xl"
+    >
+      <div
+        className={[
+          'flex min-h-[220px] flex-col items-center justify-center rounded-[16px] border border-dashed px-6 py-8 text-center transition',
+          dropActive ? 'border-zinc-950 bg-zinc-50' : 'border-zinc-300 bg-white',
+        ].join(' ')}
+        onDragEnter={(event) => {
+          event.preventDefault()
+          setDropActive(true)
+        }}
+        onDragLeave={(event) => {
+          event.preventDefault()
+          if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+          setDropActive(false)
+        }}
+        onDragOver={(event) => {
+          event.preventDefault()
+          setDropActive(true)
+        }}
+        onDrop={(event) => {
+          event.preventDefault()
+          setDropActive(false)
+          if (uploading) return
+          onDropItems(event.dataTransfer)
+        }}
+      >
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-[14px] bg-zinc-950 text-white">
+          <FolderUp className="h-5 w-5" />
+        </div>
+        <div className="text-[15px] font-medium text-zinc-950">{t('console.uploadDropTitle')}</div>
+        <div className="mt-2 max-w-[360px] text-[13px]/6 text-zinc-500">{t('console.uploadDropDesc')}</div>
+        <Button className="mt-5" disabled={uploading} onClick={() => pickerRef.current?.click()} type="button" variant="secondary">
+          <Upload className="h-4 w-4" />
+          {t('console.uploadPickFiles')}
+        </Button>
+        <input
+          className="hidden"
+          multiple
+          onChange={(event) => {
+            if (event.target.files?.length) onAddFiles(event.target.files)
+            event.target.value = ''
+          }}
+          ref={pickerRef}
+          type="file"
+        />
+      </div>
+
+      <div className="mt-4 rounded-[12px] border border-zinc-200 bg-zinc-50">
+        <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-2.5 text-[12px] text-zinc-500">
+          <span>{t('console.uploadQueue')}</span>
+          <span>{t('console.uploadQueueCount', { count: items.length })}</span>
+        </div>
+        <div className="max-h-44 overflow-auto px-2 py-2">
+          {items.length ? (
+            items.map((item) => (
+              <div
+                className="flex items-center justify-between gap-3 rounded-[8px] px-2 py-1.5 text-[13px] text-zinc-700 hover:bg-white"
+                key={item.id}
+              >
+                <span className="min-w-0 truncate">{item.relativePath || item.file.name}</span>
+                <div className="flex shrink-0 items-center gap-2">
+                  {item.status === 'uploading' ? (
+                    <span className="inline-flex items-center gap-1 text-[12px] text-zinc-500">
+                      <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                      {t('console.uploading')}
+                    </span>
+                  ) : item.status === 'done' ? (
+                    <span className="inline-flex items-center gap-1 text-[12px] text-emerald-600">
+                      <Check className="h-3.5 w-3.5" />
+                      {t('console.uploadDone')}
+                    </span>
+                  ) : (
+                    <button
+                      className="rounded-[6px] px-2 py-1 text-[12px] text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-45"
+                      disabled={uploading}
+                      onClick={() => onRemoveItem(item.id)}
+                      type="button"
+                    >
+                      {t('common.delete')}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="px-3 py-6 text-center text-[13px] text-zinc-500">{t('console.uploadQueueEmpty')}</div>
+          )}
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -408,6 +704,10 @@ export function AgentConsoleWindowPage() {
   const [explorerExpanded, setExplorerExpanded] = useState<ExplorerFlagMap>({ [fileSystemRootPath]: true })
   const [explorerLoading, setExplorerLoading] = useState<ExplorerFlagMap>({})
   const [explorerErrors, setExplorerErrors] = useState<ExplorerErrorMap>({})
+  const [uploadModalOpen, setUploadModalOpen] = useState(false)
+  const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([])
+  const [uploadTargetPath, setUploadTargetPath] = useState(defaultWorkspaceRoot)
+  const [explorerContextMenu, setExplorerContextMenu] = useState<ExplorerContextMenuState | null>(null)
   const [consoleScale, setConsoleScale] = useState<ConsoleScaleState>(() => resolveConsoleScaleState())
   const [isMobileConsole, setIsMobileConsole] = useState(() => resolveMobileConsoleState())
   const [mobilePane, setMobilePane] = useState<MobileConsolePane>('explorer')
@@ -423,6 +723,8 @@ export function AgentConsoleWindowPage() {
   const previewTabsRef = useRef<WebTab[]>([])
   const previewServiceKeysRef = useRef(new Set<string>())
   const openingPreviewPortsRef = useRef(new Set<string>())
+  const tabsRef = useRef<ConsoleTab[]>(tabs)
+  const consoleCanvasRef = useRef<HTMLDivElement | null>(null)
 
   const releasePreviewTabs = useCallback((previewTabs = previewTabsRef.current) => {
     const currentClusterContext = clusterContextRef.current
@@ -439,12 +741,19 @@ export function AgentConsoleWindowPage() {
 
   const {
     closeFiles,
+    createDirectory,
+    createEmptyFile,
+    deleteEntry,
+    downloadEntry,
     filesSession,
     openFiles,
     readDirectory,
     readFile,
+    refreshDirectory,
+    renameEntry,
     searchFiles,
     saveFile,
+    uploadFiles,
   } = useAgentFiles({
     clusterContext,
   })
@@ -453,11 +762,21 @@ export function AgentConsoleWindowPage() {
     () => item?.aliasName || item?.name || activeAgentName || agentConsoleTitle,
     [activeAgentName, agentConsoleTitle, item?.aliasName, item?.name],
   )
+  const uploadInProgress = uploadQueue.some((uploadItem) => uploadItem.status === 'uploading')
 
   const serviceTabs = useMemo(() => readServiceList(services, item), [item, services])
 
   const pageTabs = useMemo(() => tabs.filter((tab) => tab.id !== initialConsoleTabId), [tabs])
   const visibleTabs = pageTabs.length ? pageTabs : tabs
+
+  const activateNextTabAfterRemoval = useCallback((removedTabIds: Set<string>, remainingTabs: ConsoleTab[]) => {
+    if (!removedTabIds.has(activeTabId)) return
+    const fallback = remainingTabs.find((tab) => tab.id !== initialConsoleTabId) || remainingTabs[0]
+    setActiveTabId(fallback?.id || initialConsoleTabId)
+    if (isMobileConsole && (!fallback || fallback.id === initialConsoleTabId)) {
+      setMobilePane('explorer')
+    }
+  }, [activeTabId, isMobileConsole])
 
   useEffect(() => {
     clusterContextRef.current = clusterContext
@@ -466,6 +785,10 @@ export function AgentConsoleWindowPage() {
       clusterContext,
     }
   }, [clusterContext, item?.name])
+
+  useLayoutEffect(() => {
+    tabsRef.current = tabs
+  }, [tabs])
 
   useEffect(() => {
     const previewTabs = tabs.filter((tab): tab is WebTab => tab.type === 'web' && Boolean(tab.preview))
@@ -768,6 +1091,103 @@ export function AgentConsoleWindowPage() {
     }
   }, [consoleSearchFilesFailed, explorerRootPath, filesSession?.status, resourceSearch, searchFiles])
 
+  const addUploadEntries = useCallback((entries: UploadFileEntry[]) => {
+    if (!entries.length) return
+    setUploadQueue((current) => [
+      ...current,
+      ...entries.map((entry) => ({
+        ...entry,
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        status: 'pending' as const,
+      })),
+    ])
+  }, [])
+
+  const addUploadFiles = useCallback(
+    (files: FileList | File[]) => {
+      addUploadEntries(uploadEntriesFromFiles(files))
+    },
+    [addUploadEntries],
+  )
+
+  const addDroppedUploadItems = useCallback(
+    (dataTransfer: DataTransfer | null) => {
+      void collectUploadEntriesFromDataTransfer(dataTransfer)
+        .then(addUploadEntries)
+        .catch(() => {})
+    },
+    [addUploadEntries],
+  )
+
+  const submitUploadQueue = useCallback(async () => {
+    const pendingItems = uploadQueue.filter((item) => item.status === 'pending')
+    if (!pendingItems.length) return
+
+    const pendingIds = new Set(pendingItems.map((item) => item.id))
+    setUploadQueue((current) =>
+      current.map((currentItem) => pendingIds.has(currentItem.id) ? { ...currentItem, status: 'uploading' } : currentItem),
+    )
+    for (const pendingItem of pendingItems) {
+      const uploaded = await uploadFiles([pendingItem], uploadTargetPath, { refresh: false })
+      setUploadQueue((current) =>
+        current.map((currentItem) => (
+          currentItem.id === pendingItem.id ? { ...currentItem, status: uploaded ? 'done' : 'pending' } : currentItem
+        )),
+      )
+    }
+    uploadRefreshDirectories(uploadTargetPath, pendingItems, explorerChildren).forEach((directory) => {
+      if (directory === normalizeExplorerPath(uploadTargetPath)) {
+        void refreshDirectory(directory)
+        return
+      }
+      void ensureDirectoryLoaded(directory)
+    })
+  }, [ensureDirectoryLoaded, explorerChildren, refreshDirectory, uploadFiles, uploadQueue, uploadTargetPath])
+
+  const openUploadModalForPath = useCallback((path: string) => {
+    if (uploadInProgress) return
+    setUploadTargetPath(normalizeExplorerPath(path || explorerRootPath))
+    setUploadQueue([])
+    setUploadModalOpen(true)
+  }, [explorerRootPath, uploadInProgress])
+
+  const closeExplorerContextMenu = useCallback(() => setExplorerContextMenu(null), [])
+
+  const copyPathToClipboard = useCallback((path: string) => {
+    void navigator.clipboard?.writeText(path)
+  }, [])
+
+  const openExplorerContextMenu = useCallback((event: MouseEvent, entry: AgentFileItem | null) => {
+    event.preventDefault()
+    const canvasRect = consoleCanvasRef.current?.getBoundingClientRect()
+    const x = consoleScale.enabled && canvasRect
+      ? canvasRect.left + (event.clientX - canvasRect.left) / consoleScale.scale
+      : event.clientX
+    const y = consoleScale.enabled && canvasRect
+      ? canvasRect.top + (event.clientY - canvasRect.top) / consoleScale.scale
+      : event.clientY
+    setExplorerContextMenu({
+      entry,
+      x,
+      y,
+    })
+  }, [consoleScale.enabled, consoleScale.scale])
+
+  useEffect(() => {
+    if (!explorerContextMenu) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeExplorerContextMenu()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [closeExplorerContextMenu, explorerContextMenu])
+
   const updateTerminalState = useCallback((tabId: string, status: TerminalSessionState['status']) => {
     setTerminalStates((current) => {
       if (current[tabId] === status) return current
@@ -821,9 +1241,9 @@ export function AgentConsoleWindowPage() {
 
   const saveFileTab = useCallback(
     async (tabId: string) => {
-      const target = tabs.find((tab): tab is FileTab => tab.id === tabId && tab.type === 'file')
+      const target = tabsRef.current.find((tab): tab is FileTab => tab.id === tabId && tab.type === 'file')
       if (!target || target.loading || target.saving || !target.dirty) return true
-      if (!isTextPreviewableFile(target.title)) return true
+      if (!target.editable) return true
 
       setTabs((current) =>
         current.map((tab) =>
@@ -869,8 +1289,116 @@ export function AgentConsoleWindowPage() {
         return false
       }
     },
-    [saveFile, tabs],
+    [saveFile],
   )
+
+  const confirmDirtyFileTabRemoval = useCallback(async (matchingTabs: FileTab[]) => {
+    for (const tab of matchingTabs) {
+      if (!tab.dirty) continue
+      const shouldSave = window.confirm(t('console.closeDirtySaveConfirm', { name: tab.title }))
+      if (shouldSave) {
+        const saved = await saveFileTab(tab.id)
+        if (!saved) return false
+        continue
+      }
+      const shouldDiscard = window.confirm(t('console.closeDirtyDiscardConfirm', { name: tab.title }))
+      if (!shouldDiscard) return false
+    }
+    return true
+  }, [saveFileTab, t])
+
+  const createExplorerFile = useCallback((directory: string) => {
+    const name = sanitizeExplorerEntryName(window.prompt(t('console.createFilePrompt')) || '')
+    if (!name) return
+    void createEmptyFile(name, directory)
+  }, [createEmptyFile, t])
+
+  const createExplorerDirectory = useCallback((directory: string) => {
+    const name = sanitizeExplorerEntryName(window.prompt(t('console.createDirectoryPrompt')) || '')
+    if (!name) return
+    void createDirectory(name, directory)
+  }, [createDirectory, t])
+
+  const renameExplorerEntry = useCallback(async (entry: AgentFileItem) => {
+    const name = sanitizeExplorerEntryName(window.prompt(t('console.renamePrompt'), entry.name) || '')
+    if (!name || name === entry.name) return
+    const nextPath = joinExplorerPath(parentPath(entry.path), name)
+    const renamed = await renameEntry(entry.path, nextPath)
+    if (!renamed) return
+
+    setExplorerChildren((current) => renameExplorerChildrenEntry(current, entry.path, nextPath, name))
+    setResourceSearchItems((current) =>
+      current.map((searchItem) => {
+        const searchPath = normalizeExplorerPath(searchItem.path)
+        const previousPath = normalizeExplorerPath(entry.path)
+        const renamedPath = normalizeExplorerPath(nextPath)
+        if (searchPath === previousPath) {
+          return { ...searchItem, name, path: renamedPath }
+        }
+        if (searchPath.startsWith(`${previousPath}/`)) {
+          return { ...searchItem, path: `${renamedPath}${searchPath.slice(previousPath.length)}` }
+        }
+        return searchItem
+      }),
+    )
+
+    setTabs((current) => {
+      const previousPath = normalizeExplorerPath(entry.path)
+      const renamedPath = normalizeExplorerPath(nextPath)
+      return current.map((tab) => {
+        if (tab.type !== 'file') return tab
+        const tabPath = normalizeExplorerPath(tab.path)
+        if (tabPath === previousPath) {
+          return {
+            ...tab,
+            title: name,
+            path: renamedPath,
+            entry: {
+              ...tab.entry,
+              name,
+              path: renamedPath,
+            },
+          }
+        }
+        if (!tabPath.startsWith(`${previousPath}/`)) return tab
+        const childPath = `${renamedPath}${tabPath.slice(previousPath.length)}`
+        return {
+          ...tab,
+          path: childPath,
+          entry: {
+            ...tab.entry,
+            path: childPath,
+          },
+        }
+      })
+    })
+  }, [renameEntry, t])
+
+  const deleteExplorerEntry = useCallback(async (entry: AgentFileItem) => {
+    if (!window.confirm(t('console.deleteConfirm', { name: entry.name }))) return
+    const deletedPath = normalizeExplorerPath(entry.path)
+    const matchingFileTabs = tabsRef.current.filter((tab): tab is FileTab =>
+      tab.type === 'file' &&
+      (normalizeExplorerPath(tab.path) === deletedPath || normalizeExplorerPath(tab.path).startsWith(`${deletedPath}/`)),
+    )
+    const canCloseTabs = await confirmDirtyFileTabRemoval(matchingFileTabs)
+    if (!canCloseTabs) return
+
+    const deleted = await deleteEntry(entry.path)
+    if (!deleted) return
+    void refreshDirectory(parentPath(entry.path))
+
+    setTabs((current) => {
+      const next = current.filter(
+        (tab) =>
+          tab.type !== 'file' ||
+          (normalizeExplorerPath(tab.path) !== deletedPath && !normalizeExplorerPath(tab.path).startsWith(`${deletedPath}/`)),
+      )
+      const removedTabIds = new Set(current.filter((tab) => !next.includes(tab)).map((tab) => tab.id))
+      activateNextTabAfterRemoval(removedTabIds, next)
+      return next.length ? next : createInitialConsoleTabs(consoleHomeTitle)
+    })
+  }, [activateNextTabAfterRemoval, confirmDirtyFileTabRemoval, consoleHomeTitle, deleteEntry, refreshDirectory, t])
 
   const loadFileTabContent = useCallback(
     async (tabId: string, entry: AgentFileItem) => {
@@ -940,6 +1468,7 @@ export function AgentConsoleWindowPage() {
         title: entry.name,
         path: entry.path,
         entry,
+        editable: isTextPreviewableFile(entry.name),
         loading: true,
         loaded: false,
         error: '',
@@ -1063,12 +1592,12 @@ export function AgentConsoleWindowPage() {
       const target = tabs.find((tab): tab is FileTab => tab.id === tabId && tab.type === 'file')
       const previewTarget = tabs.find((tab): tab is WebTab => tab.id === tabId && tab.type === 'web' && Boolean(tab.preview))
       if (target?.dirty) {
-        const shouldSave = window.confirm(`${target.title} 有未保存的修改，是否保存后关闭？`)
+        const shouldSave = window.confirm(t('console.closeDirtySaveConfirm', { name: target.title }))
         if (shouldSave) {
           const saved = await saveFileTab(tabId)
           if (!saved) return
         } else {
-          const shouldDiscard = window.confirm(`不保存并关闭 ${target.title}？`)
+          const shouldDiscard = window.confirm(t('console.closeDirtyDiscardConfirm', { name: target.title }))
           if (!shouldDiscard) return
         }
       }
@@ -1094,7 +1623,7 @@ export function AgentConsoleWindowPage() {
         return next
       })
     },
-    [activeTabId, clusterContext, consoleHomeTitle, isMobileConsole, saveFileTab, tabs],
+    [activeTabId, clusterContext, consoleHomeTitle, isMobileConsole, saveFileTab, t, tabs],
   )
 
   useEffect(() => {
@@ -1144,6 +1673,7 @@ export function AgentConsoleWindowPage() {
                 : 'text-zinc-700 hover:bg-zinc-100',
             ].join(' ')}
             onClick={() => {
+              closeExplorerContextMenu()
               if (isDirectory) {
                 if (navigableDirectory) {
                   navigateExplorerToPath(entry.path)
@@ -1154,6 +1684,8 @@ export function AgentConsoleWindowPage() {
                 openFileTab(entry)
               }
             }}
+            data-explorer-node="true"
+            onContextMenu={(event) => openExplorerContextMenu(event, entry)}
             style={nestedPadding(depth)}
             type="button"
           >
@@ -1191,6 +1723,7 @@ export function AgentConsoleWindowPage() {
       )
     },
     [
+      closeExplorerContextMenu,
       explorerChildren,
       explorerErrors,
       explorerExpanded,
@@ -1198,6 +1731,7 @@ export function AgentConsoleWindowPage() {
       activeFilePath,
       navigateExplorerToPath,
       openFileTab,
+      openExplorerContextMenu,
       resourceSearch,
       toggleDirectory,
     ],
@@ -1276,6 +1810,7 @@ export function AgentConsoleWindowPage() {
               ? 'absolute left-0 top-0 flex min-w-0 flex-col'
               : 'flex min-h-0 flex-1 flex-col'
           }
+          ref={consoleCanvasRef}
           style={
             consoleScale.enabled
               ? {
@@ -1368,13 +1903,25 @@ export function AgentConsoleWindowPage() {
                       <ChevronRight className="h-4 w-4" />
                     </button>
                   ) : null}
+                  {isMobileConsole ? (
+                    <button
+                      aria-label={t('console.addTerminal')}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-[7px] border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50 active:scale-[0.98]"
+                      onClick={openNewTerminalTab}
+                      title={t('console.addTerminal')}
+                      type="button"
+                    >
+                      <Terminal className="h-4 w-4" />
+                    </button>
+                  ) : null}
                   <button
-                    aria-label={t('console.addTerminal')}
+                    aria-label={t('console.uploadFiles')}
                     className="inline-flex h-8 w-8 items-center justify-center rounded-[7px] border border-zinc-950 bg-zinc-950 text-white transition hover:bg-black"
-                    onClick={openNewTerminalTab}
+                    onClick={() => openUploadModalForPath(explorerRootPath)}
+                    title={t('console.uploadFiles')}
                     type="button"
                   >
-                    <Plus className="h-4 w-4" />
+                    <Upload className="h-4 w-4" />
                   </button>
                 </div>
               </div>
@@ -1390,7 +1937,14 @@ export function AgentConsoleWindowPage() {
               </label>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
+            <div
+              className="min-h-0 flex-1 overflow-auto px-3 py-3"
+              onClick={closeExplorerContextMenu}
+              onContextMenu={(event) => {
+                if ((event.target as HTMLElement | null)?.closest('[data-explorer-node="true"]')) return
+                openExplorerContextMenu(event, null)
+              }}
+            >
               <div className="mb-2 px-2 text-[12px] font-medium text-zinc-500">
                 {searchActive ? t('console.searchResults', { keyword: resourceSearch.trim() }) : t('console.fileTree')}
               </div>
@@ -1411,6 +1965,61 @@ export function AgentConsoleWindowPage() {
                 </div>
               )}
             </div>
+            {explorerContextMenu ? (
+              <div
+                className="fixed z-[60] w-44 overflow-hidden rounded-[10px] border border-zinc-200 bg-white py-1 text-[13px] text-zinc-700 shadow-[0_18px_45px_rgba(15,23,42,0.18)]"
+                onClick={(event) => event.stopPropagation()}
+                role="menu"
+                style={{ left: explorerContextMenu.x, top: explorerContextMenu.y }}
+              >
+                {(() => {
+                  const entry = explorerContextMenu.entry
+                  const isDirectory = entry?.type === 'dir'
+                  const menuItems = entry
+                    ? [
+                        ...(isDirectory
+                          ? [{ label: t('console.enterDirectory'), action: () => navigateExplorerToPath(entry.path) }]
+                          : [{ label: t('console.openFile'), action: () => openFileTab(entry) }]),
+                        ...(isDirectory ? [] : [{ label: t('common.download'), action: () => void downloadEntry(entry.path) }]),
+                        { label: t('common.rename'), action: () => renameExplorerEntry(entry) },
+                        { label: t('common.delete'), action: () => deleteExplorerEntry(entry), danger: true },
+                        ...(isDirectory
+                          ? [
+                              { label: t('console.uploadHere'), action: () => openUploadModalForPath(entry.path) },
+                              { label: t('console.createFile'), action: () => createExplorerFile(entry.path) },
+                              { label: t('console.createDirectory'), action: () => createExplorerDirectory(entry.path) },
+                            ]
+                          : []),
+                        { label: t('console.copyPath'), action: () => copyPathToClipboard(entry.path) },
+                      ]
+                    : [
+                        { label: t('console.uploadFiles'), action: () => openUploadModalForPath(explorerRootPath) },
+                        { label: t('console.createFile'), action: () => createExplorerFile(explorerRootPath) },
+                        { label: t('console.createDirectory'), action: () => createExplorerDirectory(explorerRootPath) },
+                        { label: t('common.refresh'), action: () => void refreshDirectory(explorerRootPath) },
+                        { label: t('console.copyCurrentPath'), action: () => copyPathToClipboard(explorerRootPath) },
+                      ]
+
+                  return menuItems.map((menuItem) => (
+                    <button
+                      className={[
+                        'block w-full px-3 py-2 text-left transition hover:bg-zinc-50',
+                        menuItem.danger ? 'text-rose-600 hover:bg-rose-50' : '',
+                      ].join(' ')}
+                      key={menuItem.label}
+                      onClick={() => {
+                        closeExplorerContextMenu()
+                        menuItem.action()
+                      }}
+                      role="menuitem"
+                      type="button"
+                    >
+                      {menuItem.label}
+                    </button>
+                  ))
+                })()}
+              </div>
+            ) : null}
           </aside>
 
           <section
@@ -1589,6 +2198,20 @@ export function AgentConsoleWindowPage() {
         </div>
         </div>
       </div>
+      <ExplorerUploadModal
+        currentPath={uploadTargetPath}
+        items={uploadQueue}
+        onAddFiles={addUploadFiles}
+        onClose={() => {
+          if (uploadInProgress) return
+          setUploadModalOpen(false)
+        }}
+        onDropItems={addDroppedUploadItems}
+        onRemoveItem={(id) => setUploadQueue((current) => current.filter((item) => item.id !== id))}
+        onSubmit={submitUploadQueue}
+        open={uploadModalOpen}
+        uploading={uploadInProgress}
+      />
       <footer className="flex h-6 shrink-0 items-center justify-between gap-3 bg-zinc-600 px-3 text-[12px]/6 text-white">
         <div className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 truncate font-medium">{item ? item.template.name : 'Agent'}</span>

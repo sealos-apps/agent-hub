@@ -38,6 +38,7 @@ const wsTypeCodeByName: Record<string, number> = {
   'file.upload.end': 38,
   'file.result': 39,
   'file.search': 40,
+  'file.rename': 41,
 }
 
 const wsTypeNameByCode: Record<number, string> = Object.fromEntries(
