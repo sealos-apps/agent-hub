@@ -386,6 +386,9 @@ func TestBuildAgentModelSyncInputUsesCowAgentRuntimeProviders(t *testing.T) {
 	if gemini.ProviderID != "aiproxy-gemini" || gemini.ProviderType != "gemini" || gemini.APIKeyEnv != "GEMINI_API_KEY" {
 		t.Fatalf("Gemini provider = %#v, want aiproxy-gemini/gemini/GEMINI_API_KEY", gemini)
 	}
+	if gemini.BaseURL != "https://aiproxy.usw-1.sealos.io/v1beta" {
+		t.Fatalf("Gemini BaseURL = %q, want AIProxy Gemini native base URL", gemini.BaseURL)
+	}
 	if strings.Join(gemini.Models, ",") != "gemini-3.1-flash-image-preview:image_generation:image_generation" {
 		t.Fatalf("Gemini models = %#v", gemini.Models)
 	}
@@ -424,7 +427,7 @@ func TestBuildAgentModelSyncScriptInitializesCowAgentRuntimeProviders(t *testing
 				ProviderID:   "aiproxy-gemini",
 				ProviderName: "AI Proxy Gemini",
 				ProviderType: "gemini",
-				BaseURL:      "https://aiproxy.usw-1.sealos.io",
+				BaseURL:      "https://aiproxy.usw-1.sealos.io/v1beta",
 				APIKeyEnv:    "GEMINI_API_KEY",
 				APIKeyValue:  "sk-test",
 				Models:       []string{"gemini-3.1-flash-image-preview:image_generation:image_generation"},
@@ -442,7 +445,7 @@ func TestBuildAgentModelSyncScriptInitializesCowAgentRuntimeProviders(t *testing
 		"--type 'openai-chat-compatible'",
 		"--id 'aiproxy-gemini'",
 		"--type 'gemini'",
-		"--base-url 'https://aiproxy.usw-1.sealos.io'",
+		"--base-url 'https://aiproxy.usw-1.sealos.io/v1beta'",
 		"--model 'gemini-3.1-flash-image-preview:image_generation:image_generation'",
 		"--slot 'main=aiproxy-openai/gpt-5.4'",
 		"--slot 'image=aiproxy-gemini/gemini-3.1-flash-image-preview'",

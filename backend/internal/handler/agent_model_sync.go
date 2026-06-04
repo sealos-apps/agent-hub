@@ -565,11 +565,21 @@ func cowAgentRuntimeProviderBaseURL(baseURL string, runtimeProvider string) (str
 	switch strings.TrimSpace(runtimeProvider) {
 	case "openai":
 		return normalizeAIProxyModelBaseURL(baseURL), nil
-	case "gemini", "dashscope":
+	case "gemini":
+		return normalizeAIProxyGeminiModelBaseURL(baseURL)
+	case "dashscope":
 		return stripAgentModelSyncBaseURLPath(baseURL)
 	default:
 		return "", fmt.Errorf("unsupported CowAgent runtimeProvider %q", runtimeProvider)
 	}
+}
+
+func normalizeAIProxyGeminiModelBaseURL(baseURL string) (string, error) {
+	base, err := stripAgentModelSyncBaseURLPath(baseURL)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(base, "/") + "/v1beta", nil
 }
 
 func stripAgentModelSyncBaseURLPath(baseURL string) (string, error) {
