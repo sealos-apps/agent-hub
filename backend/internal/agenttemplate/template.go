@@ -103,6 +103,7 @@ type ModelPreset struct {
 	Provider         string   `yaml:"provider"`
 	APIMode          string   `yaml:"apiMode"`
 	Kind             string   `yaml:"kind"`
+	RuntimeProvider  string   `yaml:"runtimeProvider"`
 	Category         string   `yaml:"category"`
 	Capabilities     []string `yaml:"capabilities"`
 	InputModalities  []string `yaml:"inputModalities"`
@@ -446,6 +447,10 @@ func validateModelPresets(regions map[string][]ModelPreset) error {
 			}
 			if !containsString(allowedKinds, kind) {
 				return fmt.Errorf("%s kind %q is incompatible with apiMode %q", location, kind, apiMode)
+			}
+			runtimeProvider := strings.TrimSpace(preset.RuntimeProvider)
+			if runtimeProvider != "" && !containsString([]string{"openai", "gemini", "dashscope"}, runtimeProvider) {
+				return fmt.Errorf("%s runtimeProvider %q is not supported", location, runtimeProvider)
 			}
 		}
 	}
