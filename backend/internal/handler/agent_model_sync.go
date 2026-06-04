@@ -564,7 +564,7 @@ func cowAgentRuntimeProviderConfig(runtimeProvider string) (cowAgentRuntimeProvi
 func cowAgentRuntimeProviderBaseURL(baseURL string, runtimeProvider string) (string, error) {
 	switch strings.TrimSpace(runtimeProvider) {
 	case "openai":
-		return normalizeAIProxyModelBaseURL(baseURL), nil
+		return normalizeAgentModelSyncBaseURL(aiproxyChatProvider, "aiproxy", baseURL), nil
 	case "gemini":
 		return normalizeAIProxyGeminiModelBaseURL(baseURL)
 	case "dashscope":

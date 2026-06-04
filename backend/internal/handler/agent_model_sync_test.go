@@ -409,6 +409,52 @@ func TestBuildAgentModelSyncInputUsesCowAgentRuntimeProviders(t *testing.T) {
 	}
 }
 
+func TestBuildAgentModelSyncInputNormalizesCowAgentOpenAIRuntimeBaseURL(t *testing.T) {
+	t.Parallel()
+
+	input, err := buildAgentModelSyncInput(agent.Agent{
+		Name:         "demo-agent",
+		TemplateID:   "cowagent",
+		ModelBaseURL: "https://aiproxy.usw-1.sealos.io/anthropic",
+		ModelAPIKey:  "sk-test",
+		Annotations: map[string]string{
+			"agent.sealos.io/model-slots": `{"main":{"provider":"custom:aiproxy-chat","model":"gpt-5.4","apiMode":"chat_completions","kind":"llm"},"image":{"provider":"custom:aiproxy-chat","model":"gemini-3.1-flash-image-preview","apiMode":"image_generation","kind":"image_generation"}}`,
+		},
+	}, dto.UpdateAgentRequest{}, agenttemplate.Definition{
+		ModelIntegration: agenttemplate.ModelIntegration{
+			Type:   "ai-agent-switch",
+			Client: "cowagent",
+			Provider: agenttemplate.ModelIntegrationProvider{
+				ID:        "aiproxy",
+				Name:      agenttemplate.LocalizedText{"en": "AI Proxy", "zh": "AI Proxy"},
+				APIKeyEnv: "OPEN_AI_API_KEY",
+			},
+			Slots: []agenttemplate.ModelIntegrationSlot{
+				{Key: "main", Required: true},
+				{Key: "image", Required: true},
+			},
+		},
+		RegionModelPresets: map[string][]agenttemplate.ModelPreset{
+			"us": {
+				{Value: "gpt-5.4", Provider: aiproxyChatProvider, APIMode: "chat_completions", Kind: "llm", RuntimeProvider: "openai"},
+				{Value: "gemini-3.1-flash-image-preview", Provider: aiproxyChatProvider, APIMode: "image_generation", Kind: "image_generation", RuntimeProvider: "gemini"},
+			},
+		},
+	}, "us")
+	if err != nil {
+		t.Fatalf("buildAgentModelSyncInput() error = %v", err)
+	}
+	if input.BaseURL != "https://aiproxy.usw-1.sealos.io/v1" {
+		t.Fatalf("BaseURL = %q, want OpenAI-compatible AIProxy /v1 base URL", input.BaseURL)
+	}
+	if len(input.ExtraProviders) != 1 {
+		t.Fatalf("ExtraProviders = %#v, want 1 provider", input.ExtraProviders)
+	}
+	if input.ExtraProviders[0].BaseURL != "https://aiproxy.usw-1.sealos.io/v1beta" {
+		t.Fatalf("Gemini BaseURL = %q, want AIProxy Gemini /v1beta base URL", input.ExtraProviders[0].BaseURL)
+	}
+}
+
 func TestBuildAgentModelSyncScriptInitializesCowAgentRuntimeProviders(t *testing.T) {
 	t.Parallel()
 
