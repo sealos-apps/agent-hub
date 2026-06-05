@@ -45,6 +45,7 @@ import type {
   SystemConfig,
   WorkspaceAIProxyToken,
 } from "../../../../domains/agents/types";
+import { useI18n } from "../../../../i18n";
 import { getSealosSession } from "../../../../sealosSdk";
 import {
   MOCK_AGENT_ID_PREFIX,
@@ -99,6 +100,7 @@ const toWorkspaceAIProxyToken = (
 };
 
 export function useAgentHubController() {
+  const { t } = useI18n();
   const [items, setItems] = useState<AgentListItem[]>([]);
   const [templates, setTemplates] = useState<AgentTemplateDefinition[]>([]);
   const [clusterInfo, setClusterInfo] = useState<ClusterInfo | null>(null);
@@ -648,7 +650,11 @@ export function useAgentHubController() {
           if (mockCreatedItem) {
             primeItem(mockCreatedItem);
           }
-          setMessage(`已创建 ${getAgentLabel(aliasName, createdName)}`);
+          setMessage(
+            t("agent.createSuccess", {
+              name: getAgentLabel(aliasName, createdName),
+            }),
+          );
           return {
             agentName: createdName,
             aliasName: aliasName,
@@ -691,7 +697,12 @@ export function useAgentHubController() {
           null;
 
         setMessage(
-          `已创建 ${getAgentLabel(aliasName, createdAgent?.core?.name || blueprint.appName)}`,
+          t("agent.createSuccess", {
+            name: getAgentLabel(
+              aliasName,
+              createdAgent?.core?.name || blueprint.appName,
+            ),
+          }),
         );
 
         return {
@@ -717,6 +728,7 @@ export function useAgentHubController() {
       templatesById,
       mockMode,
       primeItem,
+      t,
     ],
   );
 
