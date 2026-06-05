@@ -1,6 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { AgentConfigForm } from './AgentConfigForm'
 import { createTemplateFixture } from '../../../test/agentFixtures'
+import {
+  formatModelOptionLabel,
+  getModelCapabilityBadges,
+  normalizeModelTypes,
+} from '../../../domains/agents/modelCapabilities'
+import { translate } from '../../../i18n'
 import type {
   AgentBlueprint,
   AgentSettingField,
@@ -205,6 +211,168 @@ describe('AgentConfigForm', () => {
     expect(screen.getByText('GPT Image 2')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /GPT Image 2/ }))
     expect(screen.getByText('输出:图像')).toBeInTheDocument()
+  })
+
+  it('keeps custom model type labels while localizing default labels', () => {
+    const template = createTemplateFixture({
+      modelTypes: [
+        {
+          key: 'text',
+          label: '普通模型',
+          models: [
+            {
+              value: 'gpt-5.4-mini',
+              label: 'GPT-5.4 Mini',
+              helper: 'OpenAI',
+              provider: 'custom:aiproxy-chat',
+              apiMode: 'chat_completions',
+              category: 'text',
+            },
+          ],
+        },
+        {
+          key: 'image',
+          label: '视觉创作模型',
+          models: [
+            {
+              value: 'gpt-image-2',
+              label: 'GPT Image 2',
+              helper: 'OpenAI',
+              provider: 'custom:aiproxy-chat',
+              apiMode: 'image_generation',
+              category: 'image',
+            },
+          ],
+        },
+      ],
+      modelOptions: [
+        {
+          value: 'gpt-5.4-mini',
+          label: 'GPT-5.4 Mini',
+          helper: 'OpenAI',
+          provider: 'custom:aiproxy-chat',
+          apiMode: 'chat_completions',
+          category: 'text',
+        },
+        {
+          value: 'gpt-image-2',
+          label: 'GPT Image 2',
+          helper: 'OpenAI',
+          provider: 'custom:aiproxy-chat',
+          apiMode: 'image_generation',
+          category: 'image',
+        },
+      ],
+    })
+
+    render(
+      <AgentConfigForm
+        blueprint={createBlueprint()}
+        mode='create'
+        onChange={() => {}}
+        onChangeSettingField={() => {}}
+        onSelectPreset={() => {}}
+        template={template}
+        workspaceModelBaseURL='https://aiproxy.example.com/v1'
+        workspaceModelKeyReady
+        workspaceRegion='us'
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /GPT-5.4 Mini/ }))
+    expect(screen.getAllByText('普通模型').length).toBeGreaterThan(0)
+    expect(screen.getByText('视觉创作模型')).toBeInTheDocument()
+  })
+
+  it('localizes default model type labels in en-US without replacing custom labels', () => {
+    const modelTypes = normalizeModelTypes(
+      [
+        {
+          key: 'text',
+          label: '普通模型',
+          models: [
+            {
+              value: 'gpt-5.4-mini',
+              label: 'GPT-5.4 Mini',
+              helper: 'OpenAI',
+              provider: 'custom:aiproxy-chat',
+              apiMode: 'chat_completions',
+              category: 'text',
+            },
+          ],
+        },
+        {
+          key: 'image',
+          label: '视觉创作模型',
+          models: [
+            {
+              value: 'gpt-image-2',
+              label: 'GPT Image 2',
+              helper: 'OpenAI',
+              provider: 'custom:aiproxy-chat',
+              apiMode: 'image_generation',
+              category: 'image',
+            },
+          ],
+        },
+      ],
+      [],
+      (key, values) => translate('en-US', key, values),
+    )
+
+    expect(modelTypes[0]?.label).toBe('Text Model')
+    expect(modelTypes[1]?.label).toBe('视觉创作模型')
+  })
+
+  it('keeps zh-CN default labels when no translator is provided', () => {
+    const modelTypes = normalizeModelTypes(
+      [
+        {
+          key: 'text',
+          label: '普通模型',
+          models: [
+            {
+              value: 'gpt-5.4-mini',
+              label: 'GPT-5.4 Mini',
+              helper: 'OpenAI',
+              provider: 'custom:aiproxy-chat',
+              apiMode: 'chat_completions',
+              category: 'text',
+            },
+          ],
+        },
+      ],
+      [],
+    )
+
+    expect(modelTypes[0]?.label).toBe('普通模型')
+  })
+
+  it('keeps zh-CN model capability badges when no translator is provided', () => {
+    expect(
+      formatModelOptionLabel({
+        value: 'gpt-5.4-mini',
+        label: 'GPT-5.4 Mini',
+        helper: 'OpenAI',
+        provider: 'custom:aiproxy-chat',
+        apiMode: 'chat_completions',
+        capabilities: ['reasoning', 'code'],
+        inputModalities: ['text'],
+        outputModalities: ['text'],
+      }),
+    ).toBe('GPT-5.4 Mini · 推理 / 代码')
+    expect(
+      getModelCapabilityBadges({
+        value: 'gpt-5.4-vision',
+        label: 'GPT-5.4 Vision',
+        helper: 'OpenAI',
+        provider: 'custom:aiproxy-chat',
+        apiMode: 'chat_completions',
+        capabilities: ['vision'],
+        inputModalities: ['text', 'image'],
+        outputModalities: ['text'],
+      }),
+    ).toEqual(['视觉', '输入:文本', '输入:图像', '输出:文本'])
   })
 
   it('only renders the catalog options passed from the current regional template snapshot', () => {

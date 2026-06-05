@@ -277,7 +277,7 @@ export function AgentConfigEditModal({
               >
                 {slot.mutable === false ? (
                   <div className="text-[14px]/5 font-medium text-zinc-900">
-                    {formatModelOptionLabel(slotOption) || slotValue || t('summary.notSelected')}
+                    {formatModelOptionLabel(slotOption, t) || slotValue || t('summary.notSelected')}
                   </div>
                 ) : (
                   <ModelCapabilitySelect
