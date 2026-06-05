@@ -2,7 +2,7 @@ export const terminalOutputCharsPerFlush = 24 * 1024
 export const terminalOutputBurstCharsPerFlush = 64 * 1024
 export const terminalOutputBurstThreshold = 128 * 1024
 export const terminalOutputQueueCharLimit = 1024 * 1024
-export const terminalOutputDropNotice = '\r\n\x1b[33m[输出过快，已跳过部分历史内容以保持流畅]\x1b[0m\r\n'
+export const terminalOutputDropNotice = '\r\n\x1b[33m[Output was too fast, so some history was skipped to keep interaction smooth]\x1b[0m\r\n'
 
 type TerminalOutputBackpressureState = {
   queue: string[]

@@ -55,7 +55,7 @@ const openLocalConsoleWindow = (agentName: string) => {
 export const openAgentConsoleDesktopWindow = async (item: AgentListItem) => {
   const agentName = String(item.name || '').trim()
   if (!agentName) {
-    throw new Error('缺少 Agent 实例名称，无法打开控制台窗口。')
+    throw new Error('Missing Agent instance name, so the console window cannot be opened.')
   }
 
   try {

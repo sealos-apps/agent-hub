@@ -6,10 +6,12 @@ import {
   LayoutDashboard,
   Settings,
 } from 'lucide-react'
+import { translateAgentReason } from '../../../../domains/agents/reasons'
 import type {
   AgentListItem,
   AgentWorkspaceItem,
 } from '../../../../domains/agents/types'
+import { useI18n } from '../../../../i18n'
 import { cn } from '../../../../lib/format'
 
 export type AgentDetailTab = AgentWorkspaceItem['key']
@@ -27,6 +29,7 @@ export function AgentDetailSidebar({
   currentTab,
   onTabChange,
 }: AgentDetailSidebarProps) {
+  const { t } = useI18n()
   const iconMap = {
     overview: LayoutDashboard,
     chat: Bot,
@@ -43,7 +46,7 @@ export function AgentDetailSidebar({
       label: workspace.label,
       icon: iconMap[workspace.key as keyof typeof iconMap] || LayoutDashboard,
       enabled: workspace.enabled,
-      reason: workspace.reason || '',
+      reason: translateAgentReason(workspace.reason || '', t),
     }));
 
   if (tabs.length === 0) {

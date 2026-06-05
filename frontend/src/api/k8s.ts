@@ -100,7 +100,7 @@ const resourceConfig = {
 
 export const findExecPodForApp = async (appName, clusterContext) => {
   if (!appName) {
-    throw new Error('缺少应用名，无法查找 Pod')
+    throw new Error('Missing app name, cannot find Pod')
   }
 
   const searchParams = new URLSearchParams({
@@ -117,7 +117,7 @@ export const findExecPodForApp = async (appName, clusterContext) => {
 
   const pods = data?.items || []
   if (!pods.length) {
-    throw new Error(`未找到应用 ${appName} 对应的 Pod`)
+    throw new Error(`No Pod found for app ${appName}`)
   }
 
   const sortedPods = [...pods].sort((a, b) => {
@@ -136,7 +136,7 @@ export const findExecPodForApp = async (appName, clusterContext) => {
   const containerName = selected?.spec?.containers?.[0]?.name || ''
 
   if (!podName) {
-    throw new Error(`应用 ${appName} 的 Pod 名称为空`)
+    throw new Error(`Pod name for app ${appName} is empty`)
   }
 
   return {
@@ -259,7 +259,7 @@ export const buildPodExecWsUrl = (options) => buildPodExecWsCandidates(options)[
 
 export const listResources = async (type, clusterContext) => {
   const config = resourceConfig[type]
-  if (!config) throw new Error(`不支持的资源类型: ${type}`)
+  if (!config) throw new Error(`Unsupported resource type: ${type}`)
 
   const searchParams = new URLSearchParams({
     labelSelector: withLabelSelector(clusterContext),
@@ -278,7 +278,7 @@ export const listResources = async (type, clusterContext) => {
 
 export const createResource = async (type, payload, clusterContext) => {
   const config = resourceConfig[type]
-  if (!config) throw new Error(`不支持的资源类型: ${type}`)
+  if (!config) throw new Error(`Unsupported resource type: ${type}`)
 
   const nextYaml = {
     ...payload.yaml,
@@ -331,7 +331,7 @@ export const createResource = async (type, payload, clusterContext) => {
 
 export const updateResource = async (type, name, payload, clusterContext) => {
   const config = resourceConfig[type]
-  if (!config) throw new Error(`不支持的资源类型: ${type}`)
+  if (!config) throw new Error(`Unsupported resource type: ${type}`)
 
   const nextYaml = {
     ...payload.yaml,
@@ -373,7 +373,7 @@ export const updateResource = async (type, name, payload, clusterContext) => {
 
 export const deleteResource = async (type, name, clusterContext) => {
   const config = resourceConfig[type]
-  if (!config) throw new Error(`不支持的资源类型: ${type}`)
+  if (!config) throw new Error(`Unsupported resource type: ${type}`)
 
   await requestJsonWithAuthRetry(
     buildProxyUrl(config.detailPath(clusterContext.namespace, name)),

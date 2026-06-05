@@ -90,7 +90,7 @@ const createBackendError = (response: Response, payload: unknown) => {
       ? normalizedPayload.message || normalizedPayload.error?.message
       : "") ||
     (typeof normalizedPayload === "string" ? normalizedPayload : "") ||
-    `请求失败: ${response.status}`;
+    `Request failed: ${response.status}`;
 
   const error: BackendRequestError = new Error(message);
   if (detailMessage) {
@@ -115,7 +115,7 @@ const normalizeSystemRegion = (value = ""): AgentHubRegion => {
   if (normalized === "us") {
     return "us";
   }
-  throw new Error("系统配置缺少合法 REGION，只允许 cn 或 us。");
+  throw new Error("System config has no valid REGION. Only cn or us is allowed.");
 };
 
 const expectData = <T>(payload: T | null, message: string): T => {
@@ -206,7 +206,7 @@ export const getAgent = async (
         method: "GET",
       },
     ),
-    "Agent 详情响应为空。",
+    "Agent detail response is empty.",
   );
 
 export const getAgentConsole = async (
@@ -221,7 +221,7 @@ export const getAgentConsole = async (
         method: "GET",
       },
     ),
-    "Agent 控制台响应为空。",
+    "Agent console response is empty.",
   );
 
 export const createAgent = async (
@@ -237,7 +237,7 @@ export const createAgent = async (
         body: JSON.stringify(payload),
       },
     ),
-    "创建 Agent 响应为空。",
+    "Create Agent response is empty.",
   );
 
 export const updateAgent = async (
@@ -254,7 +254,7 @@ export const updateAgent = async (
         body: JSON.stringify(payload),
       },
     ),
-    "更新 Agent 响应为空。",
+    "Update Agent response is empty.",
   );
 
 export const updateAgentRuntime = async (
@@ -271,7 +271,7 @@ export const updateAgentRuntime = async (
         body: JSON.stringify(payload),
       },
     ),
-    "更新 Agent 运行时响应为空。",
+    "Update Agent runtime response is empty.",
   );
 
 export const updateAgentSettings = async (
@@ -292,7 +292,7 @@ export const updateAgentSettings = async (
         body: JSON.stringify(payload),
       },
     ),
-    "更新 Agent 设置响应为空。",
+    "Update Agent settings response is empty.",
   );
 
 export const deleteAgent = async (
@@ -347,7 +347,7 @@ export const getAgentSSHAccess = async (
         method: "GET",
       },
     ),
-    "SSH 接入响应为空。",
+    "SSH access response is empty.",
   );
 
 export const ensureAIProxyToken = async (
@@ -376,7 +376,7 @@ export const createAgentPreview = async (
         body: JSON.stringify({ port }),
       },
     ),
-    "预览响应为空。",
+    "Preview response is empty.",
   );
 
 export const heartbeatAgentPreview = async (
@@ -428,11 +428,11 @@ export const streamAgentChatCompletions = async (
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
-    throw new Error(errorText || `聊天请求失败: ${response.status}`);
+    throw new Error(errorText || `Chat request failed: ${response.status}`);
   }
 
   if (!response.body) {
-    throw new Error(`聊天响应为空: ${response.status}`);
+    throw new Error(`Chat response is empty: ${response.status}`);
   }
 
   const emit = (event: ChatStreamEvent) => {

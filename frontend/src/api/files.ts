@@ -14,10 +14,10 @@ import {
 
 export const uploadFileToPod = async ({ appName, file, targetDirectory }, clusterContext) => {
   if (!appName) {
-    throw new Error('缺少应用名，无法上传文件')
+    throw new Error('Missing app name, cannot upload file')
   }
   if (!file) {
-    throw new Error('请先选择要上传的文件')
+    throw new Error('Select a file to upload first')
   }
 
   const pod = await findExecPodForApp(appName, clusterContext)
@@ -43,10 +43,10 @@ export const uploadFileToPod = async ({ appName, file, targetDirectory }, cluste
 
 export const downloadFileFromPod = async ({ appName, remotePath }, clusterContext) => {
   if (!appName) {
-    throw new Error('缺少应用名，无法下载文件')
+    throw new Error('Missing app name, cannot download file')
   }
   if (!remotePath) {
-    throw new Error('请输入容器内文件路径')
+    throw new Error('Enter the file path inside the container')
   }
 
   const pod = await findExecPodForApp(appName, clusterContext)
@@ -73,7 +73,7 @@ export const downloadFileFromPod = async ({ appName, remotePath }, clusterContex
 
 export const listFilesInPod = async ({ appName, directory }, clusterContext) => {
   if (!appName) {
-    throw new Error('缺少应用名，无法读取目录')
+    throw new Error('Missing app name, cannot read directory')
   }
 
   const pod = await findExecPodForApp(appName, clusterContext)
@@ -96,10 +96,10 @@ export const listFilesInPod = async ({ appName, directory }, clusterContext) => 
 
 export const readFileFromPod = async ({ appName, remotePath }, clusterContext) => {
   if (!appName) {
-    throw new Error('缺少应用名，无法读取文件')
+    throw new Error('Missing app name, cannot read file')
   }
   if (!remotePath) {
-    throw new Error('缺少文件路径，无法读取文件')
+    throw new Error('Missing file path, cannot read file')
   }
 
   const pod = await findExecPodForApp(appName, clusterContext)
@@ -123,10 +123,10 @@ export const readFileFromPod = async ({ appName, remotePath }, clusterContext) =
 
 export const saveFileToPod = async ({ appName, remotePath, content }, clusterContext) => {
   if (!appName) {
-    throw new Error('缺少应用名，无法保存文件')
+    throw new Error('Missing app name, cannot save file')
   }
   if (!remotePath) {
-    throw new Error('缺少文件路径，无法保存文件')
+    throw new Error('Missing file path, cannot save file')
   }
 
   const pod = await findExecPodForApp(appName, clusterContext)

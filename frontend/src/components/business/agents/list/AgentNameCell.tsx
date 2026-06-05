@@ -1,6 +1,7 @@
 import { LoaderCircle, Pencil } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { AgentListItem } from '../../../../domains/agents/types'
+import { useI18n } from '../../../../i18n'
 
 interface AgentNameCellProps {
   item: AgentListItem
@@ -13,6 +14,7 @@ export function AgentNameCell({
   onOpenDetail,
   onRenameAlias,
 }: AgentNameCellProps) {
+  const { t } = useI18n()
   const displayName = item.aliasName || item.name
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(displayName)
@@ -80,7 +82,7 @@ export function AgentNameCell({
           {editing ? (
             <div className="flex h-7 min-w-0 max-w-[220px] items-center gap-1 rounded-[7px] border border-blue-200 bg-white px-2 shadow-[0_0_0_2px_rgba(37,99,235,0.08)]">
               <input
-                aria-label="修改 Agent 别名"
+                aria-label={t('agent.editAlias')}
                 className="min-w-0 flex-1 bg-transparent text-[14px]/5 font-medium text-zinc-950 outline-none"
                 disabled={saving}
                 onBlur={() => {
@@ -116,10 +118,10 @@ export function AgentNameCell({
                 {displayName}
               </button>
               <button
-                aria-label={`修改 ${displayName} 的别名`}
+                aria-label={t('agent.editAliasFor', { name: displayName })}
                 className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-zinc-400 opacity-0 transition hover:bg-zinc-100 hover:text-zinc-800 focus:opacity-100 focus:outline-none group-hover:opacity-100"
                 onClick={startEditing}
-                title="修改别名"
+                title={t('agent.editAlias')}
                 type="button"
               >
                 <Pencil className="h-3.5 w-3.5" />

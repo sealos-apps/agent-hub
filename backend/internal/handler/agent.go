@@ -409,7 +409,7 @@ func CreateAgent(c *gin.Context) {
 		APIServerKey:     apiServerKey,
 		IngressDomain:    ingressDomain,
 		BootstrapPhase:   kube.BootstrapPhasePending,
-		BootstrapMessage: "等待实例初始化",
+		BootstrapMessage: "waiting_for_bootstrap",
 		Status:           agent.StatusCreating,
 	}
 

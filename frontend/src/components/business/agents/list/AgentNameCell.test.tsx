@@ -18,7 +18,7 @@ describe('AgentNameCell', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: '修改 test-1 的别名' }))
-    const input = screen.getByRole('textbox', { name: '修改 Agent 别名' })
+    const input = screen.getByRole('textbox', { name: '修改别名' })
 
     fireEvent.change(input, { target: { value: '新的别名' } })
     fireEvent.keyDown(input, { key: 'Enter' })

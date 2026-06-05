@@ -8,30 +8,32 @@ import {
 import type { ReactNode } from 'react'
 import { StatusBadge } from '../../../../components/ui/StatusBadge'
 import { formatModelProviderLabel } from '../../../../domains/agents/aiproxy'
+import { translateAgentReason } from '../../../../domains/agents/reasons'
 import type { AgentListItem } from '../../../../domains/agents/types'
+import { useI18n, type TranslateFn } from '../../../../i18n'
 import { cn, formatTime } from '../../../../lib/format'
 
-function copyText(value: string, onErrorMessage?: (message: string) => void) {
+function copyText(value: string, t: TranslateFn, onErrorMessage?: (message: string) => void) {
   if (!value || typeof navigator === 'undefined' || !navigator.clipboard) {
-    onErrorMessage?.('当前环境不支持复制到剪贴板')
+    onErrorMessage?.(t('common.copyUnsupported'))
     return
   }
-  void navigator.clipboard.writeText(value).catch(() => onErrorMessage?.('复制失败，请手动复制'))
+  void navigator.clipboard.writeText(value).catch(() => onErrorMessage?.(t('common.copyFailed')))
 }
 
-function formatKeySourceLabel(value = '') {
+function formatKeySourceLabel(value = '', t: TranslateFn) {
   if (!value) return '--'
   const normalized = String(value).trim().toLowerCase()
-  if (!normalized || normalized === 'unset') return '未准备'
-  if (normalized === 'workspace-aiproxy') return '由工作区提供'
+  if (!normalized || normalized === 'unset') return t('agent.keyNotReady')
+  if (normalized === 'workspace-aiproxy') return t('agent.keyFromWorkspace')
   return value
 }
 
-function getWorkspaceEntry(item: AgentListItem) {
-  if (item.chatAvailable && item.terminalAvailable) return '对话 / 控制台'
-  if (item.chatAvailable) return '对话'
-  if (item.terminalAvailable) return '控制台'
-  return '初始化阶段'
+function getWorkspaceEntry(item: AgentListItem, t: TranslateFn) {
+  if (item.chatAvailable && item.terminalAvailable) return t('agent.entryChatConsole')
+  if (item.chatAvailable) return t('agent.entryChat')
+  if (item.terminalAvailable) return t('agent.entryConsole')
+  return t('agent.entryInitializing')
 }
 
 function OverviewPanel({
@@ -167,14 +169,16 @@ function InstanceSummaryCard({
   item,
   internalURL,
   onErrorMessage,
+  t,
 }: {
   item: AgentListItem
   internalURL: string
   onErrorMessage?: (message: string) => void
+  t: TranslateFn
 }) {
   const statusSummary = item.ready
-    ? item.bootstrapPhase || 'ready'
-    : item.bootstrapPhase || item.bootstrapMessage || 'initializing'
+    ? item.bootstrapPhase || t('agent.phaseReady')
+    : item.bootstrapPhase || (item.bootstrapMessage ? translateAgentReason(item.bootstrapMessage, t) : t('agent.phaseInitializing'))
 
   return (
     <OverviewPanel
@@ -182,11 +186,11 @@ function InstanceSummaryCard({
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           <StatusBadge compact status={item.status} />
           <StatusPill tone={item.ready ? 'active' : 'pending'}>
-            {item.ready ? '已就绪' : '准备中'}
+            {item.ready ? t('agent.ready') : t('agent.preparingShort')}
           </StatusPill>
         </div>
       )}
-      title="实例概览"
+      title={t('agent.overviewTitle')}
     >
       <div className="grid min-w-0 gap-3 min-[980px]:grid-cols-[minmax(260px,0.92fr)_minmax(330px,1.12fr)_minmax(300px,1fr)]">
         <div className="flex min-w-0 flex-col justify-between gap-3 rounded-[11px] border border-[#e5e7eb] bg-white px-4 py-3.5">
@@ -217,31 +221,31 @@ function InstanceSummaryCard({
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <CompactField label="运行阶段" mono value={statusSummary} />
-            <CompactField label="最近同步" value={formatTime(item.updatedAt)} />
+            <CompactField label={t('agent.runtimePhase')} mono value={statusSummary} />
+            <CompactField label={t('agent.lastSynced')} value={formatTime(item.updatedAt)} />
           </div>
         </div>
 
         <div className="grid min-w-0 gap-3 sm:grid-cols-3 min-[980px]:grid-cols-1 min-[1260px]:grid-cols-3">
-          <StatTile detail="CPU" icon={Cpu} label="计算" value={item.cpu} />
-          <StatTile detail="Memory" icon={Database} label="内存" value={item.memory} />
-          <StatTile detail="Storage" icon={HardDrive} label="存储" value={item.storage} />
+          <StatTile detail="CPU" icon={Cpu} label={t('agent.compute')} value={item.cpu} />
+          <StatTile detail="Memory" icon={Database} label={t('agent.memory')} value={item.memory} />
+          <StatTile detail="Storage" icon={HardDrive} label={t('agent.storage')} value={item.storage} />
         </div>
 
         <div className="grid min-w-0 gap-0 rounded-[11px] border border-[#e5e7eb] px-4 py-3">
-          <DetailRow label="命名空间" mono value={item.namespace} />
-          <DetailRow label="工作目录" mono value={item.workingDir || '--'} />
-          <DetailRow label="能力入口" value={getWorkspaceEntry(item)} />
+          <DetailRow label={t('agent.namespace')} mono value={item.namespace} />
+          <DetailRow label={t('agent.workDir')} mono value={item.workingDir || '--'} />
+          <DetailRow label={t('agent.workspaceEntry')} value={getWorkspaceEntry(item, t)} />
         </div>
       </div>
 
       <div className="rounded-[11px] border border-[#e5e7eb] bg-[#fafafa] px-3.5 py-3">
         <div className="flex items-center justify-between gap-3">
-          <div className="text-[13px]/5 text-[#71717a]">集群内服务地址</div>
+          <div className="text-[13px]/5 text-[#71717a]">{t('agent.serviceInternalURL')}</div>
           <button
             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[#71717a] transition hover:bg-white hover:text-[#18181b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#18181b]"
-            onClick={() => copyText(internalURL, onErrorMessage)}
-            title="复制服务地址"
+            onClick={() => copyText(internalURL, t, onErrorMessage)}
+            title={t('agent.copyServiceURL')}
             type="button"
           >
             <Copy className="h-4 w-4" />
@@ -253,15 +257,15 @@ function InstanceSummaryCard({
   )
 }
 
-function ModelEnvironmentCard({ item }: { item: AgentListItem }) {
+function ModelEnvironmentCard({ item, t }: { item: AgentListItem; t: TranslateFn }) {
   return (
     <OverviewPanel
       extra={(
         <span className="inline-flex h-7 items-center rounded-[7px] border border-[#e5e7eb] bg-[#fafafa] px-2.5 text-[12px]/4 font-medium text-[#3f3f46]">
-          {item.hasModelAPIKey ? '密钥已配置' : '密钥未配置'}
+          {item.hasModelAPIKey ? t('agent.keyConfigured') : t('agent.keyMissing')}
         </span>
       )}
-      title="模型环境"
+      title={t('agent.modelEnvironment')}
     >
       <div className="grid min-w-0 gap-3 min-[980px]:grid-cols-[minmax(260px,0.85fr)_minmax(260px,0.85fr)_minmax(360px,1.3fr)]">
         <div className="flex min-w-0 items-start gap-3 rounded-[11px] border border-[#e5e7eb] bg-white px-3.5 py-3">
@@ -279,8 +283,8 @@ function ModelEnvironmentCard({ item }: { item: AgentListItem }) {
         </div>
 
         <div className="grid min-w-0 gap-0 rounded-[11px] border border-[#e5e7eb] px-4 py-3">
-          <DetailRow label="模型渠道" value={formatModelProviderLabel(item.modelProvider)} />
-          <DetailRow label="密钥来源" value={formatKeySourceLabel(item.keySource)} />
+          <DetailRow label={t('agent.modelProvider')} value={formatModelProviderLabel(item.modelProvider)} />
+          <DetailRow label={t('agent.keySource')} value={formatKeySourceLabel(item.keySource, t)} />
         </div>
 
         <CompactField className="bg-white" label="Base URL" mono value={item.modelBaseURL || '--'} />
@@ -296,12 +300,13 @@ export function AgentDetailOverview({
   item: AgentListItem
   onErrorMessage?: (message: string) => void
 }) {
+  const { t } = useI18n()
   const internalURL = `${item.name}.${item.namespace}.svc.cluster.local:${item.template.port}`
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-3 pb-1 pr-1">
-      <InstanceSummaryCard internalURL={internalURL} item={item} onErrorMessage={onErrorMessage} />
-      <ModelEnvironmentCard item={item} />
+      <InstanceSummaryCard internalURL={internalURL} item={item} onErrorMessage={onErrorMessage} t={t} />
+      <ModelEnvironmentCard item={item} t={t} />
     </div>
   )
 }

@@ -716,17 +716,17 @@ func normalizeModelTypeKey(value string) string {
 func defaultModelTypeLabel(key string) string {
 	switch normalizeModelTypeKey(key) {
 	case "text":
-		return "普通模型"
+		return "Text Model"
 	case "multimodal":
-		return "多模态模型"
+		return "Multimodal Model"
 	case "image", "image_generation":
-		return "生图模型"
+		return "Image Model"
 	case "audio":
-		return "音频模型"
+		return "Audio Model"
 	case "embedding":
-		return "向量模型"
+		return "Embedding Model"
 	default:
-		return "其他模型"
+		return "Other Models"
 	}
 }
 

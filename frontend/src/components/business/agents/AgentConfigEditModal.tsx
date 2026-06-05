@@ -37,7 +37,7 @@ function parseStorageGi(value = "") {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : 10;
 }
 
-function formatCpuLabel(value = "", unit = "核") {
+function formatCpuLabel(value = "", unit = "core") {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return "--";
   if (normalized.endsWith("m")) {

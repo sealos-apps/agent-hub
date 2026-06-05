@@ -1,4 +1,5 @@
 import type { AgentTemplateDefinition, AgentTemplateId } from '../../../domains/agents/types'
+import { useI18n } from '../../../i18n'
 import { Button } from '../../ui/Button'
 import { Modal } from '../../ui/Modal'
 import { AgentTemplatePickerPanel } from './AgentTemplatePickerPanel'
@@ -20,19 +21,20 @@ export function AgentTemplatePickerModal({
   onSelect,
   onContinue,
 }: AgentTemplatePickerModalProps) {
+  const { t } = useI18n()
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) || null
 
   return (
     <Modal
-      description="按照参考版本的创建路径，先选择 Agent 模板，再进入资源配置。"
+      description={t('template.pickerDesc')}
       footer={
         <Button disabled={!selectedTemplate?.backendSupported} onClick={onContinue}>
-          下一步
+          {t('common.next')}
         </Button>
       }
       onClose={onClose}
       open={open}
-      title="选择 Agent 模板"
+      title={t('template.pickerTitle')}
       widthClassName="max-w-4xl"
     >
       <AgentTemplatePickerPanel onSelect={onSelect} templates={templates} />

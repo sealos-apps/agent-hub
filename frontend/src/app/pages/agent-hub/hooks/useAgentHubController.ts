@@ -249,7 +249,7 @@ export function useAgentHubController() {
           agentsPayload = await listAgents(nextClusterContext);
         } catch (agentsError) {
           agentsLoadMessage =
-            agentsError instanceof Error ? agentsError.message : "加载 Agent 列表失败";
+            agentsError instanceof Error ? agentsError.message : t("agent.loadListFailed");
           console.warn("[agent-hub] list agents failed", agentsError);
         }
 
@@ -306,13 +306,13 @@ export function useAgentHubController() {
           };
         }
 
-        setMessage(error instanceof Error ? error.message : "加载失败");
+        setMessage(error instanceof Error ? error.message : t("agent.loadFailed"));
         return null;
       } finally {
         setLoading(false);
       }
     },
-    [ensureWorkspaceTokenReady, resolveClusterContext],
+    [ensureWorkspaceTokenReady, resolveClusterContext, t],
   );
 
   const loadItemsSilently = useCallback(async () => {
@@ -416,11 +416,11 @@ export function useAgentHubController() {
       const template = templatesById[templateId] || null;
 
       if (!template) {
-        throw new Error("没有找到对应的模板目录项。");
+        throw new Error(t("agent.templateNotFound"));
       }
       if (!template.backendSupported) {
         throw new Error(
-          template.createDisabledReason || "当前模板暂未接入后端管理 API。",
+          template.createDisabledReason || t("agent.templateBackendUnsupported"),
         );
       }
 
@@ -561,10 +561,10 @@ export function useAgentHubController() {
       const template = templatesById[blueprint.productType];
 
       if (!template) {
-        throw new Error("没有找到对应的模板目录项。");
+        throw new Error(t("agent.templateNotFound"));
       }
       if (!aliasName) {
-        throw new Error("请填写 Agent 别名");
+        throw new Error(t("agent.aliasRequired"));
       }
       const requiredSettingError = getRequiredTemplateSettingError(
         blueprint,
@@ -585,7 +585,7 @@ export function useAgentHubController() {
               templateId: template.id,
               namespace: currentContext.namespace,
               status: "Running",
-              statusText: "运行中",
+              statusText: t("agent.statusRunning"),
               ready: true,
               createdAt: new Date().toISOString(),
             },
@@ -596,8 +596,8 @@ export function useAgentHubController() {
             })),
             access: [
               { key: "api", label: "API", enabled: true, url: `https://${createdName}.usw-1.sealos.app/v1` },
-              { key: "terminal", label: "终端", enabled: true, rootPath: template.workingDir },
-              { key: "files", label: "文件", enabled: true, rootPath: template.workingDir },
+              { key: "terminal", label: t("template.access.terminal"), enabled: true, rootPath: template.workingDir },
+              { key: "files", label: t("template.access.files"), enabled: true, rootPath: template.workingDir },
               { key: "web-ui", label: "Web UI", enabled: true, url: `https://${createdName}.usw-1.sealos.app` },
               {
                 key: "ssh",
@@ -630,13 +630,13 @@ export function useAgentHubController() {
               agent: template.settings.agent,
             },
             actions: [
-              { key: "open-chat", label: "对话", enabled: true },
-              { key: "open-terminal", label: "终端", enabled: true },
-              { key: "open-files", label: "文件", enabled: true },
-              { key: "open-settings", label: "设置", enabled: true },
-              { key: "run", label: "启动", enabled: false },
-              { key: "pause", label: "暂停", enabled: true },
-              { key: "delete", label: "删除", enabled: true },
+              { key: "open-chat", label: t("template.action.chat"), enabled: true },
+              { key: "open-terminal", label: t("template.access.terminal"), enabled: true },
+              { key: "open-files", label: t("template.access.files"), enabled: true },
+              { key: "open-settings", label: t("common.config"), enabled: true },
+              { key: "run", label: t("agent.start"), enabled: false },
+              { key: "pause", label: t("agent.pause"), enabled: true },
+              { key: "delete", label: t("common.delete"), enabled: true },
             ],
           };
           const createdItem = mapBackendAgentsToListItems(
@@ -740,13 +740,13 @@ export function useAgentHubController() {
       const storage = blueprint.storageLimit.trim();
 
       if (!cpu) {
-        throw new Error("请填写 CPU");
+        throw new Error(t("agent.cpuRequired"));
       }
       if (!memory) {
-        throw new Error("请填写内存");
+        throw new Error(t("agent.memoryRequired"));
       }
       if (!storage) {
-        throw new Error("请填写存储");
+        throw new Error(t("agent.storageRequired"));
       }
 
       setSubmitting(true);
@@ -773,7 +773,7 @@ export function useAgentHubController() {
                 : entry,
             ),
           );
-          setMessage(`已更新 ${getAgentLabel(item.aliasName, item.name)} 的运行时设置`);
+          setMessage(t("agent.runtimeUpdated", { name: getAgentLabel(item.aliasName, item.name) }));
           return { agentName: item.name, response: { ok: true } };
         }
 
@@ -787,7 +787,7 @@ export function useAgentHubController() {
         );
 
         setMessage(
-          `已更新 ${getAgentLabel(item.aliasName, item.name)} 的运行时设置`,
+          t("agent.runtimeUpdated", { name: getAgentLabel(item.aliasName, item.name) }),
         );
         const updatedItem = response?.agent
           ? mapBackendAgentsToListItems([response.agent], templates, clusterInfo)[0]
@@ -815,6 +815,7 @@ export function useAgentHubController() {
       resolveClusterContext,
       templates,
       mockMode,
+      t,
     ],
   );
 
@@ -825,10 +826,10 @@ export function useAgentHubController() {
       const template = templatesById[item.templateId];
 
       if (!template) {
-        throw new Error("没有找到对应的模板目录项。");
+        throw new Error(t("agent.templateNotFound"));
       }
       if (!aliasName) {
-        throw new Error("请填写 Agent 别名");
+        throw new Error(t("agent.aliasRequired"));
       }
       const requiredSettingError = getRequiredTemplateSettingError(
         blueprint,
@@ -855,7 +856,7 @@ export function useAgentHubController() {
                 : entry,
             ),
           );
-          setMessage(`已更新 ${getAgentLabel(aliasName, item.name)} 的 Agent 设置`);
+          setMessage(t("agent.settingsUpdated", { name: getAgentLabel(aliasName, item.name) }));
           return { agentName: item.name, aliasName, response: { ok: true } };
         }
 
@@ -873,7 +874,7 @@ export function useAgentHubController() {
         );
 
         setMessage(
-          `已更新 ${getAgentLabel(aliasName, item.name)} 的 Agent 设置`,
+          t("agent.settingsUpdated", { name: getAgentLabel(aliasName, item.name) }),
         );
         const updatedItem = response?.agent
           ? mapBackendAgentsToListItems([response.agent], templates, clusterInfo)[0]
@@ -904,6 +905,7 @@ export function useAgentHubController() {
       templates,
       templatesById,
       mockMode,
+      t,
     ],
   );
 
@@ -911,7 +913,7 @@ export function useAgentHubController() {
     async (item: AgentListItem, nextAliasName: string) => {
       const aliasName = nextAliasName.trim();
       if (!aliasName) {
-        throw new Error("请填写 Agent 别名");
+        throw new Error(t("agent.aliasRequired"));
       }
       if (aliasName === item.aliasName) {
         return { agentName: item.name, aliasName, response: { ok: true } };
@@ -938,7 +940,7 @@ export function useAgentHubController() {
                 : entry,
             ),
           );
-          setMessage(`已更新 ${getAgentLabel(aliasName, item.name)} 的别名`);
+          setMessage(t("agent.aliasUpdated", { name: getAgentLabel(aliasName, item.name) }));
           return { agentName: item.name, aliasName, response: { ok: true } };
         }
 
@@ -947,7 +949,7 @@ export function useAgentHubController() {
           { "agent-alias-name": aliasName },
           currentContext,
         );
-        setMessage(`已更新 ${getAgentLabel(aliasName, item.name)} 的别名`);
+        setMessage(t("agent.aliasUpdated", { name: getAgentLabel(aliasName, item.name) }));
 
         const updatedItem = response?.agent
           ? mapBackendAgentsToListItems([response.agent], templates, clusterInfo)[0]
@@ -988,6 +990,7 @@ export function useAgentHubController() {
       primeItem,
       resolveClusterContext,
       templates,
+      t,
     ],
   );
 
@@ -998,17 +1001,17 @@ export function useAgentHubController() {
       try {
         if (mockMode) {
           setItems((current) => current.filter((entry) => entry.name !== item.name));
-          setMessage(`已删除 ${getAgentLabel(item.aliasName, item.name)}`);
+          setMessage(t("agent.deleted", { name: getAgentLabel(item.aliasName, item.name) }));
           return;
         }
         await deleteAgent(item.name, currentContext);
-        setMessage(`已删除 ${getAgentLabel(item.aliasName, item.name)}`);
+        setMessage(t("agent.deleted", { name: getAgentLabel(item.aliasName, item.name) }));
         await loadAll();
       } finally {
         setDeleting(false);
       }
     },
-    [clusterContext, getAgentLabel, loadAll, mockMode, resolveClusterContext],
+    [clusterContext, getAgentLabel, loadAll, mockMode, resolveClusterContext, t],
   );
 
   const toggleItemState = useCallback(
@@ -1020,35 +1023,35 @@ export function useAgentHubController() {
           current.map((entry) => {
             if (entry.name !== item.name) return entry;
             if (entry.status === "running") {
-              return { ...entry, status: "stopped", statusText: "已暂停", rawStatus: "Paused", ready: false };
+              return { ...entry, status: "stopped", statusText: t("agent.statusStopped"), rawStatus: "Paused", ready: false };
             }
             if (entry.status === "stopped") {
-              return { ...entry, status: "running", statusText: "运行中", rawStatus: "Running", ready: true };
+              return { ...entry, status: "running", statusText: t("agent.statusRunning"), rawStatus: "Running", ready: true };
             }
             return entry;
           }),
         );
         if (item.status === "running") {
-          setMessage(`已暂停 ${getAgentLabel(item.aliasName, item.name)}`);
+          setMessage(t("agent.paused", { name: getAgentLabel(item.aliasName, item.name) }));
         } else if (item.status === "stopped") {
-          setMessage(`已启动 ${getAgentLabel(item.aliasName, item.name)}`);
+          setMessage(t("agent.started", { name: getAgentLabel(item.aliasName, item.name) }));
         }
         return;
       }
 
       if (item.status === "running") {
         await pauseAgent(item.name, currentContext);
-        setMessage(`已暂停 ${getAgentLabel(item.aliasName, item.name)}`);
+        setMessage(t("agent.paused", { name: getAgentLabel(item.aliasName, item.name) }));
       } else if (item.status === "stopped") {
         await runAgent(item.name, currentContext);
-        setMessage(`已启动 ${getAgentLabel(item.aliasName, item.name)}`);
+        setMessage(t("agent.started", { name: getAgentLabel(item.aliasName, item.name) }));
       } else {
         return;
       }
 
       await loadAll();
     },
-    [clusterContext, getAgentLabel, loadAll, mockMode, resolveClusterContext],
+    [clusterContext, getAgentLabel, loadAll, mockMode, resolveClusterContext, t],
   );
 
   const findItemByName = useCallback(

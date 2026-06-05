@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from '../../../../components/ui/DropdownMenu'
 import { StatusBadge } from '../../../../components/ui/StatusBadge'
+import { translateAgentReason } from '../../../../domains/agents/reasons'
 import type { AgentListItem } from '../../../../domains/agents/types'
 import { useI18n } from '../../../../i18n'
 
@@ -51,6 +52,7 @@ export function AgentDetailHeader({
   extraActions,
 }: AgentDetailHeaderProps) {
   const { t } = useI18n()
+  const reason = (value?: string) => value ? translateAgentReason(value, t) : ''
   const toggleLabel = item.status === 'running' ? t('agent.pauseInstance') : t('agent.startInstance')
   const toggleDisabled = item.status === 'creating'
   const toggleTitle = toggleDisabled ? t('agent.creatingCannotToggle') : toggleLabel
@@ -59,7 +61,7 @@ export function AgentDetailHeader({
     icon: Terminal,
     onClick: onOpenTerminalWindow,
     disabled: !item.terminalAvailable,
-    title: item.terminalAvailable ? t('agent.openConsole') : item.terminalDisabledReason || t('agent.consoleUnavailable'),
+    title: item.terminalAvailable ? t('agent.openConsole') : reason(item.terminalDisabledReason) || t('agent.consoleUnavailable'),
   }
 
   return (

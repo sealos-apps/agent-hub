@@ -1,4 +1,5 @@
 import { Info, X } from 'lucide-react'
+import { useI18n } from '../../../../i18n'
 
 interface AgentHubOverviewProps {
   message: string
@@ -6,6 +7,7 @@ interface AgentHubOverviewProps {
 }
 
 export function AgentHubOverview({ message, onClose }: AgentHubOverviewProps) {
+  const { t } = useI18n()
   if (!message) return null
 
   return (
@@ -16,7 +18,7 @@ export function AgentHubOverview({ message, onClose }: AgentHubOverviewProps) {
       <div className="min-w-0 flex-1 leading-6">{message}</div>
       {onClose ? (
         <button
-          aria-label="关闭提示"
+          aria-label={t('common.closeNotice')}
           className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-sky-600 transition hover:bg-white/80 hover:text-sky-900"
           onClick={onClose}
           type="button"

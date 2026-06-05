@@ -1,4 +1,5 @@
 import type { AgentFileItem, FilesSessionState } from '../../../domains/agents/types'
+import { useI18n } from '../../../i18n'
 import { Button } from '../../ui/Button'
 import { Modal } from '../../ui/Modal'
 import { AgentFilesWorkspace } from './AgentFilesWorkspace'
@@ -42,19 +43,20 @@ export function AgentFilesModal({
   onCreateFile,
   onUpload,
 }: AgentFilesModalProps) {
+  const { t } = useI18n()
   const displayName = session?.resource.aliasName || session?.resource.name || '--'
 
   return (
     <Modal
-      description="管理当前 Agent 工作目录中的文件，支持目录切换、Markdown 预览与常用文本编辑。"
+      description={t('files.modalDesc')}
       footer={
         <Button onClick={onClose} variant="secondary">
-          关闭
+          {t('common.close')}
         </Button>
       }
       onClose={onClose}
       open={open}
-      title={`文件管理 · ${displayName}`}
+      title={t('files.modalTitle', { name: displayName })}
       widthClassName="max-w-7xl"
     >
       <AgentFilesWorkspace

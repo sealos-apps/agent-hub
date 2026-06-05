@@ -37,6 +37,7 @@ import { Button } from '../../../components/ui/Button'
 import { Modal } from '../../../components/ui/Modal'
 import { mapBackendAgentsToListItems } from '../../../domains/agents/mappers'
 import { hydrateTemplateCatalog } from '../../../domains/agents/templates'
+import { translateAgentReason } from '../../../domains/agents/reasons'
 import type {
   AgentConsoleServiceItem,
   AgentFileItem,
@@ -46,7 +47,7 @@ import type {
 } from '../../../domains/agents/types'
 import { useI18n } from '../../../i18n'
 import { addSealosAppEventListener, getSealosSession } from '../../../sealosSdk'
-import { useAgentFiles, type UploadFileEntry } from './hooks/useAgentFiles'
+import { isTransientAgentFileConnectionError, useAgentFiles, type UploadFileEntry } from './hooks/useAgentFiles'
 import { useAgentTerminal } from './hooks/useAgentTerminal'
 import {
   applyAutoExpandChain,
@@ -358,11 +359,6 @@ const sanitizeExplorerEntryName = (value: string) => {
   return name === '.' || name === '..' ? '' : name
 }
 
-const isTransientFileConnectionError = (error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error || '')
-  return message.includes('文件连接尚未建立') || message.includes('文件连接尚未就绪')
-}
-
 const setDocumentFavicon = (href: string) => {
   if (typeof document === 'undefined') return () => {}
 
@@ -501,11 +497,12 @@ function FileTabPane({
   onChange: (tabId: string, content: string) => void
   tab: FileTab
 }) {
+  const { t } = useI18n()
   if (tab.loading) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-zinc-500">
         <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-        正在读取文件
+        {t('console.reading')}
       </div>
     )
   }
@@ -523,7 +520,7 @@ function FileTabPane({
   if (!tab.editable) {
     return (
       <div className="flex h-full items-center justify-center bg-[#05070a] px-8 text-center text-sm text-zinc-400">
-        当前文件类型暂不支持预览。
+        {t('files.previewUnsupported')}
       </div>
     )
   }
@@ -756,6 +753,7 @@ export function AgentConsoleWindowPage() {
     uploadFiles,
   } = useAgentFiles({
     clusterContext,
+    t,
   })
 
   const displayName = useMemo(
@@ -1018,13 +1016,13 @@ export function AgentConsoleWindowPage() {
           [normalizeExplorerPath(result.path || normalizedPath)]: sortEntries(result.items || []),
         }))
       } catch (error) {
-        if (isTransientFileConnectionError(error)) {
+        if (isTransientAgentFileConnectionError(error)) {
           setExplorerErrors((current) => ({ ...current, [normalizedPath]: '' }))
           return
         }
         setExplorerErrors((current) => ({
           ...current,
-          [normalizedPath]: error instanceof Error ? error.message : '目录读取失败',
+          [normalizedPath]: error instanceof Error ? error.message : t('files.readDirectoryFailed'),
         }))
       } finally {
         setExplorerLoading((current) => ({ ...current, [normalizedPath]: false }))
@@ -1071,7 +1069,7 @@ export function AgentConsoleWindowPage() {
           setResourceSearchError('')
         } catch (error) {
           if (!active) return
-          if (isTransientFileConnectionError(error)) {
+          if (isTransientAgentFileConnectionError(error)) {
             setResourceSearchError('')
             return
           }
@@ -1274,7 +1272,7 @@ export function AgentConsoleWindowPage() {
         )
         return true
       } catch (error) {
-        const message = error instanceof Error ? error.message : '保存文件失败'
+        const message = error instanceof Error ? error.message : t('files.saveFailed')
         setTabs((current) =>
           current.map((tab) =>
             tab.id === tabId && tab.type === 'file'
@@ -1439,7 +1437,7 @@ export function AgentConsoleWindowPage() {
                   ...tab,
                   loading: false,
                   loaded: false,
-                  error: error instanceof Error ? error.message : '文件读取失败',
+                  error: error instanceof Error ? error.message : t('files.readFileFailed'),
                   saving: false,
                 }
               : tab,
@@ -2219,12 +2217,12 @@ export function AgentConsoleWindowPage() {
           <span className="truncate">{displayName}</span>
           <span className="shrink-0 text-white/55">/</span>
           <span className="truncate font-mono text-[11px] text-white/95">
-            {item?.name || activeAgentName || '等待 Agent'}
+            {item?.name || activeAgentName || t('agent.waiting')}
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-3 text-white/90">
           {item?.namespace ? <span className="hidden sm:inline">{item.namespace}</span> : null}
-          <span>{item?.statusText || status}</span>
+          <span>{item?.bootstrapMessage ? translateAgentReason(item.bootstrapMessage, t) : item?.statusText || status}</span>
         </div>
       </footer>
     </main>

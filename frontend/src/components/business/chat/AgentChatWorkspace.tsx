@@ -1,6 +1,7 @@
 import { Bot, Send } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ChatSessionState } from '../../../domains/agents/types'
+import { useI18n } from '../../../i18n'
 import { Button } from '../../ui/Button'
 import { Card } from '../../ui/Card'
 
@@ -18,9 +19,12 @@ export function AgentChatWorkspace({
   onDraftChange,
   onSend,
   onOpen,
-  emptyTitle = '对话工作台',
-  emptyDescription = '打开后可以直接和 Agent 对话，验证回复效果。',
+  emptyTitle,
+  emptyDescription,
 }: AgentChatWorkspaceProps) {
+  const { t } = useI18n()
+  const resolvedEmptyTitle = emptyTitle || t('chat.workspace')
+  const resolvedEmptyDescription = emptyDescription || t('chat.defaultEmptyDesc')
   const [isComposing, setIsComposing] = useState(false)
   const messagesContainerRef = useRef<HTMLDivElement | null>(null)
 
@@ -36,13 +40,13 @@ export function AgentChatWorkspace({
         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
           <Bot size={22} />
         </div>
-        <div className="mt-4 text-[15px] font-semibold text-zinc-950">{emptyTitle}</div>
-        <p className="mt-2 max-w-lg text-sm leading-6 text-zinc-500">{emptyDescription}</p>
+        <div className="mt-4 text-[15px] font-semibold text-zinc-950">{resolvedEmptyTitle}</div>
+        <p className="mt-2 max-w-lg text-sm leading-6 text-zinc-500">{resolvedEmptyDescription}</p>
         {onOpen ? (
           <div className="mt-4">
             <Button className="h-10 rounded-[10px] px-4 text-[14px] leading-5" onClick={onOpen}>
               <Bot size={16} />
-              开始对话
+              {t('chat.start')}
             </Button>
           </div>
         ) : null}
@@ -56,10 +60,10 @@ export function AgentChatWorkspace({
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
             <div className="text-[18px]/7 font-semibold tracking-[-0.01em] text-zinc-950">
-              对话工作台
+              {t('chat.workspace')}
             </div>
             <div className="mt-2 text-sm leading-6 text-zinc-500">
-              与当前 Agent 进行实时对话验证。
+              {t('chat.workspaceDesc')}
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-2.5 text-[12px] text-zinc-500">
@@ -67,17 +71,17 @@ export function AgentChatWorkspace({
                 {session.resource.aliasName || session.resource.name}
               </span>
               <span className="inline-flex h-7 items-center rounded-[8px] border border-zinc-200 bg-zinc-50 px-2.5 font-medium text-zinc-500">
-                模型：{session.resource.model || '--'}
+                {t('chat.model', { model: session.resource.model || '--' })}
               </span>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-[12px] text-zinc-500 xl:justify-end">
             <span className="inline-flex h-7 items-center rounded-[8px] border border-zinc-200 bg-zinc-50 px-2.5 font-medium text-zinc-500">
-              状态：{session.status}
+              {t('chat.status', { status: session.status })}
             </span>
             <span className="inline-flex h-7 items-center rounded-[8px] border border-zinc-200 bg-zinc-50 px-2.5 font-medium text-zinc-500">
-              通道：{session.transport}
+              {t('chat.transport', { transport: session.transport })}
             </span>
           </div>
         </div>
@@ -86,8 +90,8 @@ export function AgentChatWorkspace({
       <div className="px-6 pb-6 pt-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
         <div className="flex min-h-[350px] flex-col overflow-hidden rounded-[14px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] xl:h-full xl:min-h-[350px] xl:min-h-0">
           <div className="border-b border-zinc-100 px-4 py-4">
-            <div className="text-[12px]/5 font-semibold text-zinc-950">消息记录</div>
-            <div className="mt-1 text-[11px]/4 text-zinc-500">支持查看上下文消息并直接发送新的测试请求。</div>
+            <div className="text-[12px]/5 font-semibold text-zinc-950">{t('chat.messages')}</div>
+            <div className="mt-1 text-[11px]/4 text-zinc-500">{t('chat.messagesDesc')}</div>
           </div>
 
           <div
@@ -97,7 +101,7 @@ export function AgentChatWorkspace({
             <div className="space-y-3">
             {!session.messages.length ? (
                 <div className="flex min-h-[220px] items-center justify-center rounded-[14px] border border-dashed border-zinc-200 bg-white px-5 text-center text-sm text-zinc-400">
-                发送第一条消息开始对话。
+                {t('chat.emptyMessages')}
                 </div>
             ) : (
               session.messages.map((message) => (
@@ -117,7 +121,7 @@ export function AgentChatWorkspace({
                         message.role === 'user' ? 'text-white/80' : 'text-zinc-500'
                       }`}
                     >
-                      {message.role === 'user' ? '我' : 'Agent'}
+                      {message.role === 'user' ? t('chat.me') : 'Agent'}
                     </div>
                     {message.content}
                   </div>
@@ -150,7 +154,7 @@ export function AgentChatWorkspace({
                   if (!session.draft.trim() || session.status === 'connecting') return
                   onSend()
                 }}
-                placeholder="输入测试消息..."
+                placeholder={t('chat.inputPlaceholder')}
                 value={session.draft}
               />
               <Button
@@ -159,7 +163,7 @@ export function AgentChatWorkspace({
                 leading={<Send size={16} />}
                 onClick={onSend}
               >
-                {session.status === 'connecting' ? '发送中' : '发送'}
+                {session.status === 'connecting' ? t('chat.sending') : t('chat.send')}
               </Button>
             </div>
           </div>
