@@ -122,7 +122,30 @@ const resolveInitialDirectory = (resource: AgentListItem) => {
   return normalizePath(`/${raw.replace(/^\/+/, '')}`, fallbackRootPath)
 }
 
-const createFilesSession = (resource: AgentListItem, t: TranslateFn): FilesSessionState => ({
+type AgentFilesErrorCode =
+  | 'file_connection_closed'
+  | 'file_connection_error'
+  | 'file_connection_not_established'
+  | 'file_connection_not_ready'
+  | 'file_request_timeout'
+
+class AgentFilesError extends Error {
+  code: AgentFilesErrorCode
+
+  constructor(code: AgentFilesErrorCode, message: string) {
+    super(message)
+    this.name = 'AgentFilesError'
+    this.code = code
+  }
+}
+
+const createAgentFilesError = (code: AgentFilesErrorCode, message: string) => new AgentFilesError(code, message)
+
+export const isTransientAgentFileConnectionError = (error: unknown) =>
+  error instanceof AgentFilesError &&
+  (error.code === 'file_connection_not_established' || error.code === 'file_connection_not_ready')
+
+const createFilesSession = (resource: AgentListItem, translate: TranslateFn): FilesSessionState => ({
   resource,
   status: 'initializing',
   error: '',
@@ -141,7 +164,7 @@ const createFilesSession = (resource: AgentListItem, t: TranslateFn): FilesSessi
   draftContent: '',
   previewObjectUrl: '',
   previewObjectType: '',
-  activity: t('files.initializing'),
+  activity: translate('files.initializing'),
   browsing: false,
   previewing: false,
   reading: false,
@@ -401,6 +424,13 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
   const reconnectAttemptsRef = useRef(0)
   const reconnectTimerRef = useRef<number | null>(null)
   const activeResourceRef = useRef<AgentListItem | null>(null)
+  const tRef = useRef(t)
+
+  useEffect(() => {
+    tRef.current = t
+  }, [t])
+
+  const translate = useCallback<TranslateFn>((key, values) => tRef.current(key, values), [])
 
   const syncSession = useCallback((updater: (current: FilesSessionState | null) => FilesSessionState | null) => {
     setFilesSession((current) => {
@@ -421,15 +451,20 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
     }
   }, [])
 
-  const rejectReadyGate = useCallback((message: string) => {
-    readyGateRef.current?.reject(new Error(message))
+  const settleReadyGateClosed = useCallback(() => {
+    readyGateRef.current?.resolve()
     readyGateRef.current = null
   }, [])
 
-  const rejectPendingRequests = useCallback((message: string) => {
+  const rejectReadyGate = useCallback((message: string, code: AgentFilesErrorCode = 'file_connection_closed') => {
+    readyGateRef.current?.reject(createAgentFilesError(code, message))
+    readyGateRef.current = null
+  }, [])
+
+  const rejectPendingRequests = useCallback((message: string, code: AgentFilesErrorCode = 'file_connection_closed') => {
     pendingRequestsRef.current.forEach((pending) => {
       clearPendingRequestTimeout(pending)
-      pending.reject(new Error(message))
+      pending.reject(createAgentFilesError(code, message))
     })
     pendingRequestsRef.current.clear()
   }, [clearPendingRequestTimeout])
@@ -439,12 +474,12 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
     socketRef.current = null
     authSentRef.current = false
     socketReadyRef.current = false
-    rejectReadyGate(t('files.connectionClosed'))
+    settleReadyGateClosed()
 
     if (socket && socket.readyState <= WebSocket.OPEN) {
       socket.close(1000, 'manual-close')
     }
-  }, [rejectReadyGate, t])
+  }, [settleReadyGateClosed])
 
   const clearReconnectTimer = useCallback(() => {
     if (reconnectTimerRef.current !== null) {
@@ -456,12 +491,12 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
   const waitForSocketReady = useCallback(async (timeoutMs = fileSocketReadyTimeoutMs) => {
     const gate = readyGateRef.current
     if (!gate) {
-      throw new Error(t('files.connectionNotEstablished'))
+      throw createAgentFilesError('file_connection_not_established', translate('files.connectionNotEstablished'))
     }
 
     await new Promise<void>((resolve, reject) => {
       const timeoutId = window.setTimeout(() => {
-        reject(new Error(t('files.connectionNotReady')))
+        reject(createAgentFilesError('file_connection_not_ready', translate('files.connectionNotReady')))
       }, timeoutMs)
 
       gate.promise
@@ -471,15 +506,15 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
         })
         .catch((error) => {
           window.clearTimeout(timeoutId)
-          reject(error instanceof Error ? error : new Error(t('files.connectionError')))
+          reject(error instanceof Error ? error : createAgentFilesError('file_connection_error', translate('files.connectionError')))
         })
     })
 
     const socket = socketRef.current
     if (!socket || socket.readyState !== WebSocket.OPEN || !socketReadyRef.current) {
-      throw new Error(t('files.connectionNotEstablished'))
+      throw createAgentFilesError('file_connection_not_established', translate('files.connectionNotEstablished'))
     }
-  }, [t])
+  }, [])
 
   const sendRequest = useCallback(
     (type: string, data: Record<string, unknown>) =>
@@ -489,7 +524,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
 
           const socket = socketRef.current
           if (!socket || socket.readyState !== WebSocket.OPEN) {
-            throw new Error(t('files.connectionNotEstablished'))
+            throw createAgentFilesError('file_connection_not_established', translate('files.connectionNotEstablished'))
           }
 
           const requestId = nextRequestId(type)
@@ -497,7 +532,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
             const pending = pendingRequestsRef.current.get(requestId)
             if (!pending) return
             pendingRequestsRef.current.delete(requestId)
-            pending.reject(new Error(t('files.requestTimeout')))
+            pending.reject(createAgentFilesError('file_request_timeout', translate('files.requestTimeout')))
           }, fileRequestTimeoutMs)
 
           pendingRequestsRef.current.set(requestId, {
@@ -523,17 +558,17 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
         }
 
         void execute().catch((error) => {
-          reject(error instanceof Error ? error : new Error(t('files.requestFailed')))
+          reject(error instanceof Error ? error : new Error(translate('files.requestFailed')))
         })
       }),
-    [clearPendingRequestTimeout, nextRequestId, t, waitForSocketReady],
+    [clearPendingRequestTimeout, nextRequestId, waitForSocketReady],
   )
 
   const ensureDiscardChanges = useCallback(() => {
     const current = filesSessionRef.current
     if (!current?.dirty) return true
-    return window.confirm(t('files.discardUnsavedConfirm'))
-  }, [t])
+    return window.confirm(translate('files.discardUnsavedConfirm'))
+  }, [])
 
   const resetDirectoryListings = useCallback(() => {
     browseRequestSeqRef.current += 1
@@ -628,11 +663,11 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
             ...session,
             selectedItem: item,
             error: '',
-            activity: item.type === 'dir' ? t('files.selectedDirectory', { name: item.name }) : t('files.selectedFile', { name: item.name }),
+            activity: item.type === 'dir' ? translate('files.selectedDirectory', { name: item.name }) : translate('files.selectedFile', { name: item.name }),
           }
         : session,
     )
-  }, [syncSession, t])
+  }, [syncSession])
 
   const applyDirectoryListing = useCallback(
     (
@@ -677,11 +712,11 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
           reading: openedMatch ? session.reading : false,
           saving: openedMatch ? session.saving : false,
           downloading: openedMatch ? session.downloading : false,
-          activity: t('files.directoryLoaded', { path: listing.path }),
+          activity: translate('files.directoryLoaded', { path: listing.path }),
         }
       })
     },
-    [syncSession, t],
+    [syncSession],
   )
 
   const fetchDirectoryListing = useCallback(
@@ -755,7 +790,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
                 ...session,
                 status: 'working',
                 error: '',
-                activity: t('files.loadingDirectory', { path: requestedPath }),
+                activity: translate('files.loadingDirectory', { path: requestedPath }),
                 browsing: true,
               }
             : session,
@@ -784,14 +819,14 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
                 ...session,
                 status: 'error',
                 browsing: false,
-                error: error instanceof Error ? error.message : t('files.readDirectoryFailed'),
-                activity: error instanceof Error ? error.message : t('files.readDirectoryFailed'),
+                error: error instanceof Error ? error.message : translate('files.readDirectoryFailed'),
+                activity: error instanceof Error ? error.message : translate('files.readDirectoryFailed'),
               }
             : session,
         )
       }
     },
-    [applyDirectoryListing, fetchDirectoryListing, syncSession, t],
+    [applyDirectoryListing, fetchDirectoryListing, syncSession],
   )
 
   const searchFiles = useCallback(
@@ -828,7 +863,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
     async (targetPath?: string, options?: { force?: boolean }) => {
       const current = filesSessionRef.current
       if (!current) {
-        throw new Error(t('files.sessionMissing'))
+        throw new Error(translate('files.sessionMissing'))
       }
 
       const requestedPath = normalizePath(
@@ -841,14 +876,14 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
         items: listing.items,
       }
     },
-    [fetchDirectoryListing, t],
+    [fetchDirectoryListing],
   )
 
   const readFile = useCallback(
     async (targetPath: string, options?: { force?: boolean }): Promise<FileReadResponse> => {
       const requestedPath = normalizePath(targetPath || '', '')
       if (!requestedPath) {
-        throw new Error(t('files.pathEmpty'))
+        throw new Error(translate('files.pathEmpty'))
       }
 
       const fetchLatest = () => {
@@ -917,7 +952,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
         stale: false,
       }
     },
-    [sendRequest, t],
+    [sendRequest],
   )
 
   const refreshDirectory = useCallback((targetPath?: string) => {
@@ -947,8 +982,8 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
               dirty: false,
               activity:
                 mode === 'edit'
-                  ? t('files.loadingForEdit', { name: item.name })
-                  : t('files.previewing', { name: item.name }),
+                  ? translate('files.loadingForEdit', { name: item.name })
+                  : translate('files.previewing', { name: item.name }),
             }
           : session,
       )
@@ -990,8 +1025,8 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
                 dirty: false,
                 activity:
                   mode === 'edit'
-                    ? t('files.editing', { name: item.name })
-                    : t('files.previewOpened', { name: item.name }),
+                    ? translate('files.editing', { name: item.name })
+                    : translate('files.previewOpened', { name: item.name }),
               }
             : session,
         )
@@ -1003,14 +1038,14 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
                 status: 'error',
                 previewing: false,
                 reading: false,
-                error: error instanceof Error ? error.message : t('files.readFileFailed'),
-                activity: error instanceof Error ? error.message : t('files.readFileFailed'),
+                error: error instanceof Error ? error.message : translate('files.readFileFailed'),
+                activity: error instanceof Error ? error.message : translate('files.readFileFailed'),
               }
             : session,
         )
       }
     },
-    [sendRequest, syncSession, t],
+    [sendRequest, syncSession],
   )
 
   const loadBinaryPreview = useCallback(
@@ -1032,7 +1067,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
               draftContent: '',
               previewObjectType: '',
               dirty: false,
-              activity: t('files.previewing', { name: item.name }),
+              activity: translate('files.previewing', { name: item.name }),
             }
           : session,
       )
@@ -1076,7 +1111,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
                 previewing: false,
                 previewObjectUrl: objectUrl,
                 previewObjectType: blob.type,
-                activity: t('files.previewOpened', { name: item.name }),
+                activity: translate('files.previewOpened', { name: item.name }),
               }
             : session,
         )
@@ -1087,14 +1122,14 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
                 ...session,
                 status: 'error',
                 previewing: false,
-                error: error instanceof Error ? error.message : t('files.previewFailed'),
-                activity: error instanceof Error ? error.message : t('files.previewFailed'),
+                error: error instanceof Error ? error.message : translate('files.previewFailed'),
+                activity: error instanceof Error ? error.message : translate('files.previewFailed'),
               }
             : session,
         )
       }
     },
-    [sendRequest, syncSession, t],
+    [sendRequest, syncSession],
   )
 
   const previewEntry = useCallback(async (item: AgentFileItem) => {
@@ -1123,7 +1158,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
               selectedItem: item,
               openedItem: null,
               error: '',
-              activity: t('files.previewUnsupported'),
+              activity: translate('files.previewUnsupported'),
             }
           : session,
       )
@@ -1141,7 +1176,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
               selectedItem: item,
               detailMode: 'preview',
               error: '',
-              activity: t('files.previewOpened', { name: item.name }),
+              activity: translate('files.previewOpened', { name: item.name }),
             }
           : session,
       )
@@ -1168,11 +1203,11 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
             selectedItem: item,
             openedItem: null,
             error: '',
-            activity: t('files.inlinePreviewUnsupported'),
+            activity: translate('files.inlinePreviewUnsupported'),
           }
         : session,
     )
-  }, [ensureDiscardChanges, listDirectory, loadBinaryPreview, loadTextFile, resetOpenedState, syncSession, t])
+  }, [ensureDiscardChanges, listDirectory, loadBinaryPreview, loadTextFile, resetOpenedState, syncSession])
 
   const editEntry = useCallback(async (item: AgentFileItem) => {
     if (item.type === 'dir') {
@@ -1202,8 +1237,8 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
               ...session,
               selectedItem: item,
               openedItem: null,
-              error: t('files.editUnsupported'),
-              activity: t('files.editUnsupportedDesc'),
+              error: translate('files.editUnsupported'),
+              activity: translate('files.editUnsupportedDesc'),
             }
           : session,
       )
@@ -1224,7 +1259,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
               reading: false,
               draftContent: session.dirty ? session.draftContent : session.previewContent,
               error: '',
-              activity: t('files.editing', { name: item.name }),
+              activity: translate('files.editing', { name: item.name }),
             }
           : session,
       )
@@ -1233,7 +1268,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
 
     if (!ensureDiscardChanges()) return
     await loadTextFile(item, 'edit')
-  }, [ensureDiscardChanges, listDirectory, loadTextFile, resetOpenedState, syncSession, t])
+  }, [ensureDiscardChanges, listDirectory, loadTextFile, resetOpenedState, syncSession])
 
   const openEntry = useCallback(async (item: AgentFileItem) => {
     await previewEntry(item)
@@ -1280,7 +1315,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
               status: 'working',
               error: '',
               saving: true,
-              activity: t('files.saving', { name: activeItem.name }),
+              activity: translate('files.saving', { name: activeItem.name }),
             }
           : session,
       )
@@ -1324,7 +1359,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
                     }
                   : session.openedItem,
               dirty: false,
-              activity: t('files.saveSuccess', { path: activeItem.path }),
+              activity: translate('files.saveSuccess', { path: activeItem.path }),
             }
           : session,
       )
@@ -1341,13 +1376,13 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
               ...session,
               status: 'error',
               saving: false,
-              error: error instanceof Error ? error.message : t('files.saveFailed'),
-              activity: error instanceof Error ? error.message : t('files.saveFailed'),
+              error: error instanceof Error ? error.message : translate('files.saveFailed'),
+              activity: error instanceof Error ? error.message : translate('files.saveFailed'),
             }
           : session,
       )
     }
-  }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession, t])
+  }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession])
 
   const saveFile = useCallback(async (path: string, content: string) => {
     const normalizedPath = normalizePath(path, '')
@@ -1377,7 +1412,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
             ...session,
             status: 'working',
             error: '',
-            activity: t('files.creatingFile', { name: nextName }),
+            activity: translate('files.creatingFile', { name: nextName }),
           }
         : session,
     )
@@ -1400,13 +1435,13 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
           ? {
               ...session,
               status: 'error',
-              error: error instanceof Error ? error.message : t('files.createFileFailed'),
-              activity: error instanceof Error ? error.message : t('files.createFileFailed'),
+              error: error instanceof Error ? error.message : translate('files.createFileFailed'),
+              activity: error instanceof Error ? error.message : translate('files.createFileFailed'),
             }
           : session,
       )
     }
-  }, [editEntry, invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession, t])
+  }, [editEntry, invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession])
 
   const createDirectory = useCallback(async (name: string, targetDirectory?: string) => {
     const current = filesSessionRef.current
@@ -1421,7 +1456,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
             ...session,
             status: 'working',
             error: '',
-            activity: t('files.creatingDirectory', { name: nextName }),
+            activity: translate('files.creatingDirectory', { name: nextName }),
           }
         : session,
     )
@@ -1437,13 +1472,13 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
           ? {
               ...session,
               status: 'error',
-              error: error instanceof Error ? error.message : t('files.createDirectoryFailed'),
-              activity: error instanceof Error ? error.message : t('files.createDirectoryFailed'),
+              error: error instanceof Error ? error.message : translate('files.createDirectoryFailed'),
+              activity: error instanceof Error ? error.message : translate('files.createDirectoryFailed'),
             }
           : session,
       )
     }
-  }, [invalidateDirectoryListing, listDirectory, sendRequest, syncSession, t])
+  }, [invalidateDirectoryListing, listDirectory, sendRequest, syncSession])
 
   const deleteEntry = useCallback(async (path: string) => {
     const current = filesSessionRef.current
@@ -1458,7 +1493,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
             ...session,
             status: 'working',
             error: '',
-            activity: t('files.deleting', { path }),
+            activity: translate('files.deleting', { path }),
           }
         : session,
     )
@@ -1499,7 +1534,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
                   ? ''
                   : session.previewObjectType,
               dirty: session.openedItem?.path === path ? false : session.dirty,
-              activity: t('files.deleteSuccess', { path }),
+              activity: translate('files.deleteSuccess', { path }),
             }
           : session,
       )
@@ -1512,14 +1547,14 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
           ? {
               ...session,
               status: 'error',
-              error: error instanceof Error ? error.message : t('files.deleteFailed'),
-              activity: error instanceof Error ? error.message : t('files.deleteFailed'),
+              error: error instanceof Error ? error.message : translate('files.deleteFailed'),
+              activity: error instanceof Error ? error.message : translate('files.deleteFailed'),
             }
           : session,
       )
       return false
     }
-  }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession, t])
+  }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession])
 
   const renameEntry = useCallback(async (fromPath: string, toPath: string) => {
     const from = normalizePath(fromPath, '')
@@ -1539,7 +1574,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
             ...session,
             status: 'working',
             error: '',
-            activity: t('files.renaming', { path: from }),
+            activity: translate('files.renaming', { path: from }),
           }
         : session,
     )
@@ -1554,7 +1589,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
               error: '',
               selectedItem: session.selectedItem?.path === from ? { ...session.selectedItem, path: to, name: nextName } : session.selectedItem,
               openedItem: session.openedItem?.path === from ? { ...session.openedItem, path: to, name: nextName } : session.openedItem,
-              activity: t('files.renameSuccess', { path: from }),
+              activity: translate('files.renameSuccess', { path: from }),
             }
           : session,
       )
@@ -1579,14 +1614,14 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
           ? {
               ...session,
               status: 'error',
-              error: error instanceof Error ? error.message : t('files.renameFailed'),
-              activity: error instanceof Error ? error.message : t('files.renameFailed'),
+              error: error instanceof Error ? error.message : translate('files.renameFailed'),
+              activity: error instanceof Error ? error.message : translate('files.renameFailed'),
             }
           : session,
       )
       return false
     }
-  }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession, t])
+  }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession])
 
   const downloadEntry = useCallback(async (path: string) => {
     if (!path) return
@@ -1598,7 +1633,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
             status: 'working',
             error: '',
             downloading: true,
-            activity: t('files.downloading', { path }),
+            activity: translate('files.downloading', { path }),
           }
         : session,
     )
@@ -1625,7 +1660,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
               ...session,
               status: 'connected',
               downloading: false,
-              activity: t('files.downloadSuccess', { name: filename }),
+              activity: translate('files.downloadSuccess', { name: filename }),
             }
           : session,
       )
@@ -1636,13 +1671,13 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
               ...session,
               status: 'error',
               downloading: false,
-              error: error instanceof Error ? error.message : t('files.downloadFailed'),
-              activity: error instanceof Error ? error.message : t('files.downloadFailed'),
+              error: error instanceof Error ? error.message : translate('files.downloadFailed'),
+              activity: error instanceof Error ? error.message : translate('files.downloadFailed'),
             }
           : session,
       )
     }
-  }, [sendRequest, syncSession, t])
+  }, [sendRequest, syncSession])
 
   const uploadFiles = useCallback(async (
     files: FileList | File[] | UploadFileEntry[],
@@ -1677,7 +1712,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
             status: 'working',
             error: '',
             uploading: true,
-            activity: t('files.uploading', { count: uploadEntries.length }),
+            activity: translate('files.uploading', { count: uploadEntries.length }),
           }
         : session,
     )
@@ -1712,7 +1747,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
           ? {
               ...session,
               uploading: false,
-              activity: t('files.uploadSuccess', { path: uploadDirectory }),
+              activity: translate('files.uploadSuccess', { path: uploadDirectory }),
             }
           : session,
       )
@@ -1732,27 +1767,27 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
               ...session,
               status: 'error',
               uploading: false,
-              error: error instanceof Error ? error.message : t('files.uploadFailed'),
-              activity: error instanceof Error ? error.message : t('files.uploadFailed'),
+              error: error instanceof Error ? error.message : translate('files.uploadFailed'),
+              activity: error instanceof Error ? error.message : translate('files.uploadFailed'),
             }
           : session,
       )
       return false
     }
-  }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, nextRequestId, sendRequest, syncSession, t])
+  }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, nextRequestId, sendRequest, syncSession])
 
   const connectFiles = useCallback(async (resource: AgentListItem) => {
     activeResourceRef.current = resource
     clearReconnectTimer()
 
     if (!clusterContext?.kubeconfig) {
-      rejectReadyGate(t('files.kubeconfigMissing'))
+      rejectReadyGate(translate('files.kubeconfigMissing'), 'file_connection_error')
       syncSession((session) =>
         session
           ? {
               ...session,
               status: 'error',
-              error: t('files.kubeconfigMissing'),
+              error: translate('files.kubeconfigMissing'),
             }
           : session,
       )
@@ -1765,7 +1800,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
               ...session,
               status: 'connecting',
               error: '',
-              activity: t('files.connecting'),
+              activity: translate('files.connecting'),
             }
           : session,
       )
@@ -1832,7 +1867,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
                   podName: String(data.podName || ''),
                   containerName: String(data.container || ''),
                   namespace: String(data.namespace || session.namespace || ''),
-                  activity: t('files.connected'),
+                  activity: translate('files.connected'),
                 }
               : session,
           )
@@ -1854,7 +1889,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
             break
           }
 
-          const error = new Error(String(data.message || t('files.connectionFailed')))
+          const error = new Error(String(data.message || translate('files.connectionFailed')))
           if (requestId) {
             const pending = pendingRequestsRef.current.get(requestId)
             if (pending) {
@@ -1887,15 +1922,15 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
       if (socketRef.current !== socket) return
 
       socketReadyRef.current = false
-      readyGate.reject(new Error(t('files.connectionError')))
-      rejectPendingRequests(t('files.connectionError'))
+      readyGate.reject(createAgentFilesError('file_connection_error', translate('files.connectionError')))
+      rejectPendingRequests(translate('files.connectionError'), 'file_connection_error')
       syncSession((session) =>
         session
           ? {
               ...session,
               status: 'error',
-              error: t('files.connectionError'),
-              activity: t('files.connectionError'),
+              error: translate('files.connectionError'),
+              activity: translate('files.connectionError'),
             }
           : session,
       )
@@ -1905,8 +1940,8 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
       if (socketRef.current !== socket) return
 
       const closeMessage =
-        event.code && event.code !== 1000 ? t('files.connectionClosedWithCode', { code: event.code }) : t('files.connectionClosed')
-      readyGate.reject(new Error(closeMessage))
+        event.code && event.code !== 1000 ? translate('files.connectionClosedWithCode', { code: event.code }) : translate('files.connectionClosed')
+      readyGate.reject(createAgentFilesError('file_connection_closed', closeMessage))
       rejectPendingRequests(closeMessage)
 
       syncSession((session) =>
@@ -1915,11 +1950,11 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
               ...session,
               status: session.status === 'error' ? session.status : 'disconnected',
               error:
-                session.error || (event.code && event.code !== 1000 ? t('files.connectionClosedWithCode', { code: event.code }) : ''),
+                session.error || (event.code && event.code !== 1000 ? translate('files.connectionClosedWithCode', { code: event.code }) : ''),
               activity:
                 event.code && event.code !== 1000
-                  ? t('files.connectionClosedWithCode', { code: event.code })
-                  : t('files.connectionClosed'),
+                  ? translate('files.connectionClosedWithCode', { code: event.code })
+                  : translate('files.connectionClosed'),
             }
           : session,
       )
@@ -1949,7 +1984,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
                 ...session,
                 status: 'connecting',
                 error: '',
-                activity: t('files.reconnecting', { attempt, seconds: Math.max(1, Math.round(delayMs / 1000)) }),
+                activity: translate('files.reconnecting', { attempt, seconds: Math.max(1, Math.round(delayMs / 1000)) }),
               }
             : session,
         )
@@ -1972,8 +2007,8 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
     nextRequestId,
     rejectReadyGate,
     rejectPendingRequests,
+    settleReadyGateClosed,
     syncSession,
-    t,
   ])
 
   useEffect(() => {
@@ -1991,9 +2026,9 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
     () => () => {
       clearReconnectTimer()
       closeFilesSocket()
-      rejectPendingRequests(t('files.connectionClosed'))
+      rejectPendingRequests(translate('files.connectionClosed'))
     },
-    [clearReconnectTimer, closeFilesSocket, rejectPendingRequests, t],
+    [clearReconnectTimer, closeFilesSocket, rejectPendingRequests],
   )
 
   const openFiles = useCallback((item: AgentListItem) => {
@@ -2001,10 +2036,10 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
     reconnectAttemptsRef.current = 0
     clearReconnectTimer()
     activeResourceRef.current = item
-    const next = createFilesSession(item, t)
+    const next = createFilesSession(item, translate)
     filesSessionRef.current = next
     setFilesSession(next)
-  }, [clearReconnectTimer, resetDirectoryListings, t])
+  }, [clearReconnectTimer, resetDirectoryListings])
 
   const closeFiles = useCallback(() => {
     invalidateFileReadCache()
@@ -2013,11 +2048,11 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
     clearReconnectTimer()
     activeResourceRef.current = null
     closeFilesSocket()
-    rejectPendingRequests(t('files.connectionClosed'))
+    rejectPendingRequests(translate('files.connectionClosed'))
     revokeObjectUrl(filesSessionRef.current?.previewObjectUrl || '')
     filesSessionRef.current = null
     setFilesSession(null)
-  }, [clearReconnectTimer, closeFilesSocket, invalidateFileReadCache, rejectPendingRequests, resetDirectoryListings, t])
+  }, [clearReconnectTimer, closeFilesSocket, invalidateFileReadCache, rejectPendingRequests, resetDirectoryListings])
 
   return {
     closeFiles,
@@ -2048,6 +2083,7 @@ export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
 }
 
 export const __agentFilesTestables = {
+  createAgentFilesError,
   createReadyGate,
   sanitizeUploadRelativePath,
   reconnectDelaySchedule,

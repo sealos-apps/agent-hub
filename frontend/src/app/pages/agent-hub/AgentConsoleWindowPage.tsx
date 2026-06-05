@@ -47,7 +47,7 @@ import type {
 } from '../../../domains/agents/types'
 import { useI18n } from '../../../i18n'
 import { addSealosAppEventListener, getSealosSession } from '../../../sealosSdk'
-import { useAgentFiles, type UploadFileEntry } from './hooks/useAgentFiles'
+import { isTransientAgentFileConnectionError, useAgentFiles, type UploadFileEntry } from './hooks/useAgentFiles'
 import { useAgentTerminal } from './hooks/useAgentTerminal'
 import {
   applyAutoExpandChain,
@@ -357,11 +357,6 @@ const uploadRefreshDirectories = (targetPath: string, items: UploadQueueItem[], 
 const sanitizeExplorerEntryName = (value: string) => {
   const name = String(value || '').trim().split('/').filter(Boolean).pop() || ''
   return name === '.' || name === '..' ? '' : name
-}
-
-const isTransientFileConnectionError = (error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error || '')
-  return message.includes('File connection is not established') || message.includes('File connection is not ready')
 }
 
 const setDocumentFavicon = (href: string) => {
@@ -1021,7 +1016,7 @@ export function AgentConsoleWindowPage() {
           [normalizeExplorerPath(result.path || normalizedPath)]: sortEntries(result.items || []),
         }))
       } catch (error) {
-        if (isTransientFileConnectionError(error)) {
+        if (isTransientAgentFileConnectionError(error)) {
           setExplorerErrors((current) => ({ ...current, [normalizedPath]: '' }))
           return
         }
@@ -1074,7 +1069,7 @@ export function AgentConsoleWindowPage() {
           setResourceSearchError('')
         } catch (error) {
           if (!active) return
-          if (isTransientFileConnectionError(error)) {
+          if (isTransientAgentFileConnectionError(error)) {
             setResourceSearchError('')
             return
           }

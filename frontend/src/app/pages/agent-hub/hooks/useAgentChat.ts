@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { streamAgentChatCompletions } from '../../../../api'
 import type { ChatStreamEvent } from '../../../../api/backend'
+import { translateAgentReason } from '../../../../domains/agents/reasons'
 import type { TranslateFn } from '../../../../i18n'
 import type { AgentListItem, ChatMessage, ChatSessionState, ClusterContext } from '../../../../domains/agents/types'
 
@@ -45,7 +46,7 @@ export function useAgentChat({
       }
 
       if (!item.chatAvailable) {
-        onErrorMessage(item.chatDisabledReason || t('chat.unavailable'))
+        onErrorMessage(translateAgentReason(item.chatDisabledReason, t) || t('chat.unavailable'))
         return
       }
 

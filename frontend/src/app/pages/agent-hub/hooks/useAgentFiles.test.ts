@@ -5,7 +5,7 @@ import type { ClusterContext } from '../../../../domains/agents/types'
 import { decodeWSBinaryMessage, encodeWSBinaryMessage } from '../lib/wsBinaryProtocol'
 import type { TranslateFn } from '../../../../i18n'
 import { translate } from '../../../../i18n'
-import { __agentFilesTestables, useAgentFiles } from './useAgentFiles'
+import { __agentFilesTestables, isTransientAgentFileConnectionError, useAgentFiles } from './useAgentFiles'
 
 class MockWebSocket {
   static CONNECTING = 0
@@ -52,6 +52,7 @@ class MockWebSocket {
 }
 
 const testT: TranslateFn = (key, values) => translate('zh-CN', key, values)
+const englishT: TranslateFn = (key, values) => translate('en-US', key, values)
 
 const clusterContext: ClusterContext = {
   server: 'https://kubernetes.example.com',
@@ -165,6 +166,51 @@ describe('useAgentFiles helpers', () => {
     } finally {
       globalThis.WebSocket = originalWebSocket
     }
+  })
+
+  it('does not reconnect the active file socket when locale changes', async () => {
+    const originalWebSocket = globalThis.WebSocket
+    MockWebSocket.instances = []
+    globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
+
+    try {
+      const agent = createAgentItemFixture()
+      const { result, rerender, unmount } = renderHook(
+        ({ t }) => useAgentFiles({ clusterContext, t }),
+        { initialProps: { t: testT } },
+      )
+
+      act(() => {
+        result.current.openFiles(agent)
+      })
+      await waitFor(() => expect(MockWebSocket.instances).toHaveLength(1))
+
+      const socket = MockWebSocket.instances[0]
+      act(() => {
+        emitSystemReady(socket, agent.name)
+      })
+      await waitFor(() => expect(result.current.filesSession?.status).toBe('working'))
+
+      rerender({ t: englishT })
+
+      expect(MockWebSocket.instances).toHaveLength(1)
+      expect(socket.readyState).toBe(MockWebSocket.OPEN)
+      expect(result.current.filesSession?.resource.name).toBe(agent.name)
+
+      unmount()
+    } finally {
+      globalThis.WebSocket = originalWebSocket
+    }
+  })
+
+  it('marks localized not-ready file connection errors as transient', () => {
+    const error = __agentFilesTestables.createAgentFilesError(
+      'file_connection_not_ready',
+      translate('zh-CN', 'files.connectionNotReady'),
+    )
+
+    expect(isTransientAgentFileConnectionError(error)).toBe(true)
+    expect(error.message).toContain('文件连接')
   })
 
   it('records empty directory listings as loaded paths', async () => {

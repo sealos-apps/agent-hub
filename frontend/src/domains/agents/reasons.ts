@@ -34,7 +34,7 @@ export function translateAgentReason(reason: string, t: TranslateFn) {
     case 'bootstrap_ready':
       return t('agent.ready')
     case 'instance_start_timeout':
-      return t('agent.reasonBootstrapNotReady')
+      return t('agent.reasonInstanceStartTimeout')
     default:
       return reason
   }
