@@ -74,17 +74,17 @@ func runAgentBootstrapLifecycle(
 	}
 
 	repo := kube.NewRepository(dynamicClient, factory.Namespace())
-	if err := persistBootstrapStatus(ctx, repo, spec.Name, kube.BootstrapPhaseRunning, "等待实例启动"); err != nil {
+	if err := persistBootstrapStatus(ctx, repo, spec.Name, kube.BootstrapPhaseRunning, "waiting_for_instance"); err != nil {
 		return err
 	}
 
 	if _, err := waitForAgentPod(ctx, clientset, factory, spec.Name); err != nil {
-		_ = persistBootstrapStatus(context.Background(), repo, spec.Name, kube.BootstrapPhaseFailed, "实例未在超时内进入可执行状态")
+		_ = persistBootstrapStatus(context.Background(), repo, spec.Name, kube.BootstrapPhaseFailed, "instance_start_timeout")
 		return err
 	}
 
 	if agenttemplate.HasScriptSpec(templateDef.Bootstrap) {
-		if err := persistBootstrapStatus(ctx, repo, spec.Name, kube.BootstrapPhaseRunning, "执行模板初始化脚本"); err != nil {
+		if err := persistBootstrapStatus(ctx, repo, spec.Name, kube.BootstrapPhaseRunning, "running_template_bootstrap"); err != nil {
 			return err
 		}
 
@@ -111,7 +111,7 @@ func runAgentBootstrapLifecycle(
 	}
 
 	if agenttemplate.HasScriptSpec(templateDef.Healthcheck) {
-		if err := persistBootstrapStatus(ctx, repo, spec.Name, kube.BootstrapPhaseRunning, "等待健康检查通过"); err != nil {
+		if err := persistBootstrapStatus(ctx, repo, spec.Name, kube.BootstrapPhaseRunning, "waiting_for_health_check"); err != nil {
 			return err
 		}
 
@@ -122,7 +122,7 @@ func runAgentBootstrapLifecycle(
 		}
 	}
 
-	if err := persistBootstrapStatus(ctx, repo, spec.Name, kube.BootstrapPhaseReady, "实例已完成初始化"); err != nil {
+	if err := persistBootstrapStatus(ctx, repo, spec.Name, kube.BootstrapPhaseReady, "bootstrap_ready"); err != nil {
 		return err
 	}
 
@@ -316,5 +316,5 @@ func updateBootstrapMetadata(devbox *unstructured.Unstructured, templateID strin
 	if err := kube.SetTemplateID(devbox, bootstrapTemplateID(templateID)); err != nil {
 		return err
 	}
-	return kube.SetBootstrapStatus(devbox, kube.BootstrapPhasePending, "等待实例初始化")
+	return kube.SetBootstrapStatus(devbox, kube.BootstrapPhasePending, "waiting_for_bootstrap")
 }

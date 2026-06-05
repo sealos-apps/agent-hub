@@ -4,6 +4,7 @@ import type {
   AgentSettingField,
   AgentTemplateDefinition,
 } from "../../../domains/agents/types";
+import { useI18n } from "../../../i18n";
 import { Button } from "../../ui/Button";
 import { Modal } from "../../ui/Modal";
 import { AgentConfigForm } from "./AgentConfigForm";
@@ -42,30 +43,33 @@ export function AgentConfigModal({
   onSelectPreset,
   onSubmit,
 }: AgentConfigModalProps) {
+  const { t } = useI18n();
+  const displayName = blueprint.aliasName || blueprint.appName || template?.name || 'Agent';
+
   return (
     <Modal
       description={
         mode === "create"
-          ? "确认模板和资源配置后，即可创建实例。"
-          : `正在编辑 ${blueprint.aliasName || blueprint.appName} 的资源规格。`
+          ? t('agent.configCreateDesc')
+          : t('agent.configEditDesc', { name: displayName })
       }
       footer={
         <>
           <Button onClick={onClose} variant="secondary">
-            取消
+            {t('common.cancel')}
           </Button>
           <Button disabled={submitting} onClick={onSubmit}>
             {submitting
-              ? "部署中..."
+              ? t('common.deploying')
               : mode === "create"
-                ? "确认部署"
-                : "保存配置"}
+                ? t('common.confirmDeploy')
+                : t('common.saveConfig')}
           </Button>
         </>
       }
       onClose={onClose}
       open={open}
-      title={mode === "edit" ? "修改配置" : `配置 ${template?.name || "Agent"}`}
+      title={mode === "edit" ? t('agent.configModalTitle') : t('agent.configCreateTitle', { name: template?.name || 'Agent' })}
       widthClassName="max-w-4xl"
     >
       <AgentConfigForm

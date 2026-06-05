@@ -1,4 +1,5 @@
 import { ArrowUpRight, Globe } from "lucide-react";
+import { useI18n } from "../../../i18n";
 import { Button } from "../../ui/Button";
 
 interface AgentWebUIWorkspaceProps {
@@ -7,6 +8,7 @@ interface AgentWebUIWorkspaceProps {
 }
 
 export function AgentWebUIWorkspace({ url, reason }: AgentWebUIWorkspaceProps) {
+  const { t } = useI18n();
   if (!url) {
     return (
       <div className="flex h-full min-h-[320px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center shadow-sm">
@@ -14,10 +16,10 @@ export function AgentWebUIWorkspace({ url, reason }: AgentWebUIWorkspaceProps) {
           <Globe size={22} />
         </div>
         <div className="mt-4 text-base font-medium text-slate-950">
-          Web UI 工作台
+          {t('webui.workspace')}
         </div>
         <p className="mt-2 max-w-lg text-sm leading-6 text-slate-500">
-          {reason || "当前实例暂时没有可用的 Web UI 地址。"}
+          {reason || t('webui.emptyDesc')}
         </p>
       </div>
     );
@@ -41,7 +43,7 @@ export function AgentWebUIWorkspace({ url, reason }: AgentWebUIWorkspaceProps) {
           variant="secondary"
         >
           <ArrowUpRight size={16} />
-          新窗口打开
+          {t('webui.openNewWindow')}
         </Button>
       </div>
 

@@ -324,7 +324,7 @@ describe('AgentConfigForm', () => {
     expect(modelTypes[1]?.label).toBe('视觉创作模型')
   })
 
-  it('keeps zh-CN default labels when no translator is provided', () => {
+  it('uses English default model type labels when no translator is provided', () => {
     const modelTypes = normalizeModelTypes(
       [
         {
@@ -345,10 +345,10 @@ describe('AgentConfigForm', () => {
       [],
     )
 
-    expect(modelTypes[0]?.label).toBe('普通模型')
+    expect(modelTypes[0]?.label).toBe('Text Model')
   })
 
-  it('keeps zh-CN model capability badges when no translator is provided', () => {
+  it('keeps English model capability badges when no translator is provided', () => {
     expect(
       formatModelOptionLabel({
         value: 'gpt-5.4-mini',
@@ -360,7 +360,7 @@ describe('AgentConfigForm', () => {
         inputModalities: ['text'],
         outputModalities: ['text'],
       }),
-    ).toBe('GPT-5.4 Mini · 推理 / 代码')
+    ).toBe('GPT-5.4 Mini · Reasoning / Code')
     expect(
       getModelCapabilityBadges({
         value: 'gpt-5.4-vision',
@@ -372,7 +372,7 @@ describe('AgentConfigForm', () => {
         inputModalities: ['text', 'image'],
         outputModalities: ['text'],
       }),
-    ).toEqual(['视觉', '输入:文本', '输入:图像', '输出:文本'])
+    ).toEqual(['Vision', 'Input:Text', 'Input:Image', 'Output:Text'])
   })
 
   it('only renders the catalog options passed from the current regional template snapshot', () => {

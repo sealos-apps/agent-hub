@@ -77,9 +77,9 @@ export const getRequiredTemplateSettingError = (
       continue;
     }
     if (field.readOnly) {
-      return `${field.label} 未准备完成，请稍后重试`;
+      return `${field.label} is not ready. Please try again later.`;
     }
-    return `请填写${field.label}`;
+    return `${field.label} is required`;
   }
   return "";
 };

@@ -292,15 +292,15 @@ export const createClusterContext = (session) => {
   const agentLabel = operator
 
   if (!kubeconfig) {
-    throw new Error('未从 Sealos SDK 中读取到 kubeconfig，无法调用后端管理 API')
+    throw new Error('No kubeconfig was found from Sealos SDK, cannot call backend management API')
   }
 
   if (!server) {
-    throw new Error('未从 kubeconfig 中解析到 API Server 地址')
+    throw new Error('No API Server address parsed from kubeconfig')
   }
 
   if (!namespace) {
-    throw new Error('未从 sdk session 中解析到 namespace')
+    throw new Error('No namespace parsed from SDK session')
   }
 
   if (typeof window !== 'undefined') {

@@ -19,29 +19,29 @@ import {
 export const RESOURCE_PRESETS: ResourcePreset[] = [
   {
     id: "minimum",
-    label: "最小",
-    description: "1c2g · 轻量运行",
+    label: "Minimum",
+    description: "1c2g · Lightweight",
     cpu: "1000m",
     memory: "2048Mi",
   },
   {
     id: "recommended",
-    label: "推荐",
-    description: "2c4g · 默认配置",
+    label: "Recommended",
+    description: "2c4g · Default",
     cpu: "2000m",
     memory: "4096Mi",
   },
   {
     id: "luxury",
-    label: "豪华",
-    description: "4c8g · 更高性能",
+    label: "High Performance",
+    description: "4c8g · More performance",
     cpu: "4000m",
     memory: "8192Mi",
   },
   {
     id: "custom",
-    label: "自定义",
-    description: "手动输入 CPU / 内存",
+    label: "Custom",
+    description: "Manual CPU / memory",
     cpu: "",
     memory: "",
   },
@@ -199,12 +199,12 @@ export const describeRegionModelPreset = (
   template: AgentTemplateDefinition,
 ) => {
   if (!template.modelOptions.length) {
-    return "当前模板没有预设模型。";
+    return "This template has no preset models.";
   }
   if (region === "cn") {
-    return "当前为 CN 模型预设，模型列表完全由后端模板目录提供。";
+    return "CN model presets are provided by the backend template catalog.";
   }
-  return "当前为 US 模型预设，模型列表完全由后端模板目录提供。";
+  return "US model presets are provided by the backend template catalog.";
 };
 
 export const getStatusText = (
@@ -212,12 +212,12 @@ export const getStatusText = (
 ) => {
   switch (status) {
     case "running":
-      return "运行中";
+      return "Running";
     case "creating":
-      return "创建中";
+      return "Creating";
     case "stopped":
-      return "已暂停";
+      return "Paused";
     case "error":
-      return "异常";
+      return "Error";
   }
 };

@@ -129,7 +129,7 @@ func buildAgentContractWithConfigError(view kube.AgentView, templateDef agenttem
 			TemplateID:       view.Agent.TemplateID,
 			Namespace:        view.Agent.Namespace,
 			Status:           "Error",
-			StatusText:       "配置异常",
+			StatusText:       "config_error",
 			Ready:            false,
 			BootstrapPhase:   view.Agent.BootstrapPhase,
 			BootstrapMessage: message,
@@ -200,7 +200,7 @@ func resolveAgentAccessItem(
 		Label:      item.Label,
 		Status:     "disabled",
 		Enabled:    false,
-		Reason:     "当前入口不可用",
+		Reason:     "entry_unavailable",
 		WorkingDir: spec.WorkingDir,
 		Modes:      append([]string(nil), item.Modes...),
 	}
@@ -210,7 +210,7 @@ func resolveAgentAccessItem(
 		entry.Auth = item.Auth
 		entry.URL = joinAccessURL(spec.IngressDomain, item.Path)
 		if entry.URL == "" {
-			entry.Reason = "当前实例还没有可用的 API 接入地址。"
+			entry.Reason = "api_url_unavailable"
 			return entry
 		}
 		entry.Enabled = spec.Ready
@@ -245,11 +245,11 @@ func resolveAgentAccessItem(
 		entry.Port = spec.SSHPort
 		entry.UserName = firstNonEmpty(spec.User, templateDef.User)
 		if entry.Host == "" {
-			entry.Reason = "系统未配置 SSH_DOMAIN。"
+			entry.Reason = "ssh_domain_missing"
 			return entry
 		}
 		if entry.Port <= 0 {
-			entry.Reason = "当前实例没有可用的 SSH 端口。"
+			entry.Reason = "ssh_port_unavailable"
 			return entry
 		}
 		entry.Enabled = spec.Ready
@@ -272,7 +272,7 @@ func resolveAgentAccessItem(
 	case "web-ui":
 		entry.URL = joinAccessURL(spec.IngressDomain, item.Path)
 		if entry.URL == "" {
-			entry.Reason = "当前实例还没有可用的 Web UI 地址。"
+			entry.Reason = "web_ui_url_unavailable"
 			return entry
 		}
 		entry.Enabled = spec.Ready
@@ -284,7 +284,7 @@ func resolveAgentAccessItem(
 		}
 		return entry
 	default:
-		entry.Reason = "当前入口类型未识别。"
+		entry.Reason = "unknown_entry_type"
 		return entry
 	}
 }
@@ -319,18 +319,18 @@ func buildAgentActions(spec agent.Agent, templateDef agenttemplate.Definition, a
 		case "run":
 			action.Enabled = spec.Status == agent.StatusPaused
 			if !action.Enabled {
-				action.Reason = "当前实例不处于可启动状态。"
+				action.Reason = "not_startable"
 			}
 		case "pause":
 			action.Enabled = spec.Status == agent.StatusRunning
 			if !action.Enabled {
-				action.Reason = "当前实例不处于可暂停状态。"
+				action.Reason = "not_pausable"
 			}
 		case "delete":
 			action.Enabled = true
 		default:
 			action.Enabled = false
-			action.Reason = "当前操作未接入。"
+			action.Reason = "action_unimplemented"
 		}
 		if action.Enabled {
 			action.Reason = ""
@@ -389,7 +389,7 @@ func buildAgentWorkspaces(
 			entry.URL = access.URL
 		default:
 			entry.Enabled = false
-			entry.Reason = "当前工作区未接入。"
+			entry.Reason = "workspace_unavailable"
 		}
 
 		if entry.Enabled {
@@ -466,7 +466,7 @@ func bootstrapReason(spec agent.Agent) string {
 	if strings.TrimSpace(spec.BootstrapMessage) != "" {
 		return spec.BootstrapMessage
 	}
-	return "当前实例尚未完成初始化。"
+	return "bootstrap_not_ready"
 }
 
 func joinAccessURL(host, path string) string {

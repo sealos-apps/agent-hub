@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { createAgentItemFixture } from '../../../../test/agentFixtures'
 import type { ClusterContext } from '../../../../domains/agents/types'
 import { decodeWSBinaryMessage, encodeWSBinaryMessage } from '../lib/wsBinaryProtocol'
+import type { TranslateFn } from '../../../../i18n'
+import { translate } from '../../../../i18n'
 import { __agentFilesTestables, useAgentFiles } from './useAgentFiles'
 
 class MockWebSocket {
@@ -48,6 +50,8 @@ class MockWebSocket {
     })
   }
 }
+
+const testT: TranslateFn = (key, values) => translate('zh-CN', key, values)
 
 const clusterContext: ClusterContext = {
   server: 'https://kubernetes.example.com',
@@ -125,7 +129,7 @@ describe('useAgentFiles helpers', () => {
     try {
       const firstAgent = createAgentItemFixture({ name: 'agent-a' })
       const secondAgent = createAgentItemFixture({ name: 'agent-b' })
-      const { result, unmount } = renderHook(() => useAgentFiles({ clusterContext }))
+      const { result, unmount } = renderHook(() => useAgentFiles({ clusterContext, t: testT }))
 
       act(() => {
         result.current.openFiles(firstAgent)
@@ -170,7 +174,7 @@ describe('useAgentFiles helpers', () => {
 
     try {
       const agent = createAgentItemFixture()
-      const { result, unmount } = renderHook(() => useAgentFiles({ clusterContext }))
+      const { result, unmount } = renderHook(() => useAgentFiles({ clusterContext, t: testT }))
 
       act(() => {
         result.current.openFiles(agent)
@@ -229,7 +233,7 @@ describe('useAgentFiles helpers', () => {
 
     try {
       const agent = createAgentItemFixture()
-      const { result, unmount } = renderHook(() => useAgentFiles({ clusterContext }))
+      const { result, unmount } = renderHook(() => useAgentFiles({ clusterContext, t: testT }))
 
       act(() => {
         result.current.openFiles(agent)
@@ -334,7 +338,7 @@ describe('useAgentFiles helpers', () => {
 
     try {
       const agent = createAgentItemFixture()
-      const { result, unmount } = renderHook(() => useAgentFiles({ clusterContext }))
+      const { result, unmount } = renderHook(() => useAgentFiles({ clusterContext, t: testT }))
 
       act(() => {
         result.current.openFiles(agent)

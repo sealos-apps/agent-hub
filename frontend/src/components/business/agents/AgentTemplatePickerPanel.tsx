@@ -22,8 +22,8 @@ interface AgentTemplatePickerPanelLoadingProps {
 
 const accessMeta: Record<string, { label: string; dotClassName: string }> = {
   api: { label: 'API', dotClassName: 'bg-blue-500' },
-  terminal: { label: '终端', dotClassName: 'bg-violet-500' },
-  files: { label: '文件', dotClassName: 'bg-sky-500' },
+  terminal: { label: 'Terminal', dotClassName: 'bg-violet-500' },
+  files: { label: 'Files', dotClassName: 'bg-sky-500' },
   ssh: { label: 'SSH', dotClassName: 'bg-emerald-500' },
   ide: { label: 'IDE', dotClassName: 'bg-amber-500' },
   'web-ui': { label: 'Web UI', dotClassName: 'bg-teal-500' },

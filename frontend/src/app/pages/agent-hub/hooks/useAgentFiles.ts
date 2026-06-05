@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { TranslateFn } from '../../../../i18n'
 import { buildAgentWebSocketUrl } from '../../../../api'
 import type {
   AgentFileItem,
@@ -121,7 +122,7 @@ const resolveInitialDirectory = (resource: AgentListItem) => {
   return normalizePath(`/${raw.replace(/^\/+/, '')}`, fallbackRootPath)
 }
 
-const createFilesSession = (resource: AgentListItem): FilesSessionState => ({
+const createFilesSession = (resource: AgentListItem, t: TranslateFn): FilesSessionState => ({
   resource,
   status: 'initializing',
   error: '',
@@ -140,7 +141,7 @@ const createFilesSession = (resource: AgentListItem): FilesSessionState => ({
   draftContent: '',
   previewObjectUrl: '',
   previewObjectType: '',
-  activity: '正在初始化文件工作台...',
+  activity: t('files.initializing'),
   browsing: false,
   previewing: false,
   reading: false,
@@ -378,9 +379,10 @@ const createReadyGate = (): ReadyGate => {
 
 interface UseAgentFilesOptions {
   clusterContext: ClusterContext | null
+  t: TranslateFn
 }
 
-export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
+export function useAgentFiles({ clusterContext, t }: UseAgentFilesOptions) {
   const [filesSession, setFilesSession] = useState<FilesSessionState | null>(null)
 
   const socketRef = useRef<WebSocket | null>(null)
@@ -437,12 +439,12 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
     socketRef.current = null
     authSentRef.current = false
     socketReadyRef.current = false
-    rejectReadyGate('文件连接已关闭')
+    rejectReadyGate(t('files.connectionClosed'))
 
     if (socket && socket.readyState <= WebSocket.OPEN) {
       socket.close(1000, 'manual-close')
     }
-  }, [rejectReadyGate])
+  }, [rejectReadyGate, t])
 
   const clearReconnectTimer = useCallback(() => {
     if (reconnectTimerRef.current !== null) {
@@ -454,12 +456,12 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
   const waitForSocketReady = useCallback(async (timeoutMs = fileSocketReadyTimeoutMs) => {
     const gate = readyGateRef.current
     if (!gate) {
-      throw new Error('文件连接尚未建立')
+      throw new Error(t('files.connectionNotEstablished'))
     }
 
     await new Promise<void>((resolve, reject) => {
       const timeoutId = window.setTimeout(() => {
-        reject(new Error('文件连接尚未就绪，请稍后重试。'))
+        reject(new Error(t('files.connectionNotReady')))
       }, timeoutMs)
 
       gate.promise
@@ -469,15 +471,15 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
         })
         .catch((error) => {
           window.clearTimeout(timeoutId)
-          reject(error instanceof Error ? error : new Error('文件连接异常，请稍后重试。'))
+          reject(error instanceof Error ? error : new Error(t('files.connectionError')))
         })
     })
 
     const socket = socketRef.current
     if (!socket || socket.readyState !== WebSocket.OPEN || !socketReadyRef.current) {
-      throw new Error('文件连接尚未建立')
+      throw new Error(t('files.connectionNotEstablished'))
     }
-  }, [])
+  }, [t])
 
   const sendRequest = useCallback(
     (type: string, data: Record<string, unknown>) =>
@@ -487,7 +489,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
 
           const socket = socketRef.current
           if (!socket || socket.readyState !== WebSocket.OPEN) {
-            throw new Error('文件连接尚未建立')
+            throw new Error(t('files.connectionNotEstablished'))
           }
 
           const requestId = nextRequestId(type)
@@ -495,7 +497,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
             const pending = pendingRequestsRef.current.get(requestId)
             if (!pending) return
             pendingRequestsRef.current.delete(requestId)
-            pending.reject(new Error('文件请求超时，请重试。'))
+            pending.reject(new Error(t('files.requestTimeout')))
           }, fileRequestTimeoutMs)
 
           pendingRequestsRef.current.set(requestId, {
@@ -521,17 +523,17 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
         }
 
         void execute().catch((error) => {
-          reject(error instanceof Error ? error : new Error('文件请求失败'))
+          reject(error instanceof Error ? error : new Error(t('files.requestFailed')))
         })
       }),
-    [clearPendingRequestTimeout, nextRequestId, waitForSocketReady],
+    [clearPendingRequestTimeout, nextRequestId, t, waitForSocketReady],
   )
 
   const ensureDiscardChanges = useCallback(() => {
     const current = filesSessionRef.current
     if (!current?.dirty) return true
-    return window.confirm('当前文件尚未保存，确定放弃修改吗？')
-  }, [])
+    return window.confirm(t('files.discardUnsavedConfirm'))
+  }, [t])
 
   const resetDirectoryListings = useCallback(() => {
     browseRequestSeqRef.current += 1
@@ -626,11 +628,11 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
             ...session,
             selectedItem: item,
             error: '',
-            activity: item.type === 'dir' ? `已选中目录 ${item.name}` : `已选中 ${item.name}`,
+            activity: item.type === 'dir' ? t('files.selectedDirectory', { name: item.name }) : t('files.selectedFile', { name: item.name }),
           }
         : session,
     )
-  }, [syncSession])
+  }, [syncSession, t])
 
   const applyDirectoryListing = useCallback(
     (
@@ -675,11 +677,11 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
           reading: openedMatch ? session.reading : false,
           saving: openedMatch ? session.saving : false,
           downloading: openedMatch ? session.downloading : false,
-          activity: `已载入目录 ${listing.path}`,
+          activity: t('files.directoryLoaded', { path: listing.path }),
         }
       })
     },
-    [syncSession],
+    [syncSession, t],
   )
 
   const fetchDirectoryListing = useCallback(
@@ -753,7 +755,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
                 ...session,
                 status: 'working',
                 error: '',
-                activity: `正在载入目录 ${requestedPath}...`,
+                activity: t('files.loadingDirectory', { path: requestedPath }),
                 browsing: true,
               }
             : session,
@@ -782,14 +784,14 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
                 ...session,
                 status: 'error',
                 browsing: false,
-                error: error instanceof Error ? error.message : '读取目录失败',
-                activity: error instanceof Error ? error.message : '读取目录失败',
+                error: error instanceof Error ? error.message : t('files.readDirectoryFailed'),
+                activity: error instanceof Error ? error.message : t('files.readDirectoryFailed'),
               }
             : session,
         )
       }
     },
-    [applyDirectoryListing, fetchDirectoryListing, syncSession],
+    [applyDirectoryListing, fetchDirectoryListing, syncSession, t],
   )
 
   const searchFiles = useCallback(
@@ -826,7 +828,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
     async (targetPath?: string, options?: { force?: boolean }) => {
       const current = filesSessionRef.current
       if (!current) {
-        throw new Error('文件会话未初始化')
+        throw new Error(t('files.sessionMissing'))
       }
 
       const requestedPath = normalizePath(
@@ -839,14 +841,14 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
         items: listing.items,
       }
     },
-    [fetchDirectoryListing],
+    [fetchDirectoryListing, t],
   )
 
   const readFile = useCallback(
     async (targetPath: string, options?: { force?: boolean }): Promise<FileReadResponse> => {
       const requestedPath = normalizePath(targetPath || '', '')
       if (!requestedPath) {
-        throw new Error('文件路径为空')
+        throw new Error(t('files.pathEmpty'))
       }
 
       const fetchLatest = () => {
@@ -915,7 +917,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
         stale: false,
       }
     },
-    [sendRequest],
+    [sendRequest, t],
   )
 
   const refreshDirectory = useCallback((targetPath?: string) => {
@@ -945,8 +947,8 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
               dirty: false,
               activity:
                 mode === 'edit'
-                  ? `正在载入 ${item.name} 以便编辑...`
-                  : `正在预览 ${item.name}...`,
+                  ? t('files.loadingForEdit', { name: item.name })
+                  : t('files.previewing', { name: item.name }),
             }
           : session,
       )
@@ -988,8 +990,8 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
                 dirty: false,
                 activity:
                   mode === 'edit'
-                    ? `正在编辑 ${item.name}`
-                    : `已打开 ${item.name} 的预览`,
+                    ? t('files.editing', { name: item.name })
+                    : t('files.previewOpened', { name: item.name }),
               }
             : session,
         )
@@ -1001,14 +1003,14 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
                 status: 'error',
                 previewing: false,
                 reading: false,
-                error: error instanceof Error ? error.message : '读取文件失败',
-                activity: error instanceof Error ? error.message : '读取文件失败',
+                error: error instanceof Error ? error.message : t('files.readFileFailed'),
+                activity: error instanceof Error ? error.message : t('files.readFileFailed'),
               }
             : session,
         )
       }
     },
-    [sendRequest, syncSession],
+    [sendRequest, syncSession, t],
   )
 
   const loadBinaryPreview = useCallback(
@@ -1030,7 +1032,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
               draftContent: '',
               previewObjectType: '',
               dirty: false,
-              activity: `正在预览 ${item.name}...`,
+              activity: t('files.previewing', { name: item.name }),
             }
           : session,
       )
@@ -1074,7 +1076,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
                 previewing: false,
                 previewObjectUrl: objectUrl,
                 previewObjectType: blob.type,
-                activity: `已打开 ${item.name} 的预览`,
+                activity: t('files.previewOpened', { name: item.name }),
               }
             : session,
         )
@@ -1085,14 +1087,14 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
                 ...session,
                 status: 'error',
                 previewing: false,
-                error: error instanceof Error ? error.message : '文件预览失败',
-                activity: error instanceof Error ? error.message : '文件预览失败',
+                error: error instanceof Error ? error.message : t('files.previewFailed'),
+                activity: error instanceof Error ? error.message : t('files.previewFailed'),
               }
             : session,
         )
       }
     },
-    [sendRequest, syncSession],
+    [sendRequest, syncSession, t],
   )
 
   const previewEntry = useCallback(async (item: AgentFileItem) => {
@@ -1121,7 +1123,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
               selectedItem: item,
               openedItem: null,
               error: '',
-              activity: '当前对象暂不支持预览。',
+              activity: t('files.previewUnsupported'),
             }
           : session,
       )
@@ -1139,7 +1141,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
               selectedItem: item,
               detailMode: 'preview',
               error: '',
-              activity: `已打开 ${item.name} 的预览`,
+              activity: t('files.previewOpened', { name: item.name }),
             }
           : session,
       )
@@ -1166,11 +1168,11 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
             selectedItem: item,
             openedItem: null,
             error: '',
-            activity: '当前文件暂不支持内嵌预览，请直接下载查看。',
+            activity: t('files.inlinePreviewUnsupported'),
           }
         : session,
     )
-  }, [ensureDiscardChanges, listDirectory, loadBinaryPreview, loadTextFile, resetOpenedState, syncSession])
+  }, [ensureDiscardChanges, listDirectory, loadBinaryPreview, loadTextFile, resetOpenedState, syncSession, t])
 
   const editEntry = useCallback(async (item: AgentFileItem) => {
     if (item.type === 'dir') {
@@ -1200,8 +1202,8 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
               ...session,
               selectedItem: item,
               openedItem: null,
-              error: '当前文件不支持在线编辑。',
-              activity: '当前文件不支持在线编辑，请直接下载查看。',
+              error: t('files.editUnsupported'),
+              activity: t('files.editUnsupportedDesc'),
             }
           : session,
       )
@@ -1222,7 +1224,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
               reading: false,
               draftContent: session.dirty ? session.draftContent : session.previewContent,
               error: '',
-              activity: `正在编辑 ${item.name}`,
+              activity: t('files.editing', { name: item.name }),
             }
           : session,
       )
@@ -1231,7 +1233,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
 
     if (!ensureDiscardChanges()) return
     await loadTextFile(item, 'edit')
-  }, [ensureDiscardChanges, listDirectory, loadTextFile, resetOpenedState, syncSession])
+  }, [ensureDiscardChanges, listDirectory, loadTextFile, resetOpenedState, syncSession, t])
 
   const openEntry = useCallback(async (item: AgentFileItem) => {
     await previewEntry(item)
@@ -1278,7 +1280,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
               status: 'working',
               error: '',
               saving: true,
-              activity: `正在保存 ${activeItem.name}...`,
+              activity: t('files.saving', { name: activeItem.name }),
             }
           : session,
       )
@@ -1322,7 +1324,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
                     }
                   : session.openedItem,
               dirty: false,
-              activity: `保存成功：${activeItem.path}`,
+              activity: t('files.saveSuccess', { path: activeItem.path }),
             }
           : session,
       )
@@ -1339,13 +1341,13 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
               ...session,
               status: 'error',
               saving: false,
-              error: error instanceof Error ? error.message : '保存文件失败',
-              activity: error instanceof Error ? error.message : '保存文件失败',
+              error: error instanceof Error ? error.message : t('files.saveFailed'),
+              activity: error instanceof Error ? error.message : t('files.saveFailed'),
             }
           : session,
       )
     }
-  }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession])
+  }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession, t])
 
   const saveFile = useCallback(async (path: string, content: string) => {
     const normalizedPath = normalizePath(path, '')
@@ -1375,7 +1377,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
             ...session,
             status: 'working',
             error: '',
-            activity: `正在创建文件 ${nextName}...`,
+            activity: t('files.creatingFile', { name: nextName }),
           }
         : session,
     )
@@ -1398,13 +1400,13 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
           ? {
               ...session,
               status: 'error',
-              error: error instanceof Error ? error.message : '创建文件失败',
-              activity: error instanceof Error ? error.message : '创建文件失败',
+              error: error instanceof Error ? error.message : t('files.createFileFailed'),
+              activity: error instanceof Error ? error.message : t('files.createFileFailed'),
             }
           : session,
       )
     }
-  }, [editEntry, invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession])
+  }, [editEntry, invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession, t])
 
   const createDirectory = useCallback(async (name: string, targetDirectory?: string) => {
     const current = filesSessionRef.current
@@ -1419,7 +1421,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
             ...session,
             status: 'working',
             error: '',
-            activity: `正在创建目录 ${nextName}...`,
+            activity: t('files.creatingDirectory', { name: nextName }),
           }
         : session,
     )
@@ -1435,13 +1437,13 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
           ? {
               ...session,
               status: 'error',
-              error: error instanceof Error ? error.message : '创建目录失败',
-              activity: error instanceof Error ? error.message : '创建目录失败',
+              error: error instanceof Error ? error.message : t('files.createDirectoryFailed'),
+              activity: error instanceof Error ? error.message : t('files.createDirectoryFailed'),
             }
           : session,
       )
     }
-  }, [invalidateDirectoryListing, listDirectory, sendRequest, syncSession])
+  }, [invalidateDirectoryListing, listDirectory, sendRequest, syncSession, t])
 
   const deleteEntry = useCallback(async (path: string) => {
     const current = filesSessionRef.current
@@ -1456,7 +1458,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
             ...session,
             status: 'working',
             error: '',
-            activity: `正在删除 ${path}...`,
+            activity: t('files.deleting', { path }),
           }
         : session,
     )
@@ -1497,7 +1499,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
                   ? ''
                   : session.previewObjectType,
               dirty: session.openedItem?.path === path ? false : session.dirty,
-              activity: `已删除 ${path}`,
+              activity: t('files.deleteSuccess', { path }),
             }
           : session,
       )
@@ -1510,14 +1512,14 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
           ? {
               ...session,
               status: 'error',
-              error: error instanceof Error ? error.message : '删除失败',
-              activity: error instanceof Error ? error.message : '删除失败',
+              error: error instanceof Error ? error.message : t('files.deleteFailed'),
+              activity: error instanceof Error ? error.message : t('files.deleteFailed'),
             }
           : session,
       )
       return false
     }
-  }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession])
+  }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession, t])
 
   const renameEntry = useCallback(async (fromPath: string, toPath: string) => {
     const from = normalizePath(fromPath, '')
@@ -1537,7 +1539,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
             ...session,
             status: 'working',
             error: '',
-            activity: `正在重命名 ${from}...`,
+            activity: t('files.renaming', { path: from }),
           }
         : session,
     )
@@ -1552,7 +1554,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
               error: '',
               selectedItem: session.selectedItem?.path === from ? { ...session.selectedItem, path: to, name: nextName } : session.selectedItem,
               openedItem: session.openedItem?.path === from ? { ...session.openedItem, path: to, name: nextName } : session.openedItem,
-              activity: `已重命名 ${from}`,
+              activity: t('files.renameSuccess', { path: from }),
             }
           : session,
       )
@@ -1577,14 +1579,14 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
           ? {
               ...session,
               status: 'error',
-              error: error instanceof Error ? error.message : '重命名失败',
-              activity: error instanceof Error ? error.message : '重命名失败',
+              error: error instanceof Error ? error.message : t('files.renameFailed'),
+              activity: error instanceof Error ? error.message : t('files.renameFailed'),
             }
           : session,
       )
       return false
     }
-  }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession])
+  }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, sendRequest, syncSession, t])
 
   const downloadEntry = useCallback(async (path: string) => {
     if (!path) return
@@ -1596,7 +1598,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
             status: 'working',
             error: '',
             downloading: true,
-            activity: `正在下载 ${path}...`,
+            activity: t('files.downloading', { path }),
           }
         : session,
     )
@@ -1623,7 +1625,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
               ...session,
               status: 'connected',
               downloading: false,
-              activity: `下载成功：${filename}`,
+              activity: t('files.downloadSuccess', { name: filename }),
             }
           : session,
       )
@@ -1634,13 +1636,13 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
               ...session,
               status: 'error',
               downloading: false,
-              error: error instanceof Error ? error.message : '下载失败',
-              activity: error instanceof Error ? error.message : '下载失败',
+              error: error instanceof Error ? error.message : t('files.downloadFailed'),
+              activity: error instanceof Error ? error.message : t('files.downloadFailed'),
             }
           : session,
       )
     }
-  }, [sendRequest, syncSession])
+  }, [sendRequest, syncSession, t])
 
   const uploadFiles = useCallback(async (
     files: FileList | File[] | UploadFileEntry[],
@@ -1675,7 +1677,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
             status: 'working',
             error: '',
             uploading: true,
-            activity: `正在上传 ${uploadEntries.length} 个文件...`,
+            activity: t('files.uploading', { count: uploadEntries.length }),
           }
         : session,
     )
@@ -1710,7 +1712,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
           ? {
               ...session,
               uploading: false,
-              activity: `上传完成，已写入 ${uploadDirectory}`,
+              activity: t('files.uploadSuccess', { path: uploadDirectory }),
             }
           : session,
       )
@@ -1730,27 +1732,27 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
               ...session,
               status: 'error',
               uploading: false,
-              error: error instanceof Error ? error.message : '上传失败',
-              activity: error instanceof Error ? error.message : '上传失败',
+              error: error instanceof Error ? error.message : t('files.uploadFailed'),
+              activity: error instanceof Error ? error.message : t('files.uploadFailed'),
             }
           : session,
       )
       return false
     }
-  }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, nextRequestId, sendRequest, syncSession])
+  }, [invalidateDirectoryListing, invalidateFileReadCache, listDirectory, nextRequestId, sendRequest, syncSession, t])
 
   const connectFiles = useCallback(async (resource: AgentListItem) => {
     activeResourceRef.current = resource
     clearReconnectTimer()
 
     if (!clusterContext?.kubeconfig) {
-      rejectReadyGate('未读取到 kubeconfig，无法建立文件连接。')
+      rejectReadyGate(t('files.kubeconfigMissing'))
       syncSession((session) =>
         session
           ? {
               ...session,
               status: 'error',
-              error: '未读取到 kubeconfig，无法建立文件连接。',
+              error: t('files.kubeconfigMissing'),
             }
           : session,
       )
@@ -1763,7 +1765,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
               ...session,
               status: 'connecting',
               error: '',
-              activity: '正在建立文件连接...',
+              activity: t('files.connecting'),
             }
           : session,
       )
@@ -1830,7 +1832,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
                   podName: String(data.podName || ''),
                   containerName: String(data.container || ''),
                   namespace: String(data.namespace || session.namespace || ''),
-                  activity: '文件工作台已连接。',
+                  activity: t('files.connected'),
                 }
               : session,
           )
@@ -1852,7 +1854,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
             break
           }
 
-          const error = new Error(String(data.message || '文件连接失败'))
+          const error = new Error(String(data.message || t('files.connectionFailed')))
           if (requestId) {
             const pending = pendingRequestsRef.current.get(requestId)
             if (pending) {
@@ -1885,15 +1887,15 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
       if (socketRef.current !== socket) return
 
       socketReadyRef.current = false
-      readyGate.reject(new Error('文件连接异常，请关闭后重新打开。'))
-      rejectPendingRequests('文件连接异常，请关闭后重新打开。')
+      readyGate.reject(new Error(t('files.connectionError')))
+      rejectPendingRequests(t('files.connectionError'))
       syncSession((session) =>
         session
           ? {
               ...session,
               status: 'error',
-              error: '文件连接异常，请关闭后重新打开。',
-              activity: '文件连接异常，请关闭后重新打开。',
+              error: t('files.connectionError'),
+              activity: t('files.connectionError'),
             }
           : session,
       )
@@ -1903,7 +1905,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
       if (socketRef.current !== socket) return
 
       const closeMessage =
-        event.code && event.code !== 1000 ? `文件连接已关闭（code=${event.code}）` : '文件连接已关闭'
+        event.code && event.code !== 1000 ? t('files.connectionClosedWithCode', { code: event.code }) : t('files.connectionClosed')
       readyGate.reject(new Error(closeMessage))
       rejectPendingRequests(closeMessage)
 
@@ -1913,11 +1915,11 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
               ...session,
               status: session.status === 'error' ? session.status : 'disconnected',
               error:
-                session.error || (event.code && event.code !== 1000 ? `文件连接已关闭（code=${event.code}）` : ''),
+                session.error || (event.code && event.code !== 1000 ? t('files.connectionClosedWithCode', { code: event.code }) : ''),
               activity:
                 event.code && event.code !== 1000
-                  ? `文件连接已关闭（code=${event.code}）`
-                  : '文件连接已关闭',
+                  ? t('files.connectionClosedWithCode', { code: event.code })
+                  : t('files.connectionClosed'),
             }
           : session,
       )
@@ -1947,7 +1949,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
                 ...session,
                 status: 'connecting',
                 error: '',
-                activity: `文件连接中断，正在重连（第 ${attempt} 次，${Math.max(1, Math.round(delayMs / 1000))}s 后）...`,
+                activity: t('files.reconnecting', { attempt, seconds: Math.max(1, Math.round(delayMs / 1000)) }),
               }
             : session,
         )
@@ -1971,6 +1973,7 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
     rejectReadyGate,
     rejectPendingRequests,
     syncSession,
+    t,
   ])
 
   useEffect(() => {
@@ -1988,9 +1991,9 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
     () => () => {
       clearReconnectTimer()
       closeFilesSocket()
-      rejectPendingRequests('文件连接已关闭')
+      rejectPendingRequests(t('files.connectionClosed'))
     },
-    [clearReconnectTimer, closeFilesSocket, rejectPendingRequests],
+    [clearReconnectTimer, closeFilesSocket, rejectPendingRequests, t],
   )
 
   const openFiles = useCallback((item: AgentListItem) => {
@@ -1998,10 +2001,10 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
     reconnectAttemptsRef.current = 0
     clearReconnectTimer()
     activeResourceRef.current = item
-    const next = createFilesSession(item)
+    const next = createFilesSession(item, t)
     filesSessionRef.current = next
     setFilesSession(next)
-  }, [clearReconnectTimer, resetDirectoryListings])
+  }, [clearReconnectTimer, resetDirectoryListings, t])
 
   const closeFiles = useCallback(() => {
     invalidateFileReadCache()
@@ -2010,11 +2013,11 @@ export function useAgentFiles({ clusterContext }: UseAgentFilesOptions) {
     clearReconnectTimer()
     activeResourceRef.current = null
     closeFilesSocket()
-    rejectPendingRequests('文件连接已关闭')
+    rejectPendingRequests(t('files.connectionClosed'))
     revokeObjectUrl(filesSessionRef.current?.previewObjectUrl || '')
     filesSessionRef.current = null
     setFilesSession(null)
-  }, [clearReconnectTimer, closeFilesSocket, invalidateFileReadCache, rejectPendingRequests, resetDirectoryListings])
+  }, [clearReconnectTimer, closeFilesSocket, invalidateFileReadCache, rejectPendingRequests, resetDirectoryListings, t])
 
   return {
     closeFiles,

@@ -1,17 +1,19 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { useI18n } from '../../../i18n'
 
 interface AgentMarkdownPreviewProps {
   content: string
 }
 
 export function AgentMarkdownPreview({ content }: AgentMarkdownPreviewProps) {
+  const { t } = useI18n()
   const normalized = String(content || '').trim()
 
   if (!normalized) {
     return (
       <div className="flex min-h-[240px] items-center justify-center rounded-[20px] border border-dashed border-zinc-300 bg-white text-sm text-zinc-400">
-        文件内容为空
+        {t('files.emptyMarkdown')}
       </div>
     )
   }

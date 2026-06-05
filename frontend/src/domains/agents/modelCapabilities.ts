@@ -43,57 +43,57 @@ const modelTypeLabelKeyMap: Record<string, TranslationKey> = {
   other: "model.type.other",
 };
 
-const defaultModelTypeLabels: Record<string, string[]> = {
-  text: ["普通模型", "Text Model", "text"],
-  multimodal: ["多模态模型", "Multimodal Model", "multimodal"],
-  vision: ["视觉理解模型", "Vision Model", "vision"],
-  image: ["生图模型", "Image Model", "image"],
-  image_generation: ["生图模型", "Image Model", "image generation"],
-  asr: ["语音识别模型", "Speech-to-Text Model", "asr"],
-  tts: ["语音合成模型", "Text-to-Speech Model", "tts"],
-  audio: ["音频模型", "Audio Model", "audio"],
-  embedding: ["向量模型", "Embedding Model", "embedding"],
-  other: ["其他模型", "Other Models", "other"],
+const defaultModelTypeLabelAliases: Record<string, string[]> = {
+  text: ["Text Model", "text", "\u666e\u901a\u6a21\u578b"],
+  multimodal: ["Multimodal Model", "multimodal", "\u591a\u6a21\u6001\u6a21\u578b"],
+  vision: ["Vision Model", "vision", "\u89c6\u89c9\u7406\u89e3\u6a21\u578b"],
+  image: ["Image Model", "image", "\u751f\u56fe\u6a21\u578b"],
+  image_generation: ["Image Model", "image generation", "\u751f\u56fe\u6a21\u578b"],
+  asr: ["Speech-to-Text Model", "asr", "\u8bed\u97f3\u8bc6\u522b\u6a21\u578b"],
+  tts: ["Text-to-Speech Model", "tts", "\u8bed\u97f3\u5408\u6210\u6a21\u578b"],
+  audio: ["Audio Model", "audio", "\u97f3\u9891\u6a21\u578b"],
+  embedding: ["Embedding Model", "embedding", "\u5411\u91cf\u6a21\u578b"],
+  other: ["Other Models", "other", "\u5176\u4ed6\u6a21\u578b"],
 };
 
-const defaultZhModelTypeLabelMap: Record<string, string> = {
-  text: "普通模型",
-  multimodal: "多模态模型",
-  vision: "视觉理解模型",
-  image: "生图模型",
-  image_generation: "生图模型",
-  asr: "语音识别模型",
-  tts: "语音合成模型",
-  audio: "音频模型",
-  embedding: "向量模型",
-  other: "其他模型",
+const defaultModelTypeLabelMap: Record<string, string> = {
+  text: "Text Model",
+  multimodal: "Multimodal Model",
+  vision: "Vision Model",
+  image: "Image Model",
+  image_generation: "Image Model",
+  asr: "Speech-to-Text Model",
+  tts: "Text-to-Speech Model",
+  audio: "Audio Model",
+  embedding: "Embedding Model",
+  other: "Other Models",
 };
 
-const defaultZhModalityLabelMap: Record<string, string> = {
-  text: "文本",
-  image: "图像",
-  vision: "视觉",
-  audio: "音频",
-  video: "视频",
-  file: "文件",
-  tool: "工具",
+const defaultModalityLabelMap: Record<string, string> = {
+  text: "Text",
+  image: "Image",
+  vision: "Vision",
+  audio: "Audio",
+  video: "Video",
+  file: "File",
+  tool: "Tool",
 };
 
-const defaultZhCapabilityLabelMap: Record<string, string> = {
-  text: "文本",
-  chat: "对话",
-  reasoning: "推理",
-  vision: "视觉",
-  multimodal: "多模态",
-  image_generation: "生图",
-  image: "图像",
-  audio: "音频",
-  asr: "语音识别",
-  tts: "语音合成",
-  speech_to_text: "语音识别",
-  text_to_speech: "语音合成",
-  tool: "工具",
-  code: "代码",
+const defaultCapabilityLabelMap: Record<string, string> = {
+  text: "Text",
+  chat: "Chat",
+  reasoning: "Reasoning",
+  vision: "Vision",
+  multimodal: "Multimodal",
+  image_generation: "Image generation",
+  image: "Image",
+  audio: "Audio",
+  asr: "Speech to text",
+  tts: "Text to speech",
+  speech_to_text: "Speech to text",
+  text_to_speech: "Text to speech",
+  tool: "Tool",
+  code: "Code",
   agent: "Agent",
 };
 
@@ -165,7 +165,7 @@ export function getModelCapabilityBadges(
       translatedTokenLabel(
         token,
         capabilityLabelKeyMap,
-        defaultZhCapabilityLabelMap,
+        defaultCapabilityLabelMap,
         t,
       ),
   );
@@ -176,14 +176,14 @@ export function getModelCapabilityBadges(
             value: translatedTokenLabel(
               token,
               modalityLabelKeyMap,
-              defaultZhModalityLabelMap,
+              defaultModalityLabelMap,
               t,
             ),
           })
-        : `输入:${translatedTokenLabel(
+        : `Input:${translatedTokenLabel(
             token,
             modalityLabelKeyMap,
-            defaultZhModalityLabelMap,
+            defaultModalityLabelMap,
           )}`,
   );
   const outputBadges = uniqueModelCapabilityTokens(option.outputModalities || []).map(
@@ -193,14 +193,14 @@ export function getModelCapabilityBadges(
             value: translatedTokenLabel(
               token,
               modalityLabelKeyMap,
-              defaultZhModalityLabelMap,
+              defaultModalityLabelMap,
               t,
             ),
           })
-        : `输出:${translatedTokenLabel(
+        : `Output:${translatedTokenLabel(
             token,
             modalityLabelKeyMap,
-            defaultZhModalityLabelMap,
+            defaultModalityLabelMap,
           )}`,
   );
   return [...capabilityBadges, ...inputBadges, ...outputBadges].slice(0, 6);
@@ -235,14 +235,14 @@ export function getModelTypeLabel(type: string, t?: TranslateFn) {
     modelTypeLabelKeyMap.other;
   return t
     ? t(labelKey)
-    : defaultZhModelTypeLabelMap[normalized] || defaultZhModelTypeLabelMap.other;
+    : defaultModelTypeLabelMap[normalized] || defaultModelTypeLabelMap.other;
 }
 
 function shouldLocalizeModelTypeLabel(label: string, key: string) {
   const normalizedLabel = label.trim();
   if (!normalizedLabel) return true;
   const normalizedKey = normalizeModelCapabilityToken(key || "other");
-  return (defaultModelTypeLabels[normalizedKey] || []).some(
+  return (defaultModelTypeLabelAliases[normalizedKey] || []).some(
     (defaultLabel) =>
       normalizeModelCapabilityToken(defaultLabel) ===
       normalizeModelCapabilityToken(normalizedLabel),

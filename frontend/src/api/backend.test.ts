@@ -70,7 +70,7 @@ describe('agent preview backend api', () => {
       }),
     ) as typeof fetch
 
-    await expect(createAgentPreview('demo-agent', 3000, clusterContext)).rejects.toThrow('预览响应为空。')
+    await expect(createAgentPreview('demo-agent', 3000, clusterContext)).rejects.toThrow('Preview response is empty.')
   })
 
   it('heartbeats and deletes preview sessions', async () => {

@@ -88,7 +88,7 @@ export function AgentCreatePage() {
       .catch((error) => {
         if (disposed) return;
         preparedBlueprintKeyRef.current = "";
-        setMessage(error instanceof Error ? error.message : "加载创建模板失败");
+        setMessage(error instanceof Error ? error.message : t('agent.createTemplateFailed'));
       });
 
     return () => {
@@ -147,7 +147,7 @@ export function AgentCreatePage() {
       await createAgentFromBlueprint(blueprint);
       navigate("/agents");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "提交失败");
+      setMessage(error instanceof Error ? error.message : t('agent.submitFailed'));
     }
   };
 

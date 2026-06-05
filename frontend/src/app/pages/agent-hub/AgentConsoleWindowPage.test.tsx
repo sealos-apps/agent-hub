@@ -782,7 +782,7 @@ describe('AgentConsoleWindowPage helpers', () => {
     fireEvent.click(await screen.findByRole('button', { name: /image.png/ }))
 
     await waitFor(() => expect(mockReadFile).toHaveBeenCalledWith('/workspace/image.png'))
-    await waitFor(() => expect(screen.getByText('当前文件类型暂不支持预览。')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('当前对象暂不支持预览。')).toBeInTheDocument())
     expect(screen.queryByLabelText('mock file editor')).not.toBeInTheDocument()
 
     fireEvent.keyDown(document, { key: 's', metaKey: true })

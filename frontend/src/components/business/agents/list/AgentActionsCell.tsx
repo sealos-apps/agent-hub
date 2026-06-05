@@ -10,6 +10,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { getAccessItem, getActionItem } from '../../../../domains/agents/mappers'
+import { translateAgentReason } from '../../../../domains/agents/reasons'
 import type { AgentListItem } from '../../../../domains/agents/types'
 import { useI18n } from '../../../../i18n'
 import { cn } from '../../../../lib/format'
@@ -64,6 +65,7 @@ export function AgentActionsCell({
   const canWebUI = Boolean(webUIAccess?.enabled)
   const canEdit = Boolean(settingsAction?.enabled)
   const canToggleState = Boolean(runAction?.enabled || pauseAction?.enabled)
+  const reason = (value?: string) => value ? translateAgentReason(value, t) : ''
   const toggleTitle = pauseAction?.enabled ? t('agent.pause') : runAction?.enabled ? t('agent.start') : t('agent.currentStatusCannotToggle')
 
   const menuItems = [
@@ -73,7 +75,7 @@ export function AgentActionsCell({
       label: t('agent.chat'),
       icon: Bot,
       disabled: !canChat,
-      title: chatAction?.reason || item.chatDisabledReason || t('agent.chatUnavailable'),
+      title: reason(chatAction?.reason) || reason(item.chatDisabledReason) || t('agent.chatUnavailable'),
       onClick: () => onChat(item),
     }
       : null,
@@ -83,7 +85,7 @@ export function AgentActionsCell({
       label: t('agent.console'),
       icon: Terminal,
       disabled: !canTerminal,
-      title: terminalAction?.reason || item.terminalDisabledReason || t('agent.terminalUnavailable'),
+      title: reason(terminalAction?.reason) || reason(item.terminalDisabledReason) || t('agent.terminalUnavailable'),
       onClick: () => onTerminal(item),
     }
       : null,
@@ -93,7 +95,7 @@ export function AgentActionsCell({
       label: t('agent.files'),
       icon: FolderOpen,
       disabled: !canFiles,
-      title: filesAction?.reason || t('agent.filesUnavailable'),
+      title: reason(filesAction?.reason) || t('agent.filesUnavailable'),
       onClick: () => onFiles(item),
     }
       : null,
@@ -103,7 +105,7 @@ export function AgentActionsCell({
       label: 'Web UI',
       icon: Globe,
       disabled: !canWebUI,
-      title: webUIAccess?.reason || t('agent.webUIUnavailable'),
+      title: reason(webUIAccess?.reason) || t('agent.webUIUnavailable'),
       onClick: () => onWebUI(item),
     }
       : null,
@@ -113,7 +115,7 @@ export function AgentActionsCell({
       label: toggleTitle,
       icon: pauseAction?.enabled ? PauseCircle : PlayCircle,
       disabled: !canToggleState,
-      title: pauseAction?.reason || runAction?.reason || toggleTitle,
+      title: reason(pauseAction?.reason) || reason(runAction?.reason) || toggleTitle,
       onClick: () => onToggleState(item),
     }
       : null,
@@ -123,7 +125,7 @@ export function AgentActionsCell({
       label: t('common.delete'),
       icon: Trash2,
       disabled: !deleteAction?.enabled,
-      title: deleteAction?.reason || t('common.delete'),
+      title: reason(deleteAction?.reason) || t('common.delete'),
       destructive: true,
       onClick: () => onDelete(item),
     }
@@ -171,7 +173,7 @@ export function AgentActionsCell({
         )}
         disabled={!canTerminal}
         onClick={() => onTerminal(item)}
-        title={terminalAction?.reason || item.terminalDisabledReason || t('agent.terminalUnavailable')}
+        title={reason(terminalAction?.reason) || reason(item.terminalDisabledReason) || t('agent.terminalUnavailable')}
         type="button"
       >
         <Terminal className="h-5 w-5 shrink-0 text-white" strokeWidth={2} />
@@ -185,7 +187,7 @@ export function AgentActionsCell({
         disabled={!canEdit}
         onClick={() => onEdit(item)}
         size="sm"
-        title={settingsAction?.reason || t('agent.editConfig')}
+        title={reason(settingsAction?.reason) || t('agent.editConfig')}
         type="button"
         variant="secondary"
       >

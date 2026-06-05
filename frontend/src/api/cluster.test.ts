@@ -78,6 +78,6 @@ describe('createClusterContext', () => {
   it('does not reuse a stale kubeconfig from sessionStorage', () => {
     sessionStorage.setItem('hermes-kubeconfig', kubeconfig)
 
-    expect(() => createClusterContext(null)).toThrow('未从 Sealos SDK 中读取到 kubeconfig')
+    expect(() => createClusterContext(null)).toThrow('No kubeconfig was found from Sealos SDK')
   })
 })

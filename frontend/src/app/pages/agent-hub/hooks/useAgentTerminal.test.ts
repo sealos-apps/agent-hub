@@ -25,13 +25,13 @@ describe('terminal output scheduling', () => {
     applyTerminalOutputBackpressure(state, 'b'.repeat(900 * 1024))
     expect(state.droppedNoticeQueued).toBe(true)
     const firstNoticeCount = state.queue.filter((chunk) =>
-      chunk.includes('已跳过部分历史内容'),
+      chunk.includes('some history was skipped'),
     ).length
     expect(firstNoticeCount).toBe(1)
 
     applyTerminalOutputBackpressure(state, 'c'.repeat(900 * 1024))
     const secondNoticeCount = state.queue.filter((chunk) =>
-      chunk.includes('已跳过部分历史内容'),
+      chunk.includes('some history was skipped'),
     ).length
     expect(secondNoticeCount).toBe(1)
     expect(state.queuedChars).toBeLessThanOrEqual(terminalOutputQueueCharLimit)

@@ -26,6 +26,7 @@ import {
   hasTemplateModelSlots,
   RESOURCE_PRESETS,
 } from "../../../../domains/agents/templates";
+import { translateAgentReason } from '../../../../domains/agents/reasons';
 import type {
   AgentBlueprint,
   AgentHubRegion,
@@ -100,7 +101,7 @@ function resolveHealthDisplay(item: AgentListItem, t: ReturnType<typeof useI18n>
 
   if (item.status === "error") {
     return {
-      label: item.bootstrapMessage || t("agent.error"),
+      label: item.bootstrapMessage ? translateAgentReason(item.bootstrapMessage, t) : t("agent.error"),
       icon: AlertCircle,
       iconClassName: "bg-rose-50 text-rose-600",
       badgeClassName: "bg-rose-50 text-rose-700",
@@ -117,7 +118,7 @@ function resolveHealthDisplay(item: AgentListItem, t: ReturnType<typeof useI18n>
   }
 
   return {
-    label: item.bootstrapMessage || t("agent.statusCreating"),
+    label: item.bootstrapMessage ? translateAgentReason(item.bootstrapMessage, t) : t("agent.statusCreating"),
     icon: Clock3,
     iconClassName: "bg-amber-50 text-amber-600",
     badgeClassName: "bg-amber-50 text-amber-700",
@@ -422,17 +423,28 @@ function SideCard({
   );
 }
 
+type SideRowProps = {
+  label: string;
+  value: ReactNode;
+  mono?: boolean;
+} & (
+  | {
+      copyValue: string;
+      copyLabel: string;
+    }
+  | {
+      copyValue?: undefined;
+      copyLabel?: undefined;
+    }
+);
+
 function SideRow({
   label,
   value,
   mono = false,
   copyValue,
-}: {
-  label: string;
-  value: ReactNode;
-  mono?: boolean;
-  copyValue?: string;
-}) {
+  copyLabel,
+}: SideRowProps) {
   return (
     <div className="flex min-h-[52px] items-center justify-between gap-4 border-b border-[#e9edf3] py-1 text-[13px]/6 last:border-b-0">
       <div className="shrink-0 text-zinc-500">{label}</div>
@@ -440,7 +452,7 @@ function SideRow({
         <div className={cn("min-w-0 text-right font-medium leading-6 text-zinc-900", mono && "break-all font-mono text-xs leading-5")}>{value || "--"}</div>
         {copyValue ? (
           <button
-            aria-label={`复制${label}`}
+            aria-label={copyLabel}
             className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
             onClick={() => copyText(copyValue)}
             type="button"
@@ -685,7 +697,7 @@ export function AgentSettingsWorkspace({
       return (
         <DisplayField
           label={t('agent.modelProvider')}
-          hint="该字段会随模型自动切换。"
+          hint={t('agent.autoModelSwitchHint')}
           value={formatModelProviderLabel(fieldValue)}
         />
       );
@@ -695,7 +707,7 @@ export function AgentSettingsWorkspace({
       return (
         <DisplayField
           label="API Mode"
-          hint="该字段会随模型自动切换。"
+          hint={t('agent.autoModelSwitchHint')}
           value={fieldValue || "--"}
         />
       );
@@ -732,7 +744,7 @@ export function AgentSettingsWorkspace({
       return (
         <DisplayField
           label={getFieldLabel(field)}
-          hint="这里展示并提交当前 Agent 的模型入口地址。"
+          hint={t('agent.modelBaseURLHint')}
           mono
           value={resolvedModelBaseURL}
         />
@@ -748,7 +760,7 @@ export function AgentSettingsWorkspace({
       return (
         <DisplayField
           label={t('agent.keySource')}
-          hint="这里仅展示密钥来源，密钥内容不会显示在页面上。"
+          hint={t('agent.keySourceHint')}
           value={keySourceLabel}
         />
       );
@@ -893,8 +905,8 @@ export function AgentSettingsWorkspace({
               {t('agent.instanceInfo')}
             </div>
             <div className="flex min-h-0 flex-col rounded-[14px] border border-[#dfe6f0] bg-white px-4">
-              <SideRow copyValue={item.name} label={t('agent.id')} mono value={item.name} />
-              <SideRow copyValue={item.namespace} label={t('agent.namespace')} mono value={item.namespace} />
+              <SideRow copyLabel={t('common.copy', { label: t('agent.id') })} copyValue={item.name} label={t('agent.id')} mono value={item.name} />
+              <SideRow copyLabel={t('common.copy', { label: t('agent.namespace') })} copyValue={item.namespace} label={t('agent.namespace')} mono value={item.namespace} />
               <SideRow label={t('agent.workDir')} mono value={item.workingDir || template.workingDir} />
               <SideRow label={t('agent.createdAt')} value={formatTime(item.contract.core.createdAt || "")} />
               <SideRow label={t('agent.updatedAt')} value={formatTime(item.updatedAt)} />
@@ -987,7 +999,7 @@ export function AgentSettingsWorkspace({
                   <div>
                     <NumberStepperField
                       className="w-full"
-                      hint="存储独立于预设规格，可单独调整。"
+                      hint={t('agent.storageIndependentHint')}
                       label={t('agent.storageCapacity')}
                       max={500}
                       min={1}

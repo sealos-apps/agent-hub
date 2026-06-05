@@ -42,7 +42,7 @@ func KubernetesProxy(c *gin.Context) {
 	bearerToken := strings.TrimSpace(resolveK8sProxyBearerToken(c.Request))
 
 	if targetBase == "" || bearerToken == "" {
-		writeK8sProxyStatus(c, http.StatusUnauthorized, "缺少 Kubernetes 认证信息", "Unauthorized")
+		writeK8sProxyStatus(c, http.StatusUnauthorized, "missing Kubernetes authorization", "Unauthorized")
 		return
 	}
 

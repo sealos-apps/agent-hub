@@ -27,6 +27,7 @@ import { useAgentHub } from './hooks/AgentHubControllerContext'
 import { useAgentChat } from './hooks/useAgentChat'
 import { useAgentFiles } from './hooks/useAgentFiles'
 import { applyBlueprintPreset, updateBlueprintField } from './lib/blueprint'
+import { useI18n, type TranslateFn } from '../../../i18n'
 import { AGENTHUB_CONSOLE_ROUTE, openAgentConsoleDesktopWindow } from './lib/consoleWindow'
 
 const MOCK_AGENT_ID_PREFIX = 'mock-agent-'
@@ -138,18 +139,18 @@ function buildMockAccess(template: AgentTemplateDefinition): AgentAccessItem[] {
   })
 }
 
-function buildMockActions(status: AgentListItem['status']): AgentActionItem[] {
+function buildMockActions(status: AgentListItem['status'], t: TranslateFn): AgentActionItem[] {
   const isRunning = status === 'running'
   const isStopped = status === 'stopped'
 
   return [
-    { key: 'open-chat', label: '对话', enabled: isRunning },
-    { key: 'open-terminal', label: '终端', enabled: isRunning },
-    { key: 'open-files', label: '文件', enabled: true },
-    { key: 'open-settings', label: '配置', enabled: true },
-    { key: 'run', label: '启动', enabled: isStopped },
-    { key: 'pause', label: '暂停', enabled: isRunning },
-    { key: 'delete', label: '删除', enabled: true },
+    { key: 'open-chat', label: t('template.action.chat'), enabled: isRunning },
+    { key: 'open-terminal', label: t('template.access.terminal'), enabled: isRunning },
+    { key: 'open-files', label: t('template.access.files'), enabled: true },
+    { key: 'open-settings', label: t('common.config'), enabled: true },
+    { key: 'run', label: t('agent.start'), enabled: isStopped },
+    { key: 'pause', label: t('agent.pause'), enabled: isRunning },
+    { key: 'delete', label: t('common.delete'), enabled: true },
   ]
 }
 
@@ -171,6 +172,7 @@ function buildMockContract({
   keySource,
   bootstrapPhase = '',
   bootstrapMessage = '',
+  t,
 }: {
   name: string
   aliasName: string
@@ -187,17 +189,19 @@ function buildMockContract({
   modelAPIMode?: string
   hasModelAPIKey: boolean
   keySource: string
-  bootstrapPhase?: string
-  bootstrapMessage?: string
-}): AgentContract {
+	  bootstrapPhase?: string
+	  bootstrapMessage?: string
+	  t: TranslateFn
+	}): AgentContract {
   const access = buildMockAccess(template)
   const actions = buildMockActions(
     status === 'Running'
       ? 'running'
       : status === 'Paused'
-        ? 'stopped'
-        : 'creating',
-  )
+	        ? 'stopped'
+	        : 'creating',
+	    t,
+	  )
 
   return {
     core: {
@@ -239,7 +243,7 @@ function buildMockContract({
       agent: [
         {
           key: 'keySource',
-          label: '密钥来源',
+          label: t('agent.keySource'),
           type: 'text',
           binding: { kind: 'literal' },
           readOnly: true,
@@ -271,6 +275,7 @@ function createMockAgentItem({
   keySource,
   bootstrapPhase = '',
   bootstrapMessage = '',
+  t,
 }: {
   id: string
   name: string
@@ -291,6 +296,7 @@ function createMockAgentItem({
   keySource: string
   bootstrapPhase?: string
   bootstrapMessage?: string
+  t: TranslateFn
 }): AgentListItem {
   const rawStatus =
     status === 'running'
@@ -313,10 +319,11 @@ function createMockAgentItem({
     model,
     modelAPIMode,
     hasModelAPIKey,
-    keySource,
-    bootstrapPhase,
-    bootstrapMessage,
-  })
+	    keySource,
+	    bootstrapPhase,
+	    bootstrapMessage,
+	    t,
+	  })
   const accessByKey = indexByKey(contract.access)
   const actionsByKey = indexByKey(contract.actions)
   const workspacesByKey = indexByKey(contract.workspaces)
@@ -355,10 +362,10 @@ function createMockAgentItem({
     bootstrapPhase,
     bootstrapMessage,
     chatAvailable: status === 'running',
-    chatDisabledReason: status === 'running' ? '' : '实例未运行，暂不可对话',
+    chatDisabledReason: status === 'running' ? '' : t('agent.chatDisabledNotRunning'),
     terminalAvailable: status === 'running',
     terminalDisabledReason:
-      status === 'running' ? '' : '实例未运行，暂不可进入终端',
+      status === 'running' ? '' : t('agent.terminalUnavailable'),
     settingsAvailable: true,
     webUIAvailable: true,
     sshAvailable: true,
@@ -379,6 +386,7 @@ function createMockAgentItem({
 function buildMockAgentItems(
   templates: AgentTemplateDefinition[],
   clusterInfo: ClusterInfo | null,
+  t: TranslateFn,
 ): AgentListItem[] {
   if (!templates.length) return []
 
@@ -400,7 +408,7 @@ function buildMockAgentItems(
       namespace,
       owner,
       status: 'running',
-      statusText: '运行中',
+      statusText: t('agent.statusRunning'),
       cpu: '2000m',
       memory: '4096Mi',
       storage: '10Gi',
@@ -410,6 +418,7 @@ function buildMockAgentItems(
       modelAPIMode: 'chat_completions',
       hasModelAPIKey: true,
       keySource: 'workspace',
+      t,
     }),
     createMockAgentItem({
       id: `${MOCK_AGENT_ID_PREFIX}openclaw-1`,
@@ -419,7 +428,7 @@ function buildMockAgentItems(
       namespace,
       owner,
       status: 'creating',
-      statusText: '创建中',
+      statusText: t('agent.statusCreating'),
       cpu: '1000m',
       memory: '2048Mi',
       storage: '10Gi',
@@ -430,7 +439,8 @@ function buildMockAgentItems(
       hasModelAPIKey: false,
       keySource: 'workspace',
       bootstrapPhase: 'bootstrap',
-      bootstrapMessage: '正在初始化工作目录和依赖，请稍候…',
+      bootstrapMessage: t('agent.bootstrapInitializing'),
+      t,
     }),
     createMockAgentItem({
       id: `${MOCK_AGENT_ID_PREFIX}hermes-2`,
@@ -440,7 +450,7 @@ function buildMockAgentItems(
       namespace,
       owner,
       status: 'stopped',
-      statusText: '已暂停',
+      statusText: t('agent.statusStopped'),
       cpu: '4000m',
       memory: '8192Mi',
       storage: '20Gi',
@@ -450,11 +460,13 @@ function buildMockAgentItems(
       modelAPIMode: 'chat_completions',
       hasModelAPIKey: true,
       keySource: 'workspace',
+      t,
     }),
   ]
 }
 
 export function AgentsListPage() {
+  const { t } = useI18n()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const controller = useAgentHub()
@@ -474,6 +486,7 @@ export function AgentsListPage() {
     useAgentChat({
       clusterContext: controller.clusterContext,
       onErrorMessage: controller.setMessage,
+      t,
     })
 
   const {
@@ -496,6 +509,7 @@ export function AgentsListPage() {
     uploadFiles,
   } = useAgentFiles({
     clusterContext: controller.clusterContext,
+    t,
   })
 
   const previewItems = useMemo(
@@ -503,7 +517,7 @@ export function AgentsListPage() {
       controller.items.length > 0
         ? controller.items
         : ENABLE_MOCK_AGENTS
-          ? buildMockAgentItems(controller.templates, controller.clusterInfo)
+          ? buildMockAgentItems(controller.templates, controller.clusterInfo, t)
           : [],
     [controller.clusterInfo, controller.items, controller.templates],
   )
@@ -555,12 +569,11 @@ export function AgentsListPage() {
   }
 
   const handleMockPreview = () => {
-    // mock 数据仅用于样式预览：静默拦截交互，不展示提示横幅
   }
 
   const handleOpenConfig = (item: AgentListItem) => {
     if (!item.settingsAvailable) {
-      controller.setMessage('当前实例暂不支持修改配置')
+      controller.setMessage(t('agent.configUnsupported'))
       return
     }
     const blueprint = controller.createBlueprintFromAgentItem(item)
@@ -623,7 +636,7 @@ export function AgentsListPage() {
       handleCloseConfig()
     } catch (error) {
       controller.setMessage(
-        error instanceof Error ? error.message : '保存配置失败',
+        error instanceof Error ? error.message : t('agent.saveConfigFailed'),
       )
     }
   }
@@ -641,7 +654,7 @@ export function AgentsListPage() {
       await controller.deleteAgentItem(deleteTarget)
       setDeleteTarget(null)
     } catch (error) {
-      controller.setMessage(error instanceof Error ? error.message : '删除失败')
+      controller.setMessage(error instanceof Error ? error.message : t('agent.deleteFailed'))
     }
   }
 
@@ -655,7 +668,7 @@ export function AgentsListPage() {
       await controller.toggleItemState(item)
     } catch (error) {
       controller.setMessage(
-        error instanceof Error ? error.message : '切换运行状态失败',
+        error instanceof Error ? error.message : t('agent.toggleFailed'),
       )
     }
   }
@@ -665,7 +678,7 @@ export function AgentsListPage() {
       await controller.updateAgentAlias(item, aliasName)
     } catch (error) {
       controller.setMessage(
-        error instanceof Error ? error.message : '修改别名失败',
+        error instanceof Error ? error.message : t('agent.renameFailed'),
       )
       throw error
     }
@@ -681,7 +694,7 @@ export function AgentsListPage() {
       await openAgentConsoleDesktopWindow(item)
     } catch (error) {
       controller.setMessage(
-        error instanceof Error ? error.message : '打开控制台窗口失败',
+        error instanceof Error ? error.message : t('agent.openConsoleFailed'),
       )
     }
   }
@@ -694,7 +707,7 @@ export function AgentsListPage() {
 
     if (!item.webUIAccess?.enabled || !item.webUIAccess.url) {
       controller.setMessage(
-        item.webUIAccess?.reason || '当前模板没有可用的 Web UI 地址',
+        item.webUIAccess?.reason || t('agent.webUIUnavailableReason'),
       )
       return
     }
@@ -712,7 +725,7 @@ export function AgentsListPage() {
 
           {controller.loading ? (
             <div className="flex h-full min-h-[420px] flex-1 items-center justify-center rounded-[16px] border border-zinc-200 bg-white px-6 py-16 text-center text-sm text-zinc-500">
-              正在加载 Agent 实例...
+              {t('agent.listLoading')}
             </div>
           ) : filteredItems.length === 0 && previewItems.length > 0 ? (
             <AgentListHeroEmpty

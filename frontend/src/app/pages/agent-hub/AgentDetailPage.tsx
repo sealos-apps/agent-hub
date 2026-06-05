@@ -127,6 +127,7 @@ export function AgentDetailPage() {
     {
       clusterContext: controller.clusterContext,
       onErrorMessage: controller.setMessage,
+      t,
     },
   );
 
@@ -150,6 +151,7 @@ export function AgentDetailPage() {
     uploadFiles,
   } = useAgentFiles({
     clusterContext: controller.clusterContext,
+    t,
   });
 
   const navigationItem =
@@ -173,20 +175,20 @@ export function AgentDetailPage() {
         id: "mock-assistant-1",
         role: "assistant",
         content:
-          "你好，我是示例 Agent。这个对话页是本地 mock 数据，用于预览消息气泡、输入区和状态样式。",
+          t('agent.mockChatGreeting'),
         createdAt: "10:12:08",
       },
       {
         id: "mock-user-1",
         role: "user",
-        content: "请展示一下当前页面的交互布局。",
+        content: t('agent.mockChatRequest'),
         createdAt: "10:12:19",
       },
       {
         id: "mock-assistant-2",
         role: "assistant",
         content:
-          "已展示：顶部状态标签、消息列表、输入区和发送按钮。你可以继续精修间距和层级。",
+          t('agent.mockChatResponse'),
         createdAt: "10:12:31",
       },
     ];
@@ -267,11 +269,11 @@ export function AgentDetailPage() {
       openedItem,
       detailMode: "preview",
       previewContent:
-        "# Hermes Agent\n\n这是文件工作台的 mock 内容。\n\n- 支持目录与文件列表样式预览\n- 支持右侧预览区样式预览\n- 不连接后端，不执行真实读写操作\n",
+        t('agent.mockFilesContent'),
       draftContent: "",
       previewObjectUrl: "",
       previewObjectType: "text/markdown",
-      activity: "已加载 mock 文件目录",
+      activity: t('agent.mockFilesLoaded'),
       browsing: false,
       previewing: false,
       reading: false,
@@ -451,7 +453,7 @@ export function AgentDetailPage() {
       navigate("/agents");
     } catch (error) {
       controller.setMessage(
-        error instanceof Error ? error.message : "删除失败",
+        error instanceof Error ? error.message : t('agent.deleteFailed'),
       );
     }
   };
@@ -467,7 +469,7 @@ export function AgentDetailPage() {
       await controller.toggleItemState(item);
     } catch (error) {
       controller.setMessage(
-        error instanceof Error ? error.message : "切换运行状态失败",
+        error instanceof Error ? error.message : t('agent.toggleFailed'),
       );
     }
   };
@@ -484,7 +486,7 @@ export function AgentDetailPage() {
       await openAgentConsoleDesktopWindow(item);
     } catch (error) {
       controller.setMessage(
-        error instanceof Error ? error.message : "打开控制台窗口失败",
+        error instanceof Error ? error.message : t('agent.openConsoleFailed'),
       );
     }
   };
@@ -534,7 +536,7 @@ export function AgentDetailPage() {
       closeConfigModal();
     } catch (error) {
       controller.setMessage(
-        error instanceof Error ? error.message : "保存失败",
+        error instanceof Error ? error.message : t('agent.saveFailed'),
       );
     }
   };
@@ -594,7 +596,7 @@ export function AgentDetailPage() {
       case "chat":
         return (
           <AgentChatWorkspace
-            emptyDescription="进入对话页后会自动初始化当前 Agent 的会话，你可以直接在这里进行功能验证。"
+            emptyDescription={t('agent.chatAutoInitDesc')}
             onDraftChange={(value) => {
               if (isMockItem) {
                 setMockChatDraft(value);
@@ -629,7 +631,7 @@ export function AgentDetailPage() {
                   {
                     id: `mock-assistant-${Date.now() + 1}`,
                     role: "assistant",
-                    content: `已收到你的输入：“${content}”。这是本地 mock 回复，用于预览发送后的样式。`,
+                    content: t('agent.mockReply', { content }),
                     createdAt: time,
                   },
                 ]);

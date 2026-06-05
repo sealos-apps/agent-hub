@@ -80,7 +80,7 @@ export const requestJson = async (url: string, options: RequestOptions = {}) => 
   const response = await fetch(url, options)
   if (!response.ok) {
     const text = await response.text().catch(() => '')
-    const error: MaybeError = new Error(text || `请求失败: ${response.status}`)
+    const error: MaybeError = new Error(text || `Request failed: ${response.status}`)
     error.status = response.status
     error.payload = text
     throw error
@@ -96,7 +96,7 @@ export const requestJson = async (url: string, options: RequestOptions = {}) => 
 export const createApiError = async (response: Response) => {
   const text = await response.text().catch(() => '')
   let payload: unknown = text
-  let message = text || `请求失败: ${response.status}`
+  let message = text || `Request failed: ${response.status}`
 
   if (text) {
     try {
@@ -201,7 +201,7 @@ export const requestRawWithAuthRetry = async (
   } catch (error) {
     const typedError = error as MaybeError
     if (isUnauthorizedError(error)) {
-      typedError.message = '请求失败: kubeconfig 认证无效或当前环境未按 Sealos 应用方式代理 Kubernetes 请求'
+      typedError.message = 'Request failed: kubeconfig auth is invalid or this environment does not proxy Kubernetes requests as a Sealos app'
     }
     throw typedError
   }
@@ -217,7 +217,7 @@ export const requestJsonWithAuthRetry = async (
   } catch (error) {
     const typedError = error as MaybeError
     if (isUnauthorizedError(error)) {
-      typedError.message = '请求失败: kubeconfig 认证无效或当前环境未按 Sealos 应用方式代理 Kubernetes 请求'
+      typedError.message = 'Request failed: kubeconfig auth is invalid or this environment does not proxy Kubernetes requests as a Sealos app'
     }
     throw typedError
   }
@@ -233,7 +233,7 @@ export const requestMaybeConflictWithAuthRetry = async (
   } catch (error) {
     const typedError = error as MaybeError
     if (isUnauthorizedError(error)) {
-      typedError.message = '请求失败: kubeconfig 认证无效或当前环境未按 Sealos 应用方式代理 Kubernetes 请求'
+      typedError.message = 'Request failed: kubeconfig auth is invalid or this environment does not proxy Kubernetes requests as a Sealos app'
     }
     throw typedError
   }
@@ -253,7 +253,7 @@ export const fileToBase64 = (file: Blob) =>
       const index = result.indexOf(marker)
       resolve(index >= 0 ? result.slice(index + marker.length) : '')
     }
-    reader.onerror = () => reject(reader.error || new Error('读取文件失败'))
+    reader.onerror = () => reject(reader.error || new Error('Failed to read file'))
     reader.readAsDataURL(file)
   })
 

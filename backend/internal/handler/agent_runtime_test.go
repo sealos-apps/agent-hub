@@ -154,7 +154,7 @@ func TestResolveAgentRuntimeStatusUsesDesiredRunningOverFailedBootstrap(t *testi
 	devbox := newDevboxForStatusTest("Running")
 	devbox.SetAnnotations(map[string]string{
 		"agent.sealos.io/bootstrap-phase":   "failed",
-		"agent.sealos.io/bootstrap-message": "实例未在超时内进入可执行状态",
+		"agent.sealos.io/bootstrap-message": "instance_start_timeout",
 	})
 	clientset := fake.NewSimpleClientset()
 
@@ -170,7 +170,7 @@ func TestEnrichAgentRuntimeStatusClearsFailedBootstrapForRunningAgent(t *testing
 	devbox := newDevboxForStatusTest("Running")
 	devbox.SetAnnotations(map[string]string{
 		"agent.sealos.io/bootstrap-phase":   "failed",
-		"agent.sealos.io/bootstrap-message": "实例未在超时内进入可执行状态",
+		"agent.sealos.io/bootstrap-message": "instance_start_timeout",
 	})
 	clientset := fake.NewSimpleClientset(&corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -196,7 +196,7 @@ func TestEnrichAgentRuntimeStatusClearsFailedBootstrapForRunningAgent(t *testing
 			Status:           agent.StatusFailed,
 			Ready:            false,
 			BootstrapPhase:   kube.BootstrapPhaseFailed,
-			BootstrapMessage: "实例未在超时内进入可执行状态",
+			BootstrapMessage: "instance_start_timeout",
 		},
 	}
 

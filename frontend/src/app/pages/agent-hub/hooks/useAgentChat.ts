@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { streamAgentChatCompletions } from '../../../../api'
 import type { ChatStreamEvent } from '../../../../api/backend'
+import type { TranslateFn } from '../../../../i18n'
 import type { AgentListItem, ChatMessage, ChatSessionState, ClusterContext } from '../../../../domains/agents/types'
 
 const createChatSession = (resource: AgentListItem): ChatSessionState => ({
@@ -16,11 +17,13 @@ const createChatSession = (resource: AgentListItem): ChatSessionState => ({
 interface UseAgentChatOptions {
   clusterContext: ClusterContext | null
   onErrorMessage: (message: string) => void
+  t: TranslateFn
 }
 
 export function useAgentChat({
   clusterContext,
   onErrorMessage,
+  t,
 }: UseAgentChatOptions) {
   const [chatSession, setChatSession] = useState<ChatSessionState | null>(null)
 
@@ -37,18 +40,18 @@ export function useAgentChat({
   const openChat = useCallback(
     (item: AgentListItem) => {
       if (!clusterContext) {
-        onErrorMessage('当前工作区还没准备好，暂时无法发起对话。')
+        onErrorMessage(t('chat.workspaceNotReady'))
         return
       }
 
       if (!item.chatAvailable) {
-        onErrorMessage(item.chatDisabledReason || '当前实例暂不可对话。')
+        onErrorMessage(item.chatDisabledReason || t('chat.unavailable'))
         return
       }
 
       setChatSession(createChatSession(item))
     },
-    [clusterContext, onErrorMessage],
+    [clusterContext, onErrorMessage, t],
   )
 
   const closeChat = useCallback(() => {
@@ -74,7 +77,7 @@ export function useAgentChat({
       updateChatSession((current) => ({
         ...current,
         status: 'error',
-        error: '当前 Agent 没有显式模型配置，无法发起对话。',
+        error: t('chat.noModelConfigured'),
       }))
       return
     }
@@ -179,11 +182,11 @@ export function useAgentChat({
       updateChatSession((current) => ({
         ...current,
         status: 'error',
-        error: error instanceof Error ? error.message : '发送失败，请稍后重试。',
+        error: error instanceof Error ? error.message : t('chat.sendFailed'),
         messages: current.messages.map((message) => ({ ...message, streaming: false })),
       }))
     }
-  }, [chatSession, clusterContext, updateChatSession])
+  }, [chatSession, clusterContext, updateChatSession, t])
 
   return {
     chatSession,
