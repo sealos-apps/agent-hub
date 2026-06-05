@@ -8,6 +8,7 @@ import {
   Volume2,
 } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -38,6 +39,9 @@ interface ModelCapabilitySelectProps {
 }
 
 const PORTAL_MENU_GAP = 8;
+const PORTAL_MENU_MAX_HEIGHT = 416;
+const PORTAL_MENU_MIN_HEIGHT = 240;
+const PORTAL_MENU_VIEWPORT_PADDING = 24;
 
 function categoryIcon(category: string) {
   switch (normalizeModelCapabilityToken(category)) {
@@ -53,6 +57,59 @@ function categoryIcon(category: string) {
     default:
       return Bot;
   }
+}
+
+function resolveMenuLayout(
+  rect: DOMRect,
+  portal: boolean,
+): { placement: "down" | "up"; style: CSSProperties } {
+  const availableBelow = Math.max(
+    0,
+    window.innerHeight - rect.bottom - PORTAL_MENU_GAP - PORTAL_MENU_VIEWPORT_PADDING,
+  );
+  const availableAbove = Math.max(
+    0,
+    rect.top - PORTAL_MENU_GAP - PORTAL_MENU_VIEWPORT_PADDING,
+  );
+  const placement: "down" | "up" =
+    availableBelow < PORTAL_MENU_MIN_HEIGHT && availableAbove > availableBelow
+      ? "up"
+      : "down";
+  const availableHeight = placement === "up" ? availableAbove : availableBelow;
+  const baseStyle: CSSProperties = {
+    boxSizing: "border-box",
+    maxHeight: Math.min(PORTAL_MENU_MAX_HEIGHT, availableHeight),
+    overscrollBehavior: "contain",
+  };
+
+  if (!portal) {
+    return {
+      placement,
+      style:
+        placement === "up"
+          ? {
+              ...baseStyle,
+              bottom: `calc(100% + ${PORTAL_MENU_GAP}px)`,
+            }
+          : baseStyle,
+    };
+  }
+
+  return {
+    placement,
+    style: {
+      ...baseStyle,
+      bottom:
+        placement === "up"
+          ? window.innerHeight - rect.top + PORTAL_MENU_GAP
+          : undefined,
+      left: rect.left,
+      position: "fixed" as CSSProperties["position"],
+      top: placement === "up" ? undefined : rect.bottom + PORTAL_MENU_GAP,
+      width: rect.width,
+      zIndex: 80,
+    },
+  };
 }
 
 export function ModelCapabilitySelect({
@@ -79,14 +136,12 @@ export function ModelCapabilitySelect({
   const selectedOption =
     options.find((option) => option.value === value) || null;
   const [open, setOpen] = useState(false);
-  const [portalStyle, setPortalStyle] = useState<CSSProperties>({
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>({
     boxSizing: "border-box",
-    left: -9999,
-    position: "fixed",
-    top: -9999,
-    width: 0,
-    zIndex: 80,
+    maxHeight: PORTAL_MENU_MAX_HEIGHT,
+    overscrollBehavior: "contain",
   });
+  const [menuPlacement, setMenuPlacement] = useState<"down" | "up">("down");
   const [activeTypeKey, setActiveTypeKey] = useState(
     () => selectedModelType?.key || normalizedModelTypes[0]?.key || "",
   );
@@ -111,6 +166,7 @@ export function ModelCapabilitySelect({
     normalizedModelTypes[0] ||
     null;
   const activeModels = activeType?.models || [];
+  const showTypeList = normalizedModelTypes.length > 1;
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
@@ -135,32 +191,37 @@ export function ModelCapabilitySelect({
     };
   }, []);
 
-  const updatePortalPosition = () => {
+  const updatePortalPosition = useCallback(() => {
     if (!rootRef.current) return;
 
-    const rect = rootRef.current.getBoundingClientRect();
-    setPortalStyle({
-      boxSizing: "border-box",
-      left: rect.left,
-      position: "fixed",
-      top: rect.bottom + PORTAL_MENU_GAP,
-      width: rect.width,
-      zIndex: 80,
-    });
-  };
+    const { placement, style } = resolveMenuLayout(
+      rootRef.current.getBoundingClientRect(),
+      portal,
+    );
+    setMenuPlacement(placement);
+    setMenuStyle(style);
+  }, [portal]);
 
   useLayoutEffect(() => {
-    if (!open || !portal) return;
+    if (!open) return;
+
+    const handleWindowScroll = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Node && menuRef.current?.contains(target)) {
+        return;
+      }
+      updatePortalPosition();
+    };
 
     updatePortalPosition();
     window.addEventListener("resize", updatePortalPosition);
-    window.addEventListener("scroll", updatePortalPosition, true);
+    window.addEventListener("scroll", handleWindowScroll, true);
 
     return () => {
       window.removeEventListener("resize", updatePortalPosition);
-      window.removeEventListener("scroll", updatePortalPosition, true);
+      window.removeEventListener("scroll", handleWindowScroll, true);
     };
-  }, [open, portal]);
+  }, [open, updatePortalPosition]);
 
   if (!normalizedModelTypes.length) {
     return (
@@ -174,43 +235,55 @@ export function ModelCapabilitySelect({
     <div
       className={cn(
         "overflow-hidden rounded-[12px] border border-zinc-200 bg-white shadow-[0_18px_42px_-20px_rgba(15,23,42,0.35)]",
-        portal ? "" : "absolute left-0 right-0 z-30 mt-2",
+        portal
+          ? ""
+          : menuPlacement === "up"
+            ? "absolute left-0 right-0 z-30"
+            : "absolute left-0 right-0 z-30 mt-2",
       )}
+      data-testid="model-capability-menu"
       ref={menuRef}
-      style={portal ? portalStyle : undefined}
+      style={menuStyle}
     >
-      <div className="grid grid-cols-[148px_minmax(0,1fr)] overflow-hidden">
-        <div className="border-r border-zinc-200 bg-zinc-50/70 p-1.5">
-          {normalizedModelTypes.map((modelType) => {
-            const Icon = categoryIcon(modelType.key);
-            const selected = activeType?.key === modelType.key;
-            return (
-              <button
-                className={cn(
-                  "flex w-full min-w-0 items-center gap-2 rounded-[8px] px-2.5 py-2 text-left transition",
-                  selected
-                    ? "bg-white text-zinc-950 shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
-                    : "text-zinc-600 hover:bg-white/80 hover:text-zinc-950",
-                )}
-                key={modelType.key}
-                onClick={() => setActiveTypeKey(modelType.key)}
-                type="button"
-              >
-                <Icon className="h-4 w-4 shrink-0 text-zinc-500" />
-                <span className="min-w-0 flex-1 truncate text-[12px]/5 font-semibold">
-                  {modelType.label || getModelTypeLabel(modelType.key, t)}
-                </span>
-                <span className="shrink-0 text-[11px]/4 text-zinc-400">
-                  {modelType.models.length}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+      <div
+        className={cn(
+          "grid max-h-[inherit] overflow-hidden",
+          showTypeList ? "grid-cols-[148px_minmax(0,1fr)]" : "grid-cols-1",
+        )}
+      >
+        {showTypeList ? (
+          <div className="max-h-[inherit] overflow-y-auto overscroll-contain border-r border-zinc-200 bg-zinc-50/70 p-1.5">
+            {normalizedModelTypes.map((modelType) => {
+              const Icon = categoryIcon(modelType.key);
+              const selected = activeType?.key === modelType.key;
+              return (
+                <button
+                  className={cn(
+                    "flex w-full min-w-0 items-center gap-2 rounded-[8px] px-2.5 py-2 text-left transition",
+                    selected
+                      ? "bg-white text-zinc-950 shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+                      : "text-zinc-600 hover:bg-white/80 hover:text-zinc-950",
+                  )}
+                  key={modelType.key}
+                  onClick={() => setActiveTypeKey(modelType.key)}
+                  type="button"
+                >
+                  <Icon className="h-4 w-4 shrink-0 text-zinc-500" />
+                  <span className="min-w-0 flex-1 truncate text-[12px]/5 font-semibold">
+                    {modelType.label || getModelTypeLabel(modelType.key, t)}
+                  </span>
+                  <span className="shrink-0 text-[11px]/4 text-zinc-400">
+                    {modelType.models.length}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
 
-        <div className="min-w-0 p-1.5">
+        <div className="flex max-h-[inherit] min-w-0 flex-col p-1.5">
           {activeType ? (
-            <div className="border-b border-zinc-100 px-2 pb-2 pt-1.5">
+            <div className="shrink-0 border-b border-zinc-100 px-2 pb-2 pt-1.5">
               <div className="truncate text-[13px]/5 font-semibold text-zinc-950">
                 {activeType.label || getModelTypeLabel(activeType.key, t)}
               </div>
@@ -222,7 +295,10 @@ export function ModelCapabilitySelect({
             </div>
           ) : null}
 
-          <div className="pt-1.5">
+          <div
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-1.5"
+            data-testid="model-capability-model-list"
+          >
             {activeModels.map((option) => {
               const selected = option.value === value;
               const badges = getModelCapabilityBadges(option, t).slice(0, 4);

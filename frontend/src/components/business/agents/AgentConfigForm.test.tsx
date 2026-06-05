@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, vi } from 'vitest'
 import { AgentConfigForm } from './AgentConfigForm'
 import { createTemplateFixture } from '../../../test/agentFixtures'
 import {
@@ -46,7 +47,122 @@ function createBlueprint(): AgentBlueprint {
   }
 }
 
+function createManyTextModels(count = 10) {
+  return Array.from({ length: count }, (_, index) => ({
+    value: `text-model-${index + 1}`,
+    label: `Text Model ${index + 1}`,
+    helper: 'AI Proxy',
+    provider: 'custom:aiproxy-chat',
+    apiMode: 'chat_completions',
+    category: 'text',
+    capabilities: ['reasoning'],
+    inputModalities: ['text'],
+    outputModalities: ['text'],
+  }))
+}
+
+function renderManyModelSelect() {
+  const textModels = createManyTextModels()
+  const template = createTemplateFixture({
+    modelTypes: [
+      {
+        key: 'text',
+        label: '普通模型',
+        models: textModels,
+      },
+      {
+        key: 'multimodal',
+        label: '视觉理解模型',
+        models: [
+          {
+            value: 'vision-model-1',
+            label: 'Vision Model 1',
+            helper: 'AI Proxy',
+            provider: 'custom:aiproxy-responses',
+            apiMode: 'codex_responses',
+            category: 'multimodal',
+            capabilities: ['vision'],
+            inputModalities: ['text', 'image'],
+            outputModalities: ['text'],
+          },
+        ],
+      },
+    ],
+    modelOptions: [
+      ...textModels,
+      {
+        value: 'vision-model-1',
+        label: 'Vision Model 1',
+        helper: 'AI Proxy',
+        provider: 'custom:aiproxy-responses',
+        apiMode: 'codex_responses',
+        category: 'multimodal',
+        capabilities: ['vision'],
+        inputModalities: ['text', 'image'],
+        outputModalities: ['text'],
+      },
+    ],
+  })
+
+  return render(
+    <AgentConfigForm
+      blueprint={{ ...createBlueprint(), model: 'text-model-1' }}
+      mode='create'
+      onChange={() => {}}
+      onChangeSettingField={() => {}}
+      onSelectPreset={() => {}}
+      template={template}
+      workspaceModelBaseURL='https://aiproxy.example.com/v1'
+      workspaceModelKeyReady
+      workspaceRegion='us'
+    />,
+  )
+}
+
+type TestRect = Pick<
+  DOMRect,
+  'bottom' | 'height' | 'left' | 'right' | 'top' | 'width' | 'x' | 'y'
+>
+
+function mockTriggerRect(rect: Partial<TestRect>) {
+  return vi
+    .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+    .mockImplementation(function (this: HTMLElement) {
+      if (this.getAttribute('aria-expanded') !== null || this.querySelector('[aria-expanded]')) {
+        return {
+          bottom: 480,
+          height: 40,
+          left: 120,
+          right: 520,
+          top: 440,
+          width: 400,
+          x: 120,
+          y: 440,
+          ...rect,
+          toJSON: () => ({}),
+        } as DOMRect
+      }
+
+      return {
+        bottom: 0,
+        height: 0,
+        left: 0,
+        right: 0,
+        top: 0,
+        width: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect
+    })
+}
+
 describe('AgentConfigForm', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
   it('renders backend-provided model options for the current region and updates provider on selection', () => {
     const template = createTemplateFixture({
       modelOptions: [
@@ -518,4 +634,125 @@ describe('AgentConfigForm', () => {
       { main: 'gpt-5.4-mini', vision: 'gpt-5.4-vision' },
     ])
   })
+
+  it('does not render model type navigation when there is only one model type', () => {
+    const template = createTemplateFixture({
+      modelTypes: [
+        {
+          key: 'multimodal',
+          label: '视觉理解模型',
+          models: [
+            {
+              value: 'vision-model-1',
+              label: 'Vision Model 1',
+              helper: 'AI Proxy',
+              provider: 'custom:aiproxy-responses',
+              apiMode: 'codex_responses',
+              category: 'multimodal',
+              capabilities: ['vision'],
+              inputModalities: ['text', 'image'],
+              outputModalities: ['text'],
+            },
+          ],
+        },
+      ],
+      modelOptions: [
+        {
+          value: 'vision-model-1',
+          label: 'Vision Model 1',
+          helper: 'AI Proxy',
+          provider: 'custom:aiproxy-responses',
+          apiMode: 'codex_responses',
+          category: 'multimodal',
+          capabilities: ['vision'],
+          inputModalities: ['text', 'image'],
+          outputModalities: ['text'],
+        },
+      ],
+    })
+
+    render(
+      <AgentConfigForm
+        blueprint={{ ...createBlueprint(), model: 'vision-model-1' }}
+        mode='create'
+        onChange={() => {}}
+        onChangeSettingField={() => {}}
+        onSelectPreset={() => {}}
+        template={template}
+        workspaceModelBaseURL='https://aiproxy.example.com/v1'
+        workspaceModelKeyReady
+        workspaceRegion='us'
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Vision Model 1/ }))
+
+    expect(screen.getAllByText('视觉理解模型')).toHaveLength(1)
+    expect(screen.getByTestId('model-capability-menu')).toHaveClass('overflow-hidden')
+  })
+
+  it('keeps the model menu bounded to the viewport and scroll-contained', () => {
+    vi.stubGlobal('innerHeight', 540)
+    mockTriggerRect({ bottom: 100, top: 60 })
+
+    renderManyModelSelect()
+
+    fireEvent.click(screen.getByRole('button', { name: /Text Model 1/ }))
+
+    const menu = screen.getByTestId('model-capability-menu')
+    expect(menu).toHaveStyle({
+      maxHeight: '408px',
+      overscrollBehavior: 'contain',
+    })
+    expect(menu).toHaveClass('overflow-hidden')
+    expect(menu).not.toHaveClass('overflow-y-auto')
+    expect(screen.getByTestId('model-capability-model-list')).toHaveClass(
+      'overflow-y-auto',
+      'overscroll-contain',
+    )
+  })
+
+  it('opens the model menu upward near the viewport bottom', () => {
+    vi.stubGlobal('innerHeight', 540)
+    mockTriggerRect({ bottom: 520, top: 480 })
+
+    renderManyModelSelect()
+
+    fireEvent.click(screen.getByRole('button', { name: /Text Model 1/ }))
+
+    expect(screen.getByTestId('model-capability-menu')).toHaveStyle({
+      maxHeight: '416px',
+      bottom: 'calc(100% + 8px)',
+    })
+  })
+
+  it('does not recompute menu layout while scrolling inside the model list', () => {
+    vi.stubGlobal('innerHeight', 540)
+    const getBoundingClientRect = mockTriggerRect({ bottom: 100, top: 60 })
+
+    renderManyModelSelect()
+
+    fireEvent.click(screen.getByRole('button', { name: /Text Model 1/ }))
+    const initialCalls = getBoundingClientRect.mock.calls.length
+
+    fireEvent.scroll(screen.getByTestId('model-capability-model-list'))
+
+    expect(getBoundingClientRect).toHaveBeenCalledTimes(initialCalls)
+  })
+
+
+  it('recomputes menu layout when a scroll event has a non-node target', () => {
+    vi.stubGlobal('innerHeight', 540)
+    const getBoundingClientRect = mockTriggerRect({ bottom: 100, top: 60 })
+
+    renderManyModelSelect()
+
+    fireEvent.click(screen.getByRole('button', { name: /Text Model 1/ }))
+    const initialCalls = getBoundingClientRect.mock.calls.length
+
+    window.dispatchEvent(new Event('scroll'))
+
+    expect(getBoundingClientRect.mock.calls.length).toBeGreaterThan(initialCalls)
+  })
+
 })
