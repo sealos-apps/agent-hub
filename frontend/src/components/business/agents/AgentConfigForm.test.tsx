@@ -740,4 +740,19 @@ describe('AgentConfigForm', () => {
     expect(getBoundingClientRect).toHaveBeenCalledTimes(initialCalls)
   })
 
+
+  it('recomputes menu layout when a scroll event has a non-node target', () => {
+    vi.stubGlobal('innerHeight', 540)
+    const getBoundingClientRect = mockTriggerRect({ bottom: 100, top: 60 })
+
+    renderManyModelSelect()
+
+    fireEvent.click(screen.getByRole('button', { name: /Text Model 1/ }))
+    const initialCalls = getBoundingClientRect.mock.calls.length
+
+    window.dispatchEvent(new Event('scroll'))
+
+    expect(getBoundingClientRect.mock.calls.length).toBeGreaterThan(initialCalls)
+  })
+
 })

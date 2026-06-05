@@ -206,8 +206,8 @@ export function ModelCapabilitySelect({
     if (!open) return;
 
     const handleWindowScroll = (event: Event) => {
-      const target = event.target as Node | null;
-      if (target && menuRef.current?.contains(target)) {
+      const target = event.target;
+      if (target instanceof Node && menuRef.current?.contains(target)) {
         return;
       }
       updatePortalPosition();
