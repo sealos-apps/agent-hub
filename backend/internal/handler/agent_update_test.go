@@ -121,6 +121,79 @@ func TestUpdateAgentResourcesAllowsCowAgentOpenAICompatibleAPI(t *testing.T) {
 	}
 }
 
+func TestUpdateAgentResourcesInfersCowAgentAnthropicModeOnAllResources(t *testing.T) {
+	t.Parallel()
+
+	const namespace = "ns-test"
+	const agentName = "demo-agent"
+
+	repo, clientset := newUpdateAgentTestFixtures(t, namespace, agentName)
+	devbox, getErr := repo.Get(context.Background(), agentName)
+	if getErr != nil {
+		t.Fatalf("repo.Get() error = %v", getErr)
+	}
+	devbox.SetLabels(map[string]string{
+		"app.kubernetes.io/name":     "cowagent",
+		"agent.sealos.io/name":       agentName,
+		"agent.sealos.io/managed-by": kube.ManagedByValue(),
+	})
+	if err := kube.SetModelAPIMode(devbox, "chat_completions"); err != nil {
+		t.Fatalf("SetModelAPIMode() error = %v", err)
+	}
+	if err := kube.SetEnvValue(devbox, "AGENT_MODEL_API_MODE", "chat_completions"); err != nil {
+		t.Fatalf("SetEnvValue() error = %v", err)
+	}
+	if _, err := repo.Update(context.Background(), devbox); err != nil {
+		t.Fatalf("repo.Update() error = %v", err)
+	}
+	service, serviceErr := clientset.CoreV1().Services(namespace).Get(context.Background(), agentName, metav1.GetOptions{})
+	if serviceErr != nil {
+		t.Fatalf("service get error = %v", serviceErr)
+	}
+	service.Annotations["agent.sealos.io/model-api-mode"] = "chat_completions"
+	if _, err := clientset.CoreV1().Services(namespace).Update(context.Background(), service, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("service update error = %v", err)
+	}
+	ingress, ingressErr := clientset.NetworkingV1().Ingresses(namespace).Get(context.Background(), agentName, metav1.GetOptions{})
+	if ingressErr != nil {
+		t.Fatalf("ingress get error = %v", ingressErr)
+	}
+	ingress.Annotations["agent.sealos.io/model-api-mode"] = "chat_completions"
+	if _, err := clientset.NetworkingV1().Ingresses(namespace).Update(context.Background(), ingress, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("ingress update error = %v", err)
+	}
+	provider := aiproxyAnthropicProvider
+
+	_, err := updateAgentResources(context.Background(), repo, clientset, namespace, agentName, dto.UpdateAgentRequest{
+		ModelProvider: &provider,
+	})
+	if err != nil {
+		t.Fatalf("updateAgentResources() error = %v, want nil", err)
+	}
+
+	persisted, getErr := repo.Get(context.Background(), agentName)
+	if getErr != nil {
+		t.Fatalf("repo.Get() error = %v", getErr)
+	}
+	if got := persisted.GetAnnotations()["agent.sealos.io/model-api-mode"]; got != "anthropic_messages" {
+		t.Fatalf("devbox model-api-mode = %q, want anthropic_messages", got)
+	}
+	service, serviceErr = clientset.CoreV1().Services(namespace).Get(context.Background(), agentName, metav1.GetOptions{})
+	if serviceErr != nil {
+		t.Fatalf("service get error = %v", serviceErr)
+	}
+	if got := service.Annotations["agent.sealos.io/model-api-mode"]; got != "anthropic_messages" {
+		t.Fatalf("service model-api-mode = %q, want anthropic_messages", got)
+	}
+	ingress, ingressErr = clientset.NetworkingV1().Ingresses(namespace).Get(context.Background(), agentName, metav1.GetOptions{})
+	if ingressErr != nil {
+		t.Fatalf("ingress get error = %v", ingressErr)
+	}
+	if got := ingress.Annotations["agent.sealos.io/model-api-mode"]; got != "anthropic_messages" {
+		t.Fatalf("ingress model-api-mode = %q, want anthropic_messages", got)
+	}
+}
+
 func TestValidateModelUpdateCompatibilityAllowsCowAgentChatAlias(t *testing.T) {
 	t.Parallel()
 
@@ -470,6 +543,40 @@ func TestApplyUpdateToDevboxKeepsCowAgentDirectAnthropicBaseURL(t *testing.T) {
 
 	if got := readDevboxEnvValue(devbox, "CLAUDE_API_BASE"); got != baseURL {
 		t.Fatalf("CLAUDE_API_BASE = %q, want direct Anthropic base URL unchanged", got)
+	}
+}
+
+func TestApplyUpdateToDevboxInfersCowAgentAnthropicModeFromProvider(t *testing.T) {
+	t.Parallel()
+
+	devbox := newModelUpdateDevbox(aiproxyChatProvider, "https://aiproxy.usw-1.sealos.io/v1", "glm-5.1", "old-key")
+	devbox.SetLabels(map[string]string{
+		"app.kubernetes.io/name": "cowagent",
+	})
+	_ = kube.SetEnvValue(devbox, "AGENT_MODEL_API_MODE", "chat_completions")
+	annotations := devbox.GetAnnotations()
+	annotations["agent.sealos.io/model-api-mode"] = "chat_completions"
+	devbox.SetAnnotations(annotations)
+	provider := aiproxyAnthropicProvider
+	baseURL := "https://aiproxy.usw-1.sealos.io"
+	apiKey := "anthropic-key"
+
+	if err := applyUpdateToDevbox(devbox, dto.UpdateAgentRequest{
+		ModelProvider: &provider,
+		ModelBaseURL:  &baseURL,
+		ModelAPIKey:   &apiKey,
+	}); err != nil {
+		t.Fatalf("applyUpdateToDevbox() error = %v, want nil", err)
+	}
+
+	if got := readDevboxEnvValue(devbox, "AGENT_MODEL_API_MODE"); got != "anthropic_messages" {
+		t.Fatalf("AGENT_MODEL_API_MODE = %q, want inferred anthropic_messages", got)
+	}
+	if got := readDevboxEnvValue(devbox, "CLAUDE_API_KEY"); got != apiKey {
+		t.Fatalf("CLAUDE_API_KEY = %q, want %q", got, apiKey)
+	}
+	if got := readDevboxEnvValue(devbox, "OPEN_AI_API_KEY"); got != "" {
+		t.Fatalf("OPEN_AI_API_KEY = %q, want empty for inferred CowAgent anthropic mode", got)
 	}
 }
 

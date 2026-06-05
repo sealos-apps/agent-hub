@@ -391,6 +391,7 @@ func CreateAgent(c *gin.Context) {
 		mappedSettings.ModelBaseURL = stringPtr(modelAccess.BaseURL)
 		mappedSettings.ModelAPIKey = stringPtr(modelAccess.APIKey)
 	}
+	mappedSettings = normalizeCowAgentModelUpdateRequest(strings.TrimSpace(templateDef.ID) == "cowagent", mappedSettings)
 	ag := agent.Agent{
 		Name:             strings.TrimSpace(req.AgentName),
 		TemplateID:       templateDef.ID,
@@ -705,6 +706,7 @@ func updateAgentResources(
 	if validationErr := validateModelUpdateCompatibility(devbox, req); validationErr != nil {
 		return nil, validationErr
 	}
+	req = normalizeCowAgentModelUpdateRequest(isCowAgentDevbox(devbox), req)
 
 	devboxSnapshot := devbox.DeepCopy()
 	serviceSnapshot := service.DeepCopy()
@@ -1395,6 +1397,14 @@ func validateModelUpdateCompatibility(devbox *unstructured.Unstructured, req dto
 	}
 }
 
+func normalizeCowAgentModelUpdateRequest(isCowAgent bool, req dto.UpdateAgentRequest) dto.UpdateAgentRequest {
+	if req.ModelAPIMode != nil || req.ModelProvider == nil || !isCowAgent || !isCowAgentAnthropicProvider(*req.ModelProvider) {
+		return req
+	}
+	req.ModelAPIMode = stringPtr("anthropic_messages")
+	return req
+}
+
 func validateModelSyncReadiness(spec agent.Agent, req dto.UpdateAgentRequest) *appErr.AppError {
 	if !hasModelUpdate(req) || shouldRebootstrap(req) || spec.Ready {
 		return nil
@@ -1714,6 +1724,11 @@ func applyUpdateToDevbox(devbox *unstructured.Unstructured, req dto.UpdateAgentR
 		if !hasSlotUpdate {
 			_ = kube.SetEnvValue(devbox, "AGENT_MODEL_API_MODE", modelAPIMode)
 		}
+	} else if req.ModelProvider != nil && isCowAgentDevbox(devbox) && isCowAgentAnthropicProvider(*req.ModelProvider) {
+		_ = kube.SetModelAPIMode(devbox, "anthropic_messages")
+		if !hasSlotUpdate {
+			_ = kube.SetEnvValue(devbox, "AGENT_MODEL_API_MODE", "anthropic_messages")
+		}
 	}
 	if hasSlotUpdate {
 		modelSlots, err := mergeModelSlotsAnnotation(devbox.GetAnnotations()["agent.sealos.io/model-slots"], req.ModelSlots)
@@ -1783,6 +1798,9 @@ func syncCowAgentModelAccessEnv(devbox *unstructured.Unstructured, modelProvider
 	if apiMode == "" {
 		apiMode = normalizeAgentModelAPIMode(readDevboxEnvValue(devbox, "AGENT_MODEL_API_MODE"))
 	}
+	if apiMode == "" && isCowAgentAnthropicProvider(modelProvider) {
+		apiMode = "anthropic_messages"
+	}
 	_ = kube.SetEnvValue(devbox, "AGENT_MODEL_API_MODE", apiMode)
 
 	if apiMode == "anthropic_messages" {
@@ -1813,6 +1831,15 @@ func syncCowAgentModelAccessEnv(devbox *unstructured.Unstructured, modelProvider
 	_ = kube.SetEnvValue(devbox, "CLAUDE_API_KEY", "")
 	_ = kube.SetEnvValue(devbox, "CLAUDE_API_BASE", "")
 	_ = kube.SetEnvValue(devbox, "AIPROXY_API_KEY", "")
+}
+
+func isCowAgentAnthropicProvider(provider string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "anthropic", aiproxyAnthropicProvider:
+		return true
+	default:
+		return false
+	}
 }
 
 func readDevboxEnvValue(devbox *unstructured.Unstructured, name string) string {
