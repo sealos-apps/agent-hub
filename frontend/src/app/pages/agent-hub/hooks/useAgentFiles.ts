@@ -285,13 +285,12 @@ const sanitizeNameInput = (value: string) =>
 
 const sanitizeUploadRelativePath = (value: string, fallback: string) => {
   const raw = String(value || fallback)
-  if (raw.startsWith('/') || raw.split(/[\\/]+/).some((segment) => segment.trim() === '..')) {
+  if (raw.startsWith('/') || raw.split(/[\\/]+/).some((segment) => segment === '..')) {
     return ''
   }
   const segments = raw
     .replace(/\\/g, '/')
     .split('/')
-    .map((segment) => segment.trim())
     .filter((segment) => segment && segment !== '.' && segment !== '..')
   return segments.join('/') || sanitizeNameInput(fallback)
 }

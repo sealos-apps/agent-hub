@@ -112,6 +112,11 @@ describe('useAgentFiles helpers', () => {
     expect(__agentFilesTestables.sanitizeUploadRelativePath('/tmp/secret.txt', 'secret.txt')).toBe('')
   })
 
+  it('preserves valid upload names with leading or trailing spaces', () => {
+    expect(__agentFilesTestables.sanitizeUploadRelativePath('assets/  image.png ', 'image.png')).toBe('assets/  image.png ')
+    expect(__agentFilesTestables.sanitizeUploadRelativePath(' folder /note.txt', 'note.txt')).toBe(' folder /note.txt')
+  })
+
   it('ignores close events from stale sockets after switching agents', async () => {
     const originalWebSocket = globalThis.WebSocket
     MockWebSocket.instances = []
