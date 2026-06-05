@@ -40,6 +40,18 @@ func TestResolveFilePathAllowsAbsolutePath(t *testing.T) {
 	}
 }
 
+func TestResolveUploadFilePathPreservesFilenameSpacing(t *testing.T) {
+	t.Parallel()
+
+	got, err := resolveUploadFilePath("/workspace/foo ")
+	if err != nil {
+		t.Fatalf("resolveUploadFilePath() error = %v", err)
+	}
+	if got != "/workspace/foo " {
+		t.Fatalf("resolveUploadFilePath() = %q, want trailing filename space preserved", got)
+	}
+}
+
 func TestSplitCSVFiltersEmptyValues(t *testing.T) {
 	t.Parallel()
 

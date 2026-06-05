@@ -669,7 +669,7 @@ func (s *session) fileRename(message dto.WSMessage) {
 
 func (s *session) fileUploadBegin(message dto.WSMessage) {
 	id := sessionID(message)
-	resolved, err := resolveFilePath(getTrimmedString(message.Data, "path"))
+	resolved, err := resolveUploadFilePath(getRawString(message.Data, "path"))
 	if err != nil {
 		s.sendError(message.RequestID, "invalid_path", err.Error())
 		return
@@ -1442,6 +1442,20 @@ func resolveFilePath(raw string) (string, error) {
 	}
 
 	cleaned := path.Clean(raw)
+	if path.IsAbs(cleaned) {
+		return cleaned, nil
+	}
+
+	resolved := path.Join(fileRootDir, cleaned)
+	return resolved, nil
+}
+
+func resolveUploadFilePath(raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" || strings.TrimSpace(raw) == "." {
+		return fileRootDir, nil
+	}
+
+	cleaned := path.Clean(strings.ReplaceAll(raw, "\\", "/"))
 	if path.IsAbs(cleaned) {
 		return cleaned, nil
 	}
