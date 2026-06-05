@@ -106,6 +106,17 @@ describe('useAgentFiles helpers', () => {
     )
   })
 
+  it('rejects traversal upload relative paths', () => {
+    expect(__agentFilesTestables.sanitizeUploadRelativePath('assets/image.png', 'image.png')).toBe('assets/image.png')
+    expect(__agentFilesTestables.sanitizeUploadRelativePath('../secret.txt', 'secret.txt')).toBe('')
+    expect(__agentFilesTestables.sanitizeUploadRelativePath('/tmp/secret.txt', 'secret.txt')).toBe('')
+  })
+
+  it('preserves valid upload names with leading or trailing spaces', () => {
+    expect(__agentFilesTestables.sanitizeUploadRelativePath('assets/  image.png ', 'image.png')).toBe('assets/  image.png ')
+    expect(__agentFilesTestables.sanitizeUploadRelativePath(' folder /note.txt', 'note.txt')).toBe(' folder /note.txt')
+  })
+
   it('ignores close events from stale sockets after switching agents', async () => {
     const originalWebSocket = globalThis.WebSocket
     MockWebSocket.instances = []
@@ -204,6 +215,245 @@ describe('useAgentFiles helpers', () => {
         expect(result.current.filesSession?.loadedPath).toBe(agent.workingDir)
         expect(result.current.filesSession?.items).toEqual([])
       })
+
+      unmount()
+    } finally {
+      globalThis.WebSocket = originalWebSocket
+    }
+  })
+
+  it('returns to connected state when rename succeeds but refresh fails', async () => {
+    const originalWebSocket = globalThis.WebSocket
+    MockWebSocket.instances = []
+    globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
+
+    try {
+      const agent = createAgentItemFixture()
+      const { result, unmount } = renderHook(() => useAgentFiles({ clusterContext }))
+
+      act(() => {
+        result.current.openFiles(agent)
+      })
+      await waitFor(() => expect(MockWebSocket.instances).toHaveLength(1))
+
+      const socket = MockWebSocket.instances[0]
+      act(() => {
+        emitSystemReady(socket, agent.name)
+      })
+
+      await waitFor(() => {
+        expect(result.current.filesSession?.status).toBe('working')
+      })
+
+      const initialListRequest = socket.sent
+        .filter((payload): payload is ArrayBuffer => payload instanceof ArrayBuffer)
+        .map((payload) => decodeWSBinaryMessage(payload))
+        .find((message) => message.type === 'file.list')
+
+      act(() => {
+        socket.emit('message', {
+          data: encodeWSBinaryMessage({
+            type: 'file.result',
+            requestId: initialListRequest?.requestId || '',
+            data: {
+              path: agent.workingDir,
+              items: [{ name: 'old.txt', path: `${agent.workingDir}/old.txt`, type: 'file', size: 1 }],
+            },
+          }),
+        })
+      })
+
+      await waitFor(() => {
+        expect(result.current.filesSession?.status).toBe('connected')
+      })
+
+      let renamed = false
+      await act(async () => {
+        const renamePromise = result.current.renameEntry(`${agent.workingDir}/old.txt`, `${agent.workingDir}/new.txt`)
+        await waitFor(() => {
+          expect(
+            socket.sent
+              .filter((payload): payload is ArrayBuffer => payload instanceof ArrayBuffer)
+              .map((payload) => decodeWSBinaryMessage(payload))
+              .some((message) => message.type === 'file.rename'),
+          ).toBe(true)
+        })
+        const renameRequest = socket.sent
+          .filter((payload): payload is ArrayBuffer => payload instanceof ArrayBuffer)
+          .map((payload) => decodeWSBinaryMessage(payload))
+          .find((message) => message.type === 'file.rename')
+
+        socket.emit('message', {
+          data: encodeWSBinaryMessage({
+            type: 'file.result',
+            requestId: renameRequest?.requestId || '',
+            data: {
+              op: 'rename',
+              renamed: true,
+            },
+          }),
+        })
+
+        renamed = await renamePromise
+      })
+
+      expect(renamed).toBe(true)
+      const refreshRequest = socket.sent
+        .filter((payload): payload is ArrayBuffer => payload instanceof ArrayBuffer)
+        .map((payload) => decodeWSBinaryMessage(payload))
+        .filter((message) => message.type === 'file.list')
+        .at(-1)
+
+      act(() => {
+        socket.emit('message', {
+          data: encodeWSBinaryMessage({
+            type: 'error',
+            requestId: refreshRequest?.requestId || '',
+            data: {
+              message: 'refresh failed',
+            },
+          }),
+        })
+      })
+
+      await waitFor(() => {
+        expect(result.current.filesSession?.status).toBe('connected')
+      })
+      expect(result.current.filesSession?.error).toBe('')
+
+      unmount()
+    } finally {
+      globalThis.WebSocket = originalWebSocket
+    }
+  })
+
+  it('keeps visible directory navigation active during silent rename refresh', async () => {
+    const originalWebSocket = globalThis.WebSocket
+    MockWebSocket.instances = []
+    globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
+
+    try {
+      const agent = createAgentItemFixture()
+      const { result, unmount } = renderHook(() => useAgentFiles({ clusterContext }))
+
+      act(() => {
+        result.current.openFiles(agent)
+      })
+      await waitFor(() => expect(MockWebSocket.instances).toHaveLength(1))
+
+      const socket = MockWebSocket.instances[0]
+      act(() => {
+        emitSystemReady(socket, agent.name)
+      })
+
+      const initialListRequest = socket.sent
+        .filter((payload): payload is ArrayBuffer => payload instanceof ArrayBuffer)
+        .map((payload) => decodeWSBinaryMessage(payload))
+        .find((message) => message.type === 'file.list')
+
+      act(() => {
+        socket.emit('message', {
+          data: encodeWSBinaryMessage({
+            type: 'file.result',
+            requestId: initialListRequest?.requestId || '',
+            data: {
+              path: agent.workingDir,
+              items: [{ name: 'old.txt', path: `${agent.workingDir}/old.txt`, type: 'file', size: 1 }],
+            },
+          }),
+        })
+      })
+
+      await waitFor(() => {
+        expect(result.current.filesSession?.currentPath).toBe(agent.workingDir)
+      })
+
+      let renamed = false
+      await act(async () => {
+        const renamePromise = result.current.renameEntry(`${agent.workingDir}/old.txt`, `${agent.workingDir}/new.txt`)
+        await waitFor(() => {
+          expect(
+            socket.sent
+              .filter((payload): payload is ArrayBuffer => payload instanceof ArrayBuffer)
+              .map((payload) => decodeWSBinaryMessage(payload))
+              .some((message) => message.type === 'file.rename'),
+          ).toBe(true)
+        })
+        const renameRequest = socket.sent
+          .filter((payload): payload is ArrayBuffer => payload instanceof ArrayBuffer)
+          .map((payload) => decodeWSBinaryMessage(payload))
+          .find((message) => message.type === 'file.rename')
+
+        socket.emit('message', {
+          data: encodeWSBinaryMessage({
+            type: 'file.result',
+            requestId: renameRequest?.requestId || '',
+            data: {
+              op: 'rename',
+              renamed: true,
+            },
+          }),
+        })
+
+        renamed = await renamePromise
+      })
+      expect(renamed).toBe(true)
+      const silentRefreshRequest = socket.sent
+        .filter((payload): payload is ArrayBuffer => payload instanceof ArrayBuffer)
+        .map((payload) => decodeWSBinaryMessage(payload))
+        .filter((message) => message.type === 'file.list')
+        .at(-1)
+
+      act(() => {
+        void result.current.jumpToPath('/workspace/docs')
+      })
+
+      await waitFor(() => {
+        expect(
+          socket.sent
+            .filter((payload): payload is ArrayBuffer => payload instanceof ArrayBuffer)
+            .map((payload) => decodeWSBinaryMessage(payload))
+              .some((message) => message.type === 'file.list' && String(message.data?.path || '') === '/workspace/docs'),
+        ).toBe(true)
+      })
+
+      const visibleListRequest = socket.sent
+        .filter((payload): payload is ArrayBuffer => payload instanceof ArrayBuffer)
+        .map((payload) => decodeWSBinaryMessage(payload))
+        .find((message) => message.type === 'file.list' && String(message.data?.path || '') === '/workspace/docs')
+
+      act(() => {
+        socket.emit('message', {
+          data: encodeWSBinaryMessage({
+            type: 'file.result',
+            requestId: visibleListRequest?.requestId || '',
+            data: {
+              path: '/workspace/docs',
+              items: [],
+            },
+          }),
+        })
+      })
+
+      await waitFor(() => {
+        expect(result.current.filesSession?.currentPath).toBe('/workspace/docs')
+        expect(result.current.filesSession?.browsing).toBe(false)
+      })
+
+      act(() => {
+        socket.emit('message', {
+          data: encodeWSBinaryMessage({
+            type: 'file.result',
+            requestId: silentRefreshRequest?.requestId || '',
+            data: {
+              path: agent.workingDir,
+              items: [{ name: 'new.txt', path: `${agent.workingDir}/new.txt`, type: 'file', size: 1 }],
+            },
+          }),
+        })
+      })
+
+      expect(result.current.filesSession?.currentPath).toBe('/workspace/docs')
 
       unmount()
     } finally {

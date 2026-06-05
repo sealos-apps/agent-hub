@@ -47,7 +47,7 @@ const (
 	maxUploadChunkSize      = 1 << 20
 	maxConcurrentUploads    = 4
 	maxConcurrentFileReadOp = 6
-	maxConcurrentFileEditOp = 2
+	maxConcurrentFileEditOp = 1
 	fileReadQueueTimeout    = 8 * time.Second
 	fileReadExecTimeout     = 25 * time.Second
 	fileEditQueueTimeout    = 20 * time.Second
@@ -300,6 +300,8 @@ func (s *session) handleMessage(message dto.WSMessage) {
 		go s.fileDelete(message)
 	case "file.mkdir":
 		go s.fileMkdir(message)
+	case "file.rename":
+		go s.fileRename(message)
 	case "file.upload.begin":
 		s.fileUploadBegin(message)
 	case "file.upload.chunk":
@@ -639,9 +641,35 @@ func (s *session) fileMkdir(message dto.WSMessage) {
 	}})
 }
 
+func (s *session) fileRename(message dto.WSMessage) {
+	from, err := resolveFilePath(getTrimmedString(message.Data, "from"))
+	if err != nil {
+		s.sendError(message.RequestID, "invalid_path", err.Error())
+		return
+	}
+	to, err := resolveFilePath(getTrimmedString(message.Data, "to"))
+	if err != nil {
+		s.sendError(message.RequestID, "invalid_path", err.Error())
+		return
+	}
+
+	if _, execErr := s.execCapture("rename", []string{"sh", "-lc", buildRenameCommand(from, to)}, ""); execErr != nil {
+		code, msg := mapFileOperationError("file_rename_failed", "rename", execErr)
+		s.sendError(message.RequestID, code, msg)
+		return
+	}
+
+	s.send(dto.WSMessage{Type: "file.result", RequestID: message.RequestID, Data: map[string]any{
+		"op":      "rename",
+		"from":    from,
+		"to":      to,
+		"renamed": true,
+	}})
+}
+
 func (s *session) fileUploadBegin(message dto.WSMessage) {
 	id := sessionID(message)
-	resolved, err := resolveFilePath(getTrimmedString(message.Data, "path"))
+	resolved, err := resolveUploadFilePath(getRawString(message.Data, "path"))
 	if err != nil {
 		s.sendError(message.RequestID, "invalid_path", err.Error())
 		return
@@ -704,7 +732,7 @@ func (s *session) fileUploadEnd(message dto.WSMessage) {
 		return
 	}
 
-	if _, execErr := s.execCapture("upload", []string{"sh", "-lc", "cat > " + shellQuote(upload.Path)}, upload.Buffer.String()); execErr != nil {
+	if _, execErr := s.execCapture("upload", []string{"sh", "-lc", buildUploadWriteCommand(upload.Path)}, upload.Buffer.String()); execErr != nil {
 		s.removeUpload(id)
 		code, msg := mapFileOperationError("file_upload_failed", "upload", execErr)
 		s.sendError(message.RequestID, code, msg)
@@ -718,6 +746,35 @@ func (s *session) fileUploadEnd(message dto.WSMessage) {
 		"path":    upload.Path,
 		"written": true,
 	}})
+}
+
+func buildUploadWriteCommand(path string) string {
+	return "target=" + shellQuote(path) + "; mkdir -p \"$(dirname \"$target\")\" && cat > \"$target\""
+}
+
+func buildRenameCommand(from, to string) string {
+	return "source=" + shellQuote(from) +
+		"; target=" + shellQuote(to) +
+		"; checksum=$(printf '%s' \"$target\" | cksum)" +
+		"; lockroot=\"${TMPDIR:-/tmp}/agenthub-rename-locks\"" +
+		"; mkdir -p \"$lockroot\"" +
+		"; lock=\"$lockroot/${checksum%% *}\"" +
+		"; mkdir \"$lock\" || { echo 'target exists' >&2; exit 1; }" +
+		"; trap 'rmdir \"$lock\"' EXIT" +
+		"; [ -e \"$source\" ] || { echo \"source missing: $source\" >&2; exit 1; }" +
+		"; target_parent=$(dirname \"$target\")" +
+		"; [ -d \"$target_parent\" ] || { echo \"target parent missing: $target_parent\" >&2; exit 1; }" +
+		"; source_base=$(basename \"$source\")" +
+		"; source_id=$(ls -id \"$source\" 2>/dev/null); source_id=${source_id%% *}" +
+		"; [ -n \"$source_id\" ] || { echo \"source missing: $source\" >&2; exit 1; }" +
+		"; [ ! -e \"$target\" ] && [ ! -L \"$target\" ] || { echo 'target exists' >&2; exit 1; }" +
+		"; mv -n \"$source\" \"$target\" || exit $?" +
+		"; target_id=$(ls -id \"$target\" 2>/dev/null); target_id=${target_id%% *}" +
+		"; if [ \"$target_id\" != \"$source_id\" ]; then " +
+		"nested=\"$target/$source_base\"; nested_id=$(ls -id \"$nested\" 2>/dev/null); nested_id=${nested_id%% *}; " +
+		"if [ \"$nested_id\" = \"$source_id\" ] && [ ! -e \"$source\" ] && [ ! -L \"$source\" ]; then mv -n \"$nested\" \"$source\" >/dev/null 2>&1 || true; fi; " +
+		"echo 'target exists' >&2; exit 1; fi" +
+		"; [ ! -e \"$source\" ] && [ -e \"$target\" ] || { echo 'target exists' >&2; exit 1; }"
 }
 
 func (s *session) execCapture(operation string, command []string, stdin string) (string, error) {
@@ -1393,6 +1450,20 @@ func resolveFilePath(raw string) (string, error) {
 	return resolved, nil
 }
 
+func resolveUploadFilePath(raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" || strings.TrimSpace(raw) == "." {
+		return fileRootDir, nil
+	}
+
+	cleaned := path.Clean(strings.ReplaceAll(raw, "\\", "/"))
+	if path.IsAbs(cleaned) {
+		return cleaned, nil
+	}
+
+	resolved := path.Join(fileRootDir, cleaned)
+	return resolved, nil
+}
+
 func resolveTerminalPath(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == "." {
@@ -1615,6 +1686,11 @@ func validateMessage(message dto.WSMessage) error {
 		return requiredID()
 	case "file.list", "file.read", "file.download", "file.delete", "file.mkdir":
 		return requiredString("path")
+	case "file.rename":
+		if err := requiredString("from"); err != nil {
+			return err
+		}
+		return requiredString("to")
 	case "file.search":
 		if err := requiredString("path"); err != nil {
 			return err

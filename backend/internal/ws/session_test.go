@@ -3,6 +3,9 @@ package ws
 import (
 	"context"
 	"encoding/base64"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -34,6 +37,18 @@ func TestResolveFilePathAllowsAbsolutePath(t *testing.T) {
 		if got != input {
 			t.Fatalf("resolveFilePath(%q) = %q, want %q", input, got, input)
 		}
+	}
+}
+
+func TestResolveUploadFilePathPreservesFilenameSpacing(t *testing.T) {
+	t.Parallel()
+
+	got, err := resolveUploadFilePath("/workspace/foo ")
+	if err != nil {
+		t.Fatalf("resolveUploadFilePath() error = %v", err)
+	}
+	if got != "/workspace/foo " {
+		t.Fatalf("resolveUploadFilePath() = %q, want trailing filename space preserved", got)
 	}
 }
 
@@ -133,6 +148,243 @@ func TestSearchCommandBuildsFindByName(t *testing.T) {
 	}
 	if !strings.Contains(command, "head -n \"$limit\"") {
 		t.Fatalf("searchCommand() = %q, want result limit", command)
+	}
+}
+
+func TestBuildUploadWriteCommandCreatesParentDirectory(t *testing.T) {
+	t.Parallel()
+
+	command := buildUploadWriteCommand("/workspace/assets/image.png")
+	if !strings.Contains(command, "mkdir -p \"$(dirname \"$target\")\"") {
+		t.Fatalf("buildUploadWriteCommand() = %q, want parent directory creation", command)
+	}
+	if !strings.Contains(command, "cat > \"$target\"") {
+		t.Fatalf("buildUploadWriteCommand() = %q, want upload written to target", command)
+	}
+}
+
+func TestFileEditOperationsAreSerialized(t *testing.T) {
+	t.Parallel()
+
+	if maxConcurrentFileEditOp != 1 {
+		t.Fatalf("maxConcurrentFileEditOp = %d, want serialized edit operations", maxConcurrentFileEditOp)
+	}
+}
+
+func TestBuildRenameCommandMovesSourceToTarget(t *testing.T) {
+	t.Parallel()
+
+	command := buildRenameCommand("/workspace/old.txt", "/workspace/new.txt")
+	if strings.Contains(command, "python") {
+		t.Fatalf("buildRenameCommand() = %q, want no Python dependency", command)
+	}
+	if strings.Contains(command, "mv -nT") {
+		t.Fatalf("buildRenameCommand() = %q, want no GNU mv -T dependency", command)
+	}
+	if !strings.Contains(command, "mv -n \"$source\" \"$target\"") {
+		t.Fatalf("buildRenameCommand() = %q, want no-clobber target rename", command)
+	}
+	if !strings.Contains(command, "'/workspace/old.txt'") || !strings.Contains(command, "'/workspace/new.txt'") {
+		t.Fatalf("buildRenameCommand() = %q, want quoted source and target", command)
+	}
+	if !strings.Contains(command, "[ ! -e \"$source\" ] && [ -e \"$target\" ]") {
+		t.Fatalf("buildRenameCommand() = %q, want no-clobber move confirmation", command)
+	}
+}
+
+func TestBuildRenameCommandRejectsExistingTarget(t *testing.T) {
+	t.Parallel()
+
+	command := buildRenameCommand("/workspace/old.txt", "/workspace/new.txt")
+	if !strings.Contains(command, "[ ! -e \"$target\" ]") {
+		t.Fatalf("buildRenameCommand() = %q, want existing target check", command)
+	}
+	if !strings.Contains(command, "target exists") {
+		t.Fatalf("buildRenameCommand() = %q, want explicit target exists failure", command)
+	}
+}
+
+func TestBuildRenameCommandLocksTargetBeforeMove(t *testing.T) {
+	t.Parallel()
+
+	command := buildRenameCommand("/workspace/old.txt", "/workspace/new.txt")
+	if !strings.Contains(command, "lockroot=\"${TMPDIR:-/tmp}/agenthub-rename-locks\"") {
+		t.Fatalf("buildRenameCommand() = %q, want lock outside target directory", command)
+	}
+	if !strings.Contains(command, "mkdir \"$lock\"") {
+		t.Fatalf("buildRenameCommand() = %q, want atomic target lock creation", command)
+	}
+	if !strings.Contains(command, "trap 'rmdir \"$lock\"' EXIT") {
+		t.Fatalf("buildRenameCommand() = %q, want target lock cleanup", command)
+	}
+}
+
+func requireRenameCommandSupport(t *testing.T) {
+	t.Helper()
+
+	if output, err := exec.Command("sh", "-lc", "mv -n 2>&1 || true").CombinedOutput(); strings.Contains(string(output), "illegal option") || strings.Contains(string(output), "invalid option") {
+		t.Skip("mv -n is not supported by the local test host")
+	} else if err != nil {
+		t.Fatalf("check mv -n support: %v", err)
+	}
+}
+
+func TestBuildRenameCommandDoesNotLeaveTargetLockDirectory(t *testing.T) {
+	t.Parallel()
+	requireRenameCommandSupport(t)
+
+	directory := t.TempDir()
+	sourcePath := filepath.Join(directory, "old.txt")
+	targetPath := filepath.Join(directory, "new.txt")
+	tmpPath := filepath.Join(directory, "tmp")
+	if err := os.WriteFile(sourcePath, []byte("content"), 0o600); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	command := "TMPDIR=" + shellQuote(tmpPath) + "; export TMPDIR; " + buildRenameCommand(sourcePath, targetPath)
+	if output, err := exec.Command("sh", "-lc", command).CombinedOutput(); err != nil {
+		t.Fatalf("rename command failed: %v, output: %s", err, output)
+	}
+	lockRoot := filepath.Join(tmpPath, "agenthub-rename-locks")
+	entries, err := os.ReadDir(lockRoot)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("lock root read error = %v, want empty or missing lock root", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("lock root entries = %d, want empty lock root", len(entries))
+	}
+}
+
+func TestBuildRenameCommandDoesNotOverwriteExistingTarget(t *testing.T) {
+	t.Parallel()
+	requireRenameCommandSupport(t)
+
+	directory := t.TempDir()
+	sourcePath := filepath.Join(directory, "old.txt")
+	targetPath := filepath.Join(directory, "new.txt")
+	if err := os.WriteFile(sourcePath, []byte("source"), 0o600); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	if err := os.WriteFile(targetPath, []byte("target"), 0o600); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+
+	command := buildRenameCommand(sourcePath, targetPath)
+	output, err := exec.Command("sh", "-lc", command).CombinedOutput()
+	if err == nil {
+		t.Fatalf("rename command should fail when target exists")
+	}
+	if !strings.Contains(string(output), "target exists") {
+		t.Fatalf("rename command output = %q, want target exists failure", output)
+	}
+	targetContent, readErr := os.ReadFile(targetPath)
+	if readErr != nil {
+		t.Fatalf("read target: %v", readErr)
+	}
+	if string(targetContent) != "target" {
+		t.Fatalf("target content = %q, want existing target content preserved", targetContent)
+	}
+	if _, statErr := os.Stat(sourcePath); statErr != nil {
+		t.Fatalf("source should remain after failed rename: %v", statErr)
+	}
+}
+
+func TestBuildRenameCommandDoesNotMoveSourceIntoExistingTargetDirectory(t *testing.T) {
+	t.Parallel()
+	requireRenameCommandSupport(t)
+
+	directory := t.TempDir()
+	sourcePath := filepath.Join(directory, "old.txt")
+	targetPath := filepath.Join(directory, "new-dir")
+	if err := os.WriteFile(sourcePath, []byte("source"), 0o600); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	if err := os.Mkdir(targetPath, 0o700); err != nil {
+		t.Fatalf("make target directory: %v", err)
+	}
+
+	command := buildRenameCommand(sourcePath, targetPath)
+	output, err := exec.Command("sh", "-lc", command).CombinedOutput()
+	if err == nil {
+		t.Fatalf("rename command should fail when target directory exists")
+	}
+	if !strings.Contains(string(output), "target exists") {
+		t.Fatalf("rename command output = %q, want target exists failure", output)
+	}
+	if _, statErr := os.Stat(sourcePath); statErr != nil {
+		t.Fatalf("source should remain after failed rename: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(targetPath, filepath.Base(sourcePath))); !os.IsNotExist(statErr) {
+		t.Fatalf("source should not remain nested in target directory: %v", statErr)
+	}
+}
+
+func TestBuildRenameCommandRejectsDanglingSymlinkTarget(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	sourcePath := filepath.Join(directory, "old.txt")
+	targetPath := filepath.Join(directory, "dangling-link")
+	if err := os.WriteFile(sourcePath, []byte("content"), 0o600); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(directory, "missing-target"), targetPath); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	command := buildRenameCommand(sourcePath, targetPath)
+	output, err := exec.Command("sh", "-lc", command).CombinedOutput()
+	if err == nil {
+		t.Fatalf("rename command should fail for dangling symlink target")
+	}
+	if !strings.Contains(string(output), "target exists") {
+		t.Fatalf("rename command output = %q, want target exists failure", output)
+	}
+	if _, err := os.Lstat(targetPath); err != nil {
+		t.Fatalf("dangling symlink target should remain: %v", err)
+	}
+}
+
+func TestBuildRenameCommandPreservesMissingSourceError(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	sourcePath := filepath.Join(directory, "missing.txt")
+	targetPath := filepath.Join(directory, "new.txt")
+
+	command := buildRenameCommand(sourcePath, targetPath)
+	output, err := exec.Command("sh", "-lc", command).CombinedOutput()
+	if err == nil {
+		t.Fatalf("rename command should fail for missing source")
+	}
+	if strings.Contains(string(output), "target exists") {
+		t.Fatalf("rename command output = %q, want original mv failure", output)
+	}
+	if !strings.Contains(string(output), "missing.txt") {
+		t.Fatalf("rename command output = %q, want missing source details", output)
+	}
+}
+
+func TestBuildRenameCommandReportsMissingTargetParent(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	sourcePath := filepath.Join(directory, "old.txt")
+	targetPath := filepath.Join(directory, "missing-dir", "new.txt")
+	if err := os.WriteFile(sourcePath, []byte("content"), 0o600); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	command := buildRenameCommand(sourcePath, targetPath)
+	output, err := exec.Command("sh", "-lc", command).CombinedOutput()
+	if err == nil {
+		t.Fatalf("rename command should fail for missing target parent")
+	}
+	if strings.Contains(string(output), "target exists") {
+		t.Fatalf("rename command output = %q, want target parent failure", output)
+	}
+	if !strings.Contains(string(output), "target parent missing") {
+		t.Fatalf("rename command output = %q, want target parent failure", output)
 	}
 }
 
