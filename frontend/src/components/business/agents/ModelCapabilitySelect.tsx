@@ -21,8 +21,10 @@ import {
   getModelCapabilitySummary,
   normalizeModelTypes,
   normalizeModelCapabilityToken,
+  getModelTypeLabel,
 } from "../../../domains/agents/modelCapabilities";
 import type { TemplateModelOption, TemplateModelType } from "../../../domains/agents/types";
+import { useI18n } from "../../../i18n";
 import { cn } from "../../../lib/format";
 
 interface ModelCapabilitySelectProps {
@@ -36,24 +38,6 @@ interface ModelCapabilitySelectProps {
 }
 
 const PORTAL_MENU_GAP = 8;
-
-function categoryLabel(category: string) {
-  switch (normalizeModelCapabilityToken(category)) {
-    case "multimodal":
-      return "多模态模型";
-    case "image":
-    case "image_generation":
-      return "生图模型";
-    case "audio":
-      return "音频模型";
-    case "embedding":
-      return "向量模型";
-    case "text":
-      return "普通模型";
-    default:
-      return "其他模型";
-  }
-}
 
 function categoryIcon(category: string) {
   switch (normalizeModelCapabilityToken(category)) {
@@ -80,9 +64,10 @@ export function ModelCapabilitySelect({
   portal = false,
   onChange,
 }: ModelCapabilitySelectProps) {
+  const { t } = useI18n();
   const normalizedModelTypes = useMemo(
-    () => normalizeModelTypes(modelTypes || [], options),
-    [modelTypes, options],
+    () => normalizeModelTypes(modelTypes || [], options, t),
+    [modelTypes, options, t],
   );
   const selectedModelType =
     normalizedModelTypes.find((type) =>
@@ -213,7 +198,7 @@ export function ModelCapabilitySelect({
               >
                 <Icon className="h-4 w-4 shrink-0 text-zinc-500" />
                 <span className="min-w-0 flex-1 truncate text-[12px]/5 font-semibold">
-                  {modelType.label || categoryLabel(modelType.key)}
+                  {modelType.label || getModelTypeLabel(modelType.key, t)}
                 </span>
                 <span className="shrink-0 text-[11px]/4 text-zinc-400">
                   {modelType.models.length}
@@ -227,7 +212,7 @@ export function ModelCapabilitySelect({
           {activeType ? (
             <div className="border-b border-zinc-100 px-2 pb-2 pt-1.5">
               <div className="truncate text-[13px]/5 font-semibold text-zinc-950">
-                {activeType.label || categoryLabel(activeType.key)}
+                {activeType.label || getModelTypeLabel(activeType.key, t)}
               </div>
               {activeType.description ? (
                 <div className="mt-0.5 line-clamp-2 text-[12px]/5 text-zinc-500">
@@ -240,7 +225,7 @@ export function ModelCapabilitySelect({
           <div className="pt-1.5">
             {activeModels.map((option) => {
               const selected = option.value === value;
-              const badges = getModelCapabilityBadges(option).slice(0, 4);
+              const badges = getModelCapabilityBadges(option, t).slice(0, 4);
               return (
                 <button
                   className={cn(

@@ -708,7 +708,7 @@ export function AgentSettingsWorkspace({
           <DisplayField
             hint={modelPresetHint}
             label={getFieldLabel(field)}
-            value={formatModelOptionLabel(option) || fieldValue}
+            value={formatModelOptionLabel(option, t) || fieldValue}
           />
         );
       }
@@ -817,7 +817,7 @@ export function AgentSettingsWorkspace({
       return (
         <DisplayField
           label={label}
-          value={formatModelOptionLabel(option) || value}
+          value={formatModelOptionLabel(option, t) || value}
         />
       );
     }
@@ -1053,6 +1053,7 @@ export function AgentSettingsWorkspace({
                       template.modelOptions.find(
                         (entry) => entry.value === (item.model || settingsBlueprint.model),
                       ),
+                      t,
                     ) ||
                     item.model ||
                     settingsBlueprint.model ||
