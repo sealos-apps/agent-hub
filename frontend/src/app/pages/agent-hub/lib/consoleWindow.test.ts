@@ -17,15 +17,15 @@ const agent = {
 } as AgentListItem
 
 describe('consoleWindow desktop app launch', () => {
-  it('uses the deployed hidden app key by default', () => {
-    expect(AGENTHUB_CONSOLE_APP_KEY).toBe('agenthub-terminal')
+  it('uses the Sealos desktop app key by default', () => {
+    expect(AGENTHUB_CONSOLE_APP_KEY).toBe('user-agenthub-terminal')
   })
 
   it('opens the console route in the terminal desktop app', async () => {
     await openAgentConsoleDesktopWindow(agent)
 
     expect(openSealosDesktopApp).toHaveBeenCalledWith({
-      appKey: 'agenthub-terminal',
+      appKey: 'user-agenthub-terminal',
       pathname: AGENTHUB_CONSOLE_ROUTE,
       query: {
         agentName: 'gnd70bta',
