@@ -4,7 +4,7 @@ import { openSealosDesktopApp } from '../../../../sealosSdk'
 export const AGENTHUB_CONSOLE_APP_KEY =
   import.meta.env.VITE_AGENTHUB_CONSOLE_APP_KEY ||
   import.meta.env.VITE_AGENTHUB_TERMINAL_APP_KEY ||
-  'user-agenthub-terminal'
+  'agenthub-terminal'
 export const AGENTHUB_CONSOLE_ROUTE = '/console'
 export const AGENTHUB_CONSOLE_MESSAGE_TYPE = 'AgentHubConsoleWindow'
 const ENABLE_LOCAL_CONSOLE_FALLBACK =
