@@ -246,4 +246,48 @@ describe('useAgentTerminal dedicated websocket', () => {
       globalThis.WebSocket = originalWebSocket
     }
   })
+
+  it('does not let a stale close event clear the current socket handshake timeout', async () => {
+    vi.useFakeTimers()
+    const originalWebSocket = globalThis.WebSocket
+    MockWebSocket.instances = []
+    MockWebSocket.nextInitialReadyState = MockWebSocket.CONNECTING
+    globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
+
+    try {
+      const { result, unmount } = renderHook(() => useAgentTerminal({ clusterContext }))
+
+      await act(async () => {
+        await result.current.openTerminal(createAgentItemFixture({ name: 'demo-agent' }))
+      })
+
+      expect(MockWebSocket.instances).toHaveLength(1)
+      const staleSocket = MockWebSocket.instances[0]
+
+      await act(async () => {
+        await result.current.openTerminal(createAgentItemFixture({ name: 'other-agent' }))
+      })
+
+      expect(MockWebSocket.instances).toHaveLength(2)
+      const currentSocket = MockWebSocket.instances[1]
+      currentSocket.readyState = MockWebSocket.OPEN
+
+      act(() => {
+        staleSocket.emit('close', { code: 1000, reason: 'manual-close' })
+      })
+
+      act(() => {
+        currentSocket.emit('open', {})
+        vi.advanceTimersByTime(10_000)
+      })
+
+      expect(currentSocket.readyState).toBe(MockWebSocket.CLOSED)
+      expect(result.current.terminalSession?.status).toBe('reconnecting')
+
+      unmount()
+    } finally {
+      vi.useRealTimers()
+      globalThis.WebSocket = originalWebSocket
+    }
+  })
 })

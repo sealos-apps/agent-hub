@@ -234,7 +234,9 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
         case 'connected':
           reconnectAttemptsRef.current = 0
           clearReconnectTimer()
-          clearConnectTimeout()
+          if (socketRef.current === socket) {
+            clearConnectTimeout()
+          }
           syncSession((current) =>
             current
               ? {
@@ -285,7 +287,9 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
     socket.addEventListener('error', () => {
       if (version !== requestVersionRef.current) return
 
-      clearConnectTimeout()
+      if (socketRef.current === socket) {
+        clearConnectTimeout()
+      }
       syncSession((current) =>
         current
           ? {
@@ -298,11 +302,11 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
     })
 
     socket.addEventListener('close', (event) => {
-      clearConnectTimeout()
       const closedManually = closingSocketsRef.current.has(socket)
       closingSocketsRef.current.delete(socket)
 
       if (socketRef.current === socket) {
+        clearConnectTimeout()
         socketRef.current = null
       }
 
