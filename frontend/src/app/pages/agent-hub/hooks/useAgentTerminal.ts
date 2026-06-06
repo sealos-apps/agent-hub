@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { buildAgentWebSocketUrl } from '../../../../api'
+import { buildAgentTerminalWebSocketUrl } from '../../../../api'
 import type {
   AgentListItem,
   ClusterContext,
   TerminalSessionState,
 } from '../../../../domains/agents/types'
-import { decodeWSBinaryMessage, encodeWSBinaryMessage } from '../lib/wsBinaryProtocol'
 
 type TerminalOutputListener = (chunk: string) => void
 
-const fallbackTerminalCwd = '/opt/hermes'
+const defaultTerminalCwd = '/opt/hermes'
 const maxBufferedOutputChunks = 200
 const reconnectDelaySchedule = [600, 1200, 2400, 5000]
 const maxReconnectAttempts = 6
+const terminalConnectTimeoutMs = 10_000
 
 type TerminalMessages = {
   connectionFailed: string
@@ -45,7 +45,7 @@ const createTerminalSession = (
   namespace: payload?.namespace || '',
   wsUrl: payload?.wsUrl || '',
   terminalId: payload?.terminalId || '',
-  cwd: payload?.cwd || resource.template.defaultWorkingDirectory || fallbackTerminalCwd,
+  cwd: payload?.cwd || resource.template.defaultWorkingDirectory || defaultTerminalCwd,
 })
 
 type ReconnectPlan = {
@@ -54,6 +54,15 @@ type ReconnectPlan = {
   encodedKubeconfig: string
   terminalId: string
   cwd: string
+}
+
+type TerminalWebSocketMessage = {
+  type?: string
+  data?: string
+  code?: string
+  namespace?: string
+  podName?: string
+  container?: string
 }
 
 interface UseAgentTerminalOptions {
@@ -75,14 +84,12 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
   const socketRef = useRef<WebSocket | null>(null)
   const terminalSessionRef = useRef<TerminalSessionState | null>(null)
   const requestVersionRef = useRef(0)
-  const requestSeqRef = useRef(0)
-  const authSentRef = useRef(false)
-  const terminalOpenSentRef = useRef(false)
   const closingSocketsRef = useRef(new WeakSet<WebSocket>())
   const outputListenersRef = useRef(new Set<TerminalOutputListener>())
   const outputBacklogRef = useRef<string[]>([])
   const reconnectAttemptsRef = useRef(0)
   const reconnectTimerRef = useRef<number | null>(null)
+  const connectTimeoutRef = useRef<number | null>(null)
   const pendingResizeRef = useRef<{ cols: number; rows: number } | null>(null)
   const connectSocketRef = useRef<(version: number, plan: ReconnectPlan, mode: 'fresh' | 'reconnect') => void>(() => {})
   const reconnectPlanRef = useRef<ReconnectPlan>({
@@ -90,7 +97,7 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
     wsUrl: '',
     encodedKubeconfig: '',
     terminalId: '',
-    cwd: fallbackTerminalCwd,
+    cwd: defaultTerminalCwd,
   })
   const clusterKubeconfig = clusterContext?.kubeconfig || ''
 
@@ -102,37 +109,21 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
     })
   }, [])
 
-  const nextRequestId = useCallback((prefix = 'terminal') => {
-    requestSeqRef.current += 1
-    return `${prefix}-${Date.now()}-${requestSeqRef.current}`
-  }, [])
-
   const sendTerminalResize = useCallback((
     socket: WebSocket,
-    terminalId: string,
     cols: number,
     rows: number,
   ) => {
-    if (socket.readyState !== WebSocket.OPEN || !terminalId) {
+    if (socket.readyState !== WebSocket.OPEN) {
       return false
     }
     if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols <= 0 || rows <= 0) {
       return false
     }
 
-    socket.send(
-      encodeWSBinaryMessage({
-        type: 'terminal.resize',
-        requestId: nextRequestId('terminal.resize'),
-        data: {
-          id: terminalId,
-          cols: Math.floor(cols),
-          rows: Math.floor(rows),
-        },
-      }),
-    )
+    socket.send(JSON.stringify({ type: 'resize', cols: Math.floor(cols), rows: Math.floor(rows) }))
     return true
-  }, [nextRequestId])
+  }, [])
 
   const emitOutput = useCallback((chunk: string) => {
     if (!chunk) return
@@ -169,11 +160,16 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
     }
   }, [])
 
+  const clearConnectTimeout = useCallback(() => {
+    if (connectTimeoutRef.current !== null) {
+      window.clearTimeout(connectTimeoutRef.current)
+      connectTimeoutRef.current = null
+    }
+  }, [])
+
   const closeSocket = useCallback(() => {
     const socket = socketRef.current
     socketRef.current = null
-    authSentRef.current = false
-    terminalOpenSentRef.current = false
 
     if (socket && socket.readyState <= WebSocket.OPEN) {
       closingSocketsRef.current.add(socket)
@@ -193,97 +189,69 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
     closeSocket()
 
     const socket = new WebSocket(plan.wsUrl)
-    socket.binaryType = 'arraybuffer'
     socketRef.current = socket
-    authSentRef.current = false
-    terminalOpenSentRef.current = false
 
-    const sendAuth = () => {
+    clearConnectTimeout()
+    connectTimeoutRef.current = window.setTimeout(() => {
+      connectTimeoutRef.current = null
+      const currentStatus = terminalSessionRef.current?.status
+      if (
+        version !== requestVersionRef.current ||
+        socketRef.current !== socket ||
+        socket.readyState > WebSocket.OPEN ||
+        (currentStatus !== 'connecting' && currentStatus !== 'reconnecting')
+      ) {
+        return
+      }
+      socket.close(4000, 'connect-timeout')
+    }, terminalConnectTimeoutMs)
+
+    socket.addEventListener('open', () => {
       if (version !== requestVersionRef.current) return
-      if (socket.readyState !== WebSocket.OPEN || authSentRef.current) return
 
-      authSentRef.current = true
-      socket.send(
-        encodeWSBinaryMessage({
-          type: 'auth',
-          requestId: nextRequestId('terminal.auth'),
-          data: {
-            authorization: plan.encodedKubeconfig,
-          },
-        }),
-      )
-    }
-
-    const sendTerminalOpen = () => {
-      if (version !== requestVersionRef.current) return
-      if (socket.readyState !== WebSocket.OPEN || terminalOpenSentRef.current) return
-
-      terminalOpenSentRef.current = true
-      socket.send(
-        encodeWSBinaryMessage({
-          type: 'terminal.open',
-          requestId: nextRequestId('terminal.open'),
-          data: {
-            id: plan.terminalId,
-            cwd: plan.cwd,
-          },
-        }),
-      )
-    }
+      socket.send(JSON.stringify({
+        type: 'auth',
+        authorization: plan.encodedKubeconfig,
+        cwd: plan.cwd,
+      }))
+    })
 
     socket.addEventListener('message', (event) => {
       if (version !== requestVersionRef.current) return
 
-      if (!(event.data instanceof ArrayBuffer)) return
+      if (typeof event.data !== 'string') return
 
-      let messagePayload: ReturnType<typeof decodeWSBinaryMessage> | null = null
+      let messagePayload: TerminalWebSocketMessage | null = null
       try {
-        messagePayload = decodeWSBinaryMessage(event.data)
+        messagePayload = JSON.parse(event.data) as TerminalWebSocketMessage
       } catch {
         return
       }
 
-      const data = messagePayload?.data || {}
       const messageType = String(messagePayload?.type || '')
-      const messageTerminalID = String(data.id || '')
 
       switch (messageType) {
-        case 'auth.required':
-          sendAuth()
-          return
-        case 'system.ready':
-          syncSession((current) =>
-            current
-              ? {
-                  ...current,
-                  status: mode === 'reconnect' ? 'reconnecting' : 'connecting',
-                  error: '',
-                  podName: String(data.podName || current.podName || ''),
-                  containerName: String(data.container || current.containerName || ''),
-                  namespace: String(data.namespace || current.namespace || plan.resource?.namespace || ''),
-                }
-              : current,
-          )
-          sendTerminalOpen()
-          return
-        case 'terminal.opened':
-          if (messageTerminalID !== plan.terminalId) return
+        case 'connected':
           reconnectAttemptsRef.current = 0
           clearReconnectTimer()
+          if (socketRef.current === socket) {
+            clearConnectTimeout()
+          }
           syncSession((current) =>
             current
               ? {
                   ...current,
                   status: 'connected',
                   error: '',
-                  cwd: String(data.cwd || current.cwd || plan.cwd),
-                  terminalId: messageTerminalID || current.terminalId,
+                  podName: String(messagePayload?.podName || current.podName || ''),
+                  containerName: String(messagePayload?.container || current.containerName || ''),
+                  namespace: String(messagePayload?.namespace || current.namespace || plan.resource?.namespace || ''),
                 }
               : current,
           )
           if (pendingResizeRef.current) {
             const { cols, rows } = pendingResizeRef.current
-            if (sendTerminalResize(socket, messageTerminalID, cols, rows)) {
+            if (sendTerminalResize(socket, cols, rows)) {
               pendingResizeRef.current = null
             }
           }
@@ -291,31 +259,12 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
             emitOutput(`\r\n\x1b[90m${terminalMessages.connectionRestored}\x1b[0m\r\n`)
           }
           return
-        case 'terminal.output':
-          if (messageTerminalID !== plan.terminalId) return
-          if (data.dropped) {
-            emitOutput(`\r\n\x1b[33m${terminalMessages.droppedOutputNotice}\x1b[0m\r\n`)
-          }
-          emitOutput(String(data.output || ''))
-          return
-        case 'terminal.closed':
-          if (messageTerminalID !== plan.terminalId) return
-          syncSession((current) =>
-            current
-              ? {
-                  ...current,
-                  status: current.error ? 'error' : 'disconnected',
-                }
-              : current,
-          )
+        case 'stdout':
+        case 'stderr':
+          emitOutput(String(messagePayload?.data || ''))
           return
         case 'error': {
-          const code = String(data.code || '')
-          if (code === 'already_authenticated') {
-            return
-          }
-
-          const message = String(data.message || terminalMessages.connectionFailed)
+          const message = String(messagePayload?.data || terminalMessages.connectionFailed)
           syncSession((current) =>
             current
               ? {
@@ -326,9 +275,7 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
               : current,
           )
 
-          if (messageTerminalID === plan.terminalId || !messageTerminalID) {
-            emitOutput(`\r\n\x1b[31m${message}\x1b[0m\r\n`)
-          }
+          emitOutput(`\r\n\x1b[31m${message}\x1b[0m\r\n`)
           onErrorMessage?.(message)
           return
         }
@@ -340,6 +287,9 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
     socket.addEventListener('error', () => {
       if (version !== requestVersionRef.current) return
 
+      if (socketRef.current === socket) {
+        clearConnectTimeout()
+      }
       syncSession((current) =>
         current
           ? {
@@ -356,9 +306,8 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
       closingSocketsRef.current.delete(socket)
 
       if (socketRef.current === socket) {
+        clearConnectTimeout()
         socketRef.current = null
-        authSentRef.current = false
-        terminalOpenSentRef.current = false
       }
 
       if (version !== requestVersionRef.current || closedManually) {
@@ -413,7 +362,7 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
         connectSocketRef.current(version, reconnectPlanRef.current, 'reconnect')
       }, delay)
     })
-  }, [clearReconnectTimer, closeSocket, emitOutput, nextRequestId, onErrorMessage, sendTerminalResize, syncSession, terminalMessages])
+  }, [clearConnectTimeout, clearReconnectTimer, closeSocket, emitOutput, onErrorMessage, sendTerminalResize, syncSession, terminalMessages])
 
   useEffect(() => {
     connectSocketRef.current = connectSocket
@@ -428,7 +377,7 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
         current.resource.name === resource.name &&
         (current.status === 'connected' || current.status === 'connecting' || current.status === 'reconnecting') &&
         socket &&
-        socket.readyState === WebSocket.OPEN
+        (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN)
       ) {
         return
       }
@@ -455,10 +404,10 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
 
       const plan: ReconnectPlan = {
         resource,
-        wsUrl: buildAgentWebSocketUrl(resource.name),
+        wsUrl: buildAgentTerminalWebSocketUrl(resource.name),
         encodedKubeconfig: encodeURIComponent(clusterKubeconfig),
-        terminalId: nextRequestId('terminal.session'),
-        cwd: resource.template.defaultWorkingDirectory || fallbackTerminalCwd,
+        terminalId: `${resource.name}-terminal`,
+        cwd: resource.template.defaultWorkingDirectory || defaultTerminalCwd,
       }
       reconnectPlanRef.current = plan
 
@@ -473,7 +422,7 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
 
       connectSocket(version, plan, 'fresh')
     },
-    [clearReconnectTimer, closeSocket, clusterKubeconfig, connectSocket, nextRequestId, onErrorMessage, syncSession, terminalMessages],
+    [clearReconnectTimer, closeSocket, clusterKubeconfig, connectSocket, onErrorMessage, syncSession, terminalMessages],
   )
 
   const sendTerminalInput = useCallback(
@@ -487,18 +436,9 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
         return
       }
 
-      socket.send(
-        encodeWSBinaryMessage({
-          type: 'terminal.input',
-          requestId: nextRequestId('terminal.input'),
-          data: {
-            id: current.terminalId,
-            input: normalizedInput,
-          },
-        }),
-      )
+      socket.send(JSON.stringify({ type: 'stdin', data: normalizedInput }))
     },
-    [nextRequestId],
+    [],
   )
 
   const resizeTerminal = useCallback(
@@ -519,7 +459,7 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
         return
       }
 
-      if (sendTerminalResize(socket, current.terminalId, normalizedCols, normalizedRows)) {
+      if (sendTerminalResize(socket, normalizedCols, normalizedRows)) {
         pendingResizeRef.current = null
       }
     },
@@ -556,41 +496,29 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
   const closeTerminal = useCallback(() => {
     requestVersionRef.current += 1
     clearReconnectTimer()
+    clearConnectTimeout()
     reconnectAttemptsRef.current = 0
     pendingResizeRef.current = null
-
-    const socket = socketRef.current
-    const current = terminalSessionRef.current
-    if (socket && socket.readyState === WebSocket.OPEN && current?.terminalId) {
-      socket.send(
-        encodeWSBinaryMessage({
-          type: 'terminal.close',
-          requestId: nextRequestId('terminal.close'),
-          data: {
-            id: current.terminalId,
-          },
-        }),
-      )
-    }
 
     reconnectPlanRef.current = {
       resource: null,
       wsUrl: '',
       encodedKubeconfig: '',
       terminalId: '',
-      cwd: fallbackTerminalCwd,
+      cwd: defaultTerminalCwd,
     }
     outputBacklogRef.current = []
     closeSocket()
     syncSession(() => null)
-  }, [clearReconnectTimer, closeSocket, nextRequestId, syncSession])
+  }, [clearConnectTimeout, clearReconnectTimer, closeSocket, syncSession])
 
   useEffect(
     () => () => {
       clearReconnectTimer()
+      clearConnectTimeout()
       closeSocket()
     },
-    [clearReconnectTimer, closeSocket],
+    [clearConnectTimeout, clearReconnectTimer, closeSocket],
   )
 
   return {

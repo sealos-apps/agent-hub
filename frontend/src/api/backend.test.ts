@@ -1,4 +1,5 @@
 import {
+  buildAgentTerminalWebSocketUrl,
   createAgentPreview,
   deleteAgentPreview,
   heartbeatAgentPreview,
@@ -85,5 +86,15 @@ describe('agent preview backend api', () => {
       expect.stringContaining('/api/v1/agents/demo-agent/previews/p_test'),
       expect.objectContaining({ method: 'DELETE' }),
     )
+  })
+})
+
+describe('agent terminal backend api', () => {
+  it('builds the dedicated terminal websocket url without credentials', () => {
+    const url = buildAgentTerminalWebSocketUrl('demo-agent')
+
+    expect(url).toContain('/api/v1/agents/demo-agent/terminal/ws')
+    expect(url).not.toContain('authorization=')
+    expect(url).not.toContain('apiVersion')
   })
 })

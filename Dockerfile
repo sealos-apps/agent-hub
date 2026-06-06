@@ -22,7 +22,7 @@ WORKDIR /app
 ENV PORT=8888
 ENV REGION=us
 ENV FRONTEND_DIST_DIR=/app/frontend/dist
-ENV AGENT_TEMPLATE_GITHUB_URL=https://github.com/nightwhite/Agent-Hub-Template
+ENV AGENT_TEMPLATE_GITHUB_URL=https://github.com/sealos-apps/Agent-Hub-Template
 
 COPY --from=go-build /out/agenthub /app/agenthub
 COPY --from=frontend-build /src/frontend/dist /app/frontend/dist

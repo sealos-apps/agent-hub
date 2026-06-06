@@ -1776,6 +1776,7 @@ export function AgentConsoleWindowPage() {
   const canReturnMobileWorkspace = isMobileConsole && activeTab?.id !== initialConsoleTabId
   const activeWorkspaceDark = activeTab?.type === 'terminal' || activeTab?.type === 'file'
   const activeWebPreview = activeTab?.type === 'web' && Boolean(activeTab.preview)
+  const consoleScaleActive = consoleScale.enabled && activeTab?.type !== 'terminal'
 
   return (
     <main className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-white text-[var(--color-text)]">
@@ -1783,16 +1784,16 @@ export function AgentConsoleWindowPage() {
         className={
           isMobileConsole
             ? 'flex min-h-0 flex-1 flex-col overflow-hidden bg-white'
-            : consoleScale.enabled
+            : consoleScaleActive
             ? 'min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-white p-3'
             : 'flex min-h-0 flex-1 flex-col overflow-hidden bg-white px-4 py-5 sm:px-6 lg:px-12 lg:py-6'
         }
       >
         <div
-          data-testid={consoleScale.enabled ? 'console-scale-frame' : undefined}
-          className={consoleScale.enabled ? 'relative' : 'contents'}
+          data-testid={consoleScaleActive ? 'console-scale-frame' : undefined}
+          className={consoleScaleActive ? 'relative' : 'contents'}
           style={
-            consoleScale.enabled
+            consoleScaleActive
               ? {
                 width: CONSOLE_SCALE_CANVAS_WIDTH * consoleScale.scale,
                 height: consoleScale.canvasHeight * consoleScale.scale,
@@ -1804,13 +1805,13 @@ export function AgentConsoleWindowPage() {
           className={
             isMobileConsole
               ? 'flex min-h-0 flex-1 flex-col'
-              : consoleScale.enabled
+              : consoleScaleActive
               ? 'absolute left-0 top-0 flex min-w-0 flex-col'
               : 'flex min-h-0 flex-1 flex-col'
           }
           ref={consoleCanvasRef}
           style={
-            consoleScale.enabled
+            consoleScaleActive
               ? {
                 width: CONSOLE_SCALE_CANVAS_WIDTH,
                 height: consoleScale.canvasHeight,

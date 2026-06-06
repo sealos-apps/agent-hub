@@ -7,12 +7,6 @@ import { LoaderCircle, Terminal as TerminalIcon } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import type { TerminalSessionState } from '../../../domains/agents/types'
 import { extractTerminalPreviewLinks } from '../../../app/pages/agent-hub/lib/terminalPreviewDetector'
-import {
-  applyTerminalOutputBackpressure,
-  resolveTerminalFlushMode,
-  terminalOutputBurstCharsPerFlush,
-  terminalOutputCharsPerFlush,
-} from './terminalOutputScheduler'
 import { Button } from '../../ui/Button'
 import { useI18n } from '../../../i18n'
 
@@ -57,6 +51,7 @@ type DisposableLike = { dispose: () => void }
 const xtermColorReportPattern = /^(?:\x1b\](?:10|11|12);rgb:[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}(?:\x07|\x1b\\)|\x9d(?:10|11|12);rgb:[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}\x9c)$/
 
 const isXtermColorReportResponse = (data: string) => xtermColorReportPattern.test(data)
+const terminalPendingOutputLimit = 1024 * 1024
 
 export function AgentTerminalWorkspace({
   isVisible = true,
@@ -85,18 +80,17 @@ export function AgentTerminalWorkspace({
   const announcedStateRef = useRef('')
   const lastResizeRef = useRef({ cols: 0, rows: 0 })
   const previousStatusRef = useRef<TerminalSessionState['status'] | ''>('')
-  const outputQueueRef = useRef<string[]>([])
-  const outputQueueHeadRef = useRef(0)
-  const outputQueuedCharsRef = useRef(0)
+  const pendingOutputRef = useRef('')
   const outputDroppedRef = useRef(false)
   const outputFlushFrameRef = useRef<number | null>(null)
-  const outputFlushTimerRef = useRef<number | null>(null)
+  const outputFlushScheduledRef = useRef(false)
   const outputWriteInFlightRef = useRef(false)
   const webglActiveRef = useRef(false)
   const visibleRef = useRef(isVisible)
   const terminalTextRef = useRef({
     connecting: t('terminal.connecting'),
     disconnected: t('terminal.disconnected'),
+    droppedOutputNotice: t('terminal.droppedOutputNotice'),
   })
   const activeTerminalId = session?.terminalId || ''
 
@@ -104,6 +98,7 @@ export function AgentTerminalWorkspace({
     terminalTextRef.current = {
       connecting: t('terminal.connecting'),
       disconnected: t('terminal.disconnected'),
+      droppedOutputNotice: t('terminal.droppedOutputNotice'),
     }
   }, [t])
 
@@ -279,96 +274,43 @@ export function AgentTerminalWorkspace({
     })
 
     if (onAttachOutput) {
-      const compactOutputQueue = () => {
-        const head = outputQueueHeadRef.current
-        if (head <= 0) return
-
-        const queue = outputQueueRef.current
-        if (head < 1024 && head*2 < queue.length) return
-
-        outputQueueRef.current = queue.slice(head)
-        outputQueueHeadRef.current = 0
-      }
-
       const clearScheduledFlush = () => {
+        outputFlushScheduledRef.current = false
         if (outputFlushFrameRef.current !== null) {
           window.cancelAnimationFrame(outputFlushFrameRef.current)
           outputFlushFrameRef.current = null
         }
-        if (outputFlushTimerRef.current !== null) {
-          window.clearTimeout(outputFlushTimerRef.current)
-          outputFlushTimerRef.current = null
-        }
       }
 
-      const scheduleFlush = (mode: 'frame' | 'immediate') => {
+      const scheduleFlush = () => {
         if (outputWriteInFlightRef.current) return
-        if (outputFlushFrameRef.current !== null || outputFlushTimerRef.current !== null) return
+        if (outputFlushScheduledRef.current) return
+        if (outputFlushFrameRef.current !== null) return
 
-        const scheduleMode = visibleRef.current ? mode : 'frame'
-
-        if (scheduleMode === 'immediate') {
-          outputFlushTimerRef.current = window.setTimeout(() => {
-            outputFlushTimerRef.current = null
-            flushOutputQueue()
-          }, 4)
-          return
-        }
-
-        outputFlushFrameRef.current = window.requestAnimationFrame(() => {
-          outputFlushFrameRef.current = null
-          flushOutputQueue()
+        outputFlushScheduledRef.current = true
+        queueMicrotask(() => {
+          if (!outputFlushScheduledRef.current || outputWriteInFlightRef.current) return
+          outputFlushFrameRef.current = window.requestAnimationFrame(() => {
+            outputFlushFrameRef.current = null
+            outputFlushScheduledRef.current = false
+            flushPendingOutput()
+          })
         })
       }
 
-      const flushOutputQueue = () => {
+      const flushPendingOutput = () => {
         clearScheduledFlush()
         const terminal = terminalRef.current
         if (!terminal || outputWriteInFlightRef.current) return
 
-        const queue = outputQueueRef.current
-        let head = outputQueueHeadRef.current
-        if (head >= queue.length) return
-
-        const flushMode = resolveTerminalFlushMode(outputQueuedCharsRef.current)
-        let remaining = flushMode === 'burst' ? terminalOutputBurstCharsPerFlush : terminalOutputCharsPerFlush
-        if (!visibleRef.current) {
-          remaining = Math.min(remaining, 8 * 1024)
-        }
-        const parts: string[] = []
-        while (remaining > 0 && head < queue.length) {
-          const chunk = queue[head]
-          if (!chunk) {
-            head += 1
-            continue
-          }
-
-          if (chunk.length <= remaining) {
-            parts.push(chunk)
-            remaining -= chunk.length
-            outputQueuedCharsRef.current -= chunk.length
-            head += 1
-            continue
-          }
-
-          parts.push(chunk.slice(0, remaining))
-          queue[head] = chunk.slice(remaining)
-          outputQueuedCharsRef.current -= remaining
-          remaining = 0
-        }
-
-        outputQueueHeadRef.current = head
-        compactOutputQueue()
-
-        const merged = parts.join('')
+        const merged = pendingOutputRef.current
+        pendingOutputRef.current = ''
         if (merged) {
           outputWriteInFlightRef.current = true
           terminal.write(merged, () => {
             outputWriteInFlightRef.current = false
-            if (outputQueueHeadRef.current < outputQueueRef.current.length) {
-              const nextMode =
-                resolveTerminalFlushMode(outputQueuedCharsRef.current) === 'burst' ? 'immediate' : 'frame'
-              scheduleFlush(nextMode)
+            if (pendingOutputRef.current) {
+              scheduleFlush()
             } else if (outputDroppedRef.current) {
               outputDroppedRef.current = false
             }
@@ -381,23 +323,15 @@ export function AgentTerminalWorkspace({
       detachOutputRef.current = onAttachOutput((chunk) => {
         if (!chunk) return
 
-        const nextQueueState = applyTerminalOutputBackpressure(
-          {
-            queue: outputQueueRef.current,
-            head: outputQueueHeadRef.current,
-            queuedChars: outputQueuedCharsRef.current,
-            droppedNoticeQueued: outputDroppedRef.current,
-          },
-          chunk,
-        )
-        outputQueueRef.current = nextQueueState.queue
-        outputQueueHeadRef.current = nextQueueState.head
-        outputQueuedCharsRef.current = nextQueueState.queuedChars
-        outputDroppedRef.current = nextQueueState.droppedNoticeQueued
-
-        const nextMode =
-          resolveTerminalFlushMode(outputQueuedCharsRef.current) === 'burst' ? 'immediate' : 'frame'
-        scheduleFlush(nextMode)
+        pendingOutputRef.current += chunk
+        if (pendingOutputRef.current.length > terminalPendingOutputLimit) {
+          pendingOutputRef.current = pendingOutputRef.current.slice(-terminalPendingOutputLimit)
+          if (!outputDroppedRef.current) {
+            pendingOutputRef.current = `\r\n\x1b[33m${terminalTextRef.current.droppedOutputNotice}\x1b[0m\r\n${pendingOutputRef.current}`
+            outputDroppedRef.current = true
+          }
+        }
+        scheduleFlush()
       })
     }
 
@@ -406,13 +340,8 @@ export function AgentTerminalWorkspace({
         window.cancelAnimationFrame(outputFlushFrameRef.current)
         outputFlushFrameRef.current = null
       }
-      if (outputFlushTimerRef.current !== null) {
-        window.clearTimeout(outputFlushTimerRef.current)
-        outputFlushTimerRef.current = null
-      }
-      outputQueueRef.current = []
-      outputQueueHeadRef.current = 0
-      outputQueuedCharsRef.current = 0
+      outputFlushScheduledRef.current = false
+      pendingOutputRef.current = ''
       outputDroppedRef.current = false
       outputWriteInFlightRef.current = false
       webglDisposed = true
@@ -489,7 +418,10 @@ export function AgentTerminalWorkspace({
   }
 
   return (
-    <div className="agent-terminal-surface relative flex h-full min-h-0 flex-col overflow-hidden bg-[#05070a]">
+    <div
+      className="agent-terminal-surface relative flex h-full min-h-0 flex-col overflow-hidden bg-[#05070a]"
+      data-testid="agent-terminal-surface"
+    >
       {session.error ? (
         <div className="absolute left-3 right-3 top-3 z-[1]">
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700">
