@@ -10,6 +10,7 @@ class MockWebSocket {
   static CLOSING = 2
   static CLOSED = 3
   static instances: MockWebSocket[] = []
+  static nextInitialReadyState = MockWebSocket.OPEN
 
   binaryType: BinaryType = 'blob'
   readyState = MockWebSocket.OPEN
@@ -19,6 +20,8 @@ class MockWebSocket {
 
   constructor(url: string) {
     this.url = url
+    this.readyState = MockWebSocket.nextInitialReadyState
+    MockWebSocket.nextInitialReadyState = MockWebSocket.OPEN
     MockWebSocket.instances.push(this)
   }
 
@@ -127,6 +130,34 @@ describe('useAgentTerminal dedicated websocket', () => {
       })
 
       expect(socket.sent).toContain(JSON.stringify({ type: 'stdin', data: 'ls\n' }))
+
+      unmount()
+    } finally {
+      globalThis.WebSocket = originalWebSocket
+    }
+  })
+
+  it('does not reopen the same terminal while the websocket handshake is still connecting', async () => {
+    const originalWebSocket = globalThis.WebSocket
+    MockWebSocket.instances = []
+    MockWebSocket.nextInitialReadyState = MockWebSocket.CONNECTING
+    globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
+
+    try {
+      const { result, unmount } = renderHook(() => useAgentTerminal({ clusterContext }))
+      const agent = createAgentItemFixture({ name: 'demo-agent' })
+
+      await act(async () => {
+        await result.current.openTerminal(agent)
+      })
+
+      await waitFor(() => expect(MockWebSocket.instances).toHaveLength(1))
+
+      await act(async () => {
+        await result.current.openTerminal(agent)
+      })
+
+      expect(MockWebSocket.instances).toHaveLength(1)
 
       unmount()
     } finally {

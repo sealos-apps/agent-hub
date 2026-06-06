@@ -336,7 +336,7 @@ export function useAgentTerminal({ clusterContext, messages, onErrorMessage }: U
         current.resource.name === resource.name &&
         (current.status === 'connected' || current.status === 'connecting' || current.status === 'reconnecting') &&
         socket &&
-        socket.readyState === WebSocket.OPEN
+        (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN)
       ) {
         return
       }
