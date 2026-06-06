@@ -3,7 +3,7 @@
 Endpoint:
 
 - `ws://{host}/api/v1/agents/{agent-name}/ws`
-- `ws://{host}/api/v1/agents/{agent-name}/terminal/ws?authorization=<url-encoded-kubeconfig>`
+- `ws://{host}/api/v1/agents/{agent-name}/terminal/ws`
 
 Authentication:
 
@@ -13,6 +13,8 @@ Authentication:
 - Compatibility options:
   - `Authorization` request header
   - `?authorization=<url-encoded-kubeconfig>`
+
+The dedicated terminal endpoint only accepts first-message authentication. It does not accept kubeconfig credentials in the URL.
 
 `auth` message:
 
@@ -89,10 +91,14 @@ Error:
 Use the dedicated terminal endpoint for interactive terminal rendering:
 
 ```text
-GET /api/v1/agents/:agentName/terminal/ws?authorization=<url-encoded-kubeconfig>
+GET /api/v1/agents/:agentName/terminal/ws
 ```
 
 Client -> server:
+
+```json
+{"type":"auth","authorization":"<encoded-kubeconfig>","cwd":"/opt/hermes"}
+```
 
 ```json
 {"type":"stdin","data":"ls\n"}

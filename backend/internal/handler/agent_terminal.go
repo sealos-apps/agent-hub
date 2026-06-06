@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/nightwhite/Agent-Hub/internal/kube"
+	agentws "github.com/nightwhite/Agent-Hub/internal/ws"
 	appErr "github.com/nightwhite/Agent-Hub/pkg/errors"
 	"k8s.io/client-go/tools/remotecommand"
 )
@@ -19,18 +20,21 @@ const (
 	agentTerminalWriteWait = 10 * time.Second
 	agentTerminalPongWait  = 60 * time.Second
 	agentTerminalPingEvery = (agentTerminalPongWait * 9) / 10
+	agentTerminalAuthWait  = 15 * time.Second
+	agentTerminalReadLimit = 2 << 20
 )
 
 type agentTerminalMessage struct {
-	Type      string `json:"type"`
-	Data      string `json:"data,omitempty"`
-	Rows      uint16 `json:"rows,omitempty"`
-	Cols      uint16 `json:"cols,omitempty"`
-	Cwd       string `json:"cwd,omitempty"`
-	Namespace string `json:"namespace,omitempty"`
-	PodName   string `json:"podName,omitempty"`
-	Container string `json:"container,omitempty"`
-	Code      string `json:"code,omitempty"`
+	Type          string `json:"type"`
+	Data          string `json:"data,omitempty"`
+	Authorization string `json:"authorization,omitempty"`
+	Rows          uint16 `json:"rows,omitempty"`
+	Cols          uint16 `json:"cols,omitempty"`
+	Cwd           string `json:"cwd,omitempty"`
+	Namespace     string `json:"namespace,omitempty"`
+	PodName       string `json:"podName,omitempty"`
+	Container     string `json:"container,omitempty"`
+	Code          string `json:"code,omitempty"`
 }
 
 type agentTerminalSession struct {
@@ -49,11 +53,17 @@ func AgentTerminalWebSocket(c *gin.Context) {
 		return
 	}
 
-	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	cfg := runtimeConfig(c)
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			return agentws.CheckOrigin(cfg.WSAllowedOrigins, r)
+		},
+	}
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return
 	}
+	conn.SetReadLimit(agentTerminalReadLimit)
 
 	ctx, cancel := context.WithCancel(c.Request.Context())
 	session := &agentTerminalSession{
@@ -68,13 +78,12 @@ func AgentTerminalWebSocket(c *gin.Context) {
 }
 
 func (s *agentTerminalSession) run(c *gin.Context, agentName string) {
-	authorization := terminalBootstrapAuthorization(c)
-	if authorization == "" {
-		_ = s.send(agentTerminalMessage{Type: "error", Code: "auth_required", Data: "missing Authorization header"})
+	authMessage, ok := s.readAuthMessage()
+	if !ok {
 		return
 	}
 
-	factory, authErr := kube.NewFactoryFromEncodedKubeconfig(authorization)
+	factory, authErr := kube.NewFactoryFromEncodedKubeconfig(authMessage.Authorization)
 	if authErr != nil {
 		_ = s.send(agentTerminalMessage{Type: "error", Code: "invalid_auth", Data: authErr.InternalMessage})
 		return
@@ -92,7 +101,7 @@ func (s *agentTerminalSession) run(c *gin.Context, agentName string) {
 		return
 	}
 
-	cwd, err := kube.ResolveTerminalPath(c.Query("cwd"))
+	cwd, err := kube.ResolveTerminalPath(authMessage.Cwd)
 	if err != nil {
 		_ = s.send(agentTerminalMessage{Type: "error", Code: "invalid_path", Data: err.Error()})
 		return
@@ -137,6 +146,29 @@ func (s *agentTerminalSession) run(c *gin.Context, agentName string) {
 	if err != nil && s.ctx.Err() == nil {
 		_ = s.send(agentTerminalMessage{Type: "error", Code: "terminal_exec_failed", Data: err.Error()})
 	}
+}
+
+func (s *agentTerminalSession) readAuthMessage() (agentTerminalMessage, bool) {
+	_ = s.conn.SetReadDeadline(time.Now().Add(agentTerminalAuthWait))
+
+	var msg agentTerminalMessage
+	if err := s.conn.ReadJSON(&msg); err != nil {
+		_ = s.send(agentTerminalMessage{Type: "error", Code: "auth_required", Data: "missing terminal auth message"})
+		return agentTerminalMessage{}, false
+	}
+
+	if strings.TrimSpace(msg.Type) != "auth" {
+		_ = s.send(agentTerminalMessage{Type: "error", Code: "auth_required", Data: "first terminal websocket message must be auth"})
+		return agentTerminalMessage{}, false
+	}
+
+	msg.Authorization = strings.TrimSpace(msg.Authorization)
+	if msg.Authorization == "" {
+		_ = s.send(agentTerminalMessage{Type: "error", Code: "auth_required", Data: "missing terminal authorization"})
+		return agentTerminalMessage{}, false
+	}
+
+	return msg, true
 }
 
 func (s *agentTerminalSession) readLoop(done <-chan struct{}) {
@@ -265,11 +297,4 @@ func (q latestTerminalSizeQueue) Next() *remotecommand.TerminalSize {
 			return &size
 		}
 	}
-}
-
-func terminalBootstrapAuthorization(c *gin.Context) string {
-	if headerValue := strings.TrimSpace(c.GetHeader(kube.DefaultAuthorizationHeader)); headerValue != "" {
-		return headerValue
-	}
-	return strings.TrimSpace(c.Query(kube.WebSocketAuthorizationQueryParam))
 }

@@ -2,8 +2,10 @@ package handler
 
 import (
 	"encoding/json"
+	"net/http"
 	"testing"
 
+	agentws "github.com/nightwhite/Agent-Hub/internal/ws"
 	"k8s.io/client-go/tools/remotecommand"
 )
 
@@ -16,6 +18,47 @@ func TestAgentTerminalMessageDecodeInput(t *testing.T) {
 	}
 	if msg.Type != "stdin" || msg.Data != "ls\n" {
 		t.Fatalf("decoded = %#v", msg)
+	}
+}
+
+func TestAgentTerminalAuthMessageDecode(t *testing.T) {
+	t.Parallel()
+
+	var msg agentTerminalMessage
+	if err := json.Unmarshal([]byte(`{"type":"auth","authorization":"apiVersion%3A%20v1","cwd":"/workspace"}`), &msg); err != nil {
+		t.Fatal(err)
+	}
+	if msg.Type != "auth" || msg.Authorization != "apiVersion%3A%20v1" || msg.Cwd != "/workspace" {
+		t.Fatalf("decoded auth message = %#v", msg)
+	}
+}
+
+func TestAgentTerminalCheckOriginMatchesSameHostAndAllowedOrigins(t *testing.T) {
+	t.Parallel()
+
+	req, err := http.NewRequest(http.MethodGet, "http://agenthub.example.com/api/v1/agents/demo-agent/terminal/ws", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = "agenthub.example.com"
+
+	if !agentws.CheckOrigin("", req) {
+		t.Fatal("same-host terminal websocket origin should be allowed when Origin is empty")
+	}
+
+	req.Header.Set("Origin", "http://agenthub.example.com")
+	if !agentws.CheckOrigin("", req) {
+		t.Fatal("same-host terminal websocket origin should be allowed")
+	}
+
+	req.Header.Set("Origin", "https://console.example.com")
+	if !agentws.CheckOrigin("console.example.com", req) {
+		t.Fatal("configured terminal websocket origin host should be allowed")
+	}
+
+	req.Header.Set("Origin", "https://evil.example.com")
+	if agentws.CheckOrigin("console.example.com", req) {
+		t.Fatal("unconfigured cross-origin terminal websocket origin should be rejected")
 	}
 }
 

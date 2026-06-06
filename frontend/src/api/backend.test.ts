@@ -90,10 +90,11 @@ describe('agent preview backend api', () => {
 })
 
 describe('agent terminal backend api', () => {
-  it('builds the dedicated terminal websocket url', () => {
-    expect(buildAgentTerminalWebSocketUrl('demo-agent', 'apiVersion: v1')).toContain(
-      '/api/v1/agents/demo-agent/terminal/ws',
-    )
-    expect(buildAgentTerminalWebSocketUrl('demo-agent', 'apiVersion: v1')).toContain('authorization=')
+  it('builds the dedicated terminal websocket url without credentials', () => {
+    const url = buildAgentTerminalWebSocketUrl('demo-agent')
+
+    expect(url).toContain('/api/v1/agents/demo-agent/terminal/ws')
+    expect(url).not.toContain('authorization=')
+    expect(url).not.toContain('apiVersion')
   })
 })

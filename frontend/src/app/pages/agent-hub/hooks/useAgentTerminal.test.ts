@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ClusterContext } from '../../../../domains/agents/types'
-import { createAgentItemFixture } from '../../../../test/agentFixtures'
+import { createAgentItemFixture, createTemplateFixture } from '../../../../test/agentFixtures'
 import { useAgentTerminal } from './useAgentTerminal'
 
 class MockWebSocket {
@@ -65,7 +65,11 @@ const clusterContext: ClusterContext = {
 }
 
 describe('useAgentTerminal dedicated websocket', () => {
-  it('opens the dedicated terminal websocket with kubeconfig authorization in the query', async () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('opens the dedicated terminal websocket without kubeconfig authorization in the query', async () => {
     const originalWebSocket = globalThis.WebSocket
     MockWebSocket.instances = []
     globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
@@ -81,7 +85,47 @@ describe('useAgentTerminal dedicated websocket', () => {
       const socket = MockWebSocket.instances[0]
 
       expect(socket.url).toContain('/api/v1/agents/demo-agent/terminal/ws')
-      expect(socket.url).toContain('authorization=')
+      expect(socket.url).not.toContain('authorization=')
+      expect(socket.url).not.toContain('apiVersion')
+
+      unmount()
+    } finally {
+      globalThis.WebSocket = originalWebSocket
+    }
+  })
+
+  it('authenticates after websocket open without putting kubeconfig in the url', async () => {
+    const originalWebSocket = globalThis.WebSocket
+    MockWebSocket.instances = []
+    globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
+
+    try {
+      const { result, unmount } = renderHook(() => useAgentTerminal({ clusterContext }))
+      const agent = createAgentItemFixture({
+        name: 'demo-agent',
+        template: createTemplateFixture({ defaultWorkingDirectory: '/workspace' }),
+      })
+
+      await act(async () => {
+        await result.current.openTerminal(agent)
+      })
+
+      await waitFor(() => expect(MockWebSocket.instances).toHaveLength(1))
+      const socket = MockWebSocket.instances[0]
+
+      expect(socket.url).toContain('/api/v1/agents/demo-agent/terminal/ws')
+      expect(socket.url).not.toContain('authorization=')
+      expect(socket.url).not.toContain('apiVersion')
+
+      act(() => {
+        socket.emit('open', {})
+      })
+
+      expect(socket.sent).toContain(JSON.stringify({
+        type: 'auth',
+        authorization: encodeURIComponent(clusterContext.kubeconfig),
+        cwd: '/workspace',
+      }))
 
       unmount()
     } finally {
@@ -161,6 +205,44 @@ describe('useAgentTerminal dedicated websocket', () => {
 
       unmount()
     } finally {
+      vi.useRealTimers()
+      globalThis.WebSocket = originalWebSocket
+    }
+  })
+
+  it('closes a stale socket that has not completed the terminal handshake', async () => {
+    vi.useFakeTimers()
+    const originalWebSocket = globalThis.WebSocket
+    MockWebSocket.instances = []
+    MockWebSocket.nextInitialReadyState = MockWebSocket.CONNECTING
+    globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
+
+    try {
+      const { result, unmount } = renderHook(() => useAgentTerminal({ clusterContext }))
+
+      await act(async () => {
+        await result.current.openTerminal(createAgentItemFixture({ name: 'demo-agent' }))
+      })
+
+      expect(MockWebSocket.instances).toHaveLength(1)
+      const socket = MockWebSocket.instances[0]
+      expect(socket.readyState).toBe(MockWebSocket.CONNECTING)
+
+      act(() => {
+        socket.readyState = MockWebSocket.OPEN
+        socket.emit('open', {})
+      })
+
+      act(() => {
+        vi.advanceTimersByTime(10_000)
+      })
+
+      expect(socket.readyState).toBe(MockWebSocket.CLOSED)
+      expect(result.current.terminalSession?.status).toBe('reconnecting')
+
+      unmount()
+    } finally {
+      vi.useRealTimers()
       globalThis.WebSocket = originalWebSocket
     }
   })

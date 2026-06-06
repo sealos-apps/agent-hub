@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"path"
 	"strconv"
 	"strings"
@@ -1340,27 +1339,7 @@ func (w *wsChunkWriter) sendChunk(chunk string) error {
 }
 
 func (h Handler) checkOrigin(r *http.Request) bool {
-	origin := strings.TrimSpace(r.Header.Get("Origin"))
-	if origin == "" {
-		return true
-	}
-
-	originURL, err := url.Parse(origin)
-	if err != nil {
-		return false
-	}
-
-	if originURL.Host == r.Host {
-		return true
-	}
-
-	for _, allowed := range splitCSV(h.Config.WSAllowedOrigins) {
-		if origin == allowed || originURL.Host == allowed {
-			return true
-		}
-	}
-
-	return false
+	return CheckOrigin(h.Config.WSAllowedOrigins, r)
 }
 
 func splitCSV(raw string) []string {
