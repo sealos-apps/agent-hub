@@ -42,6 +42,7 @@ func New(cfg config.Config) *gin.Engine {
 		v1.POST("/agents/:agentName/previews/:id/heartbeat", handler.HeartbeatAgentPreview)
 		v1.DELETE("/agents/:agentName/previews/:id", handler.DeleteAgentPreview)
 		v1.GET("/agents/:agentName/ws", handler.AgentWebSocket)
+		v1.GET("/agents/:agentName/terminal/ws", handler.AgentTerminalWebSocket)
 	}
 
 	engine.Any("/__preview/:previewID/*proxyPath", handler.ProxyAgentPreview)

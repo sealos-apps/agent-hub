@@ -362,6 +362,15 @@ export const ensureAIProxyToken = async (
 export const buildAgentWebSocketUrl = (agentName: string) =>
   buildBackendWsUrl(`/api/v1/agents/${encodeURIComponent(agentName)}/ws`);
 
+export const buildAgentTerminalWebSocketUrl = (agentName: string, kubeconfig: string) => {
+  const target = new URL(buildBackendWsUrl(`/api/v1/agents/${encodeURIComponent(agentName)}/terminal/ws`));
+  const encodedKubeconfig = encodeURIComponent(kubeconfig || "");
+  if (encodedKubeconfig) {
+    target.searchParams.set("authorization", encodedKubeconfig);
+  }
+  return target.toString();
+};
+
 export const createAgentPreview = async (
   agentName: string,
   port: number,

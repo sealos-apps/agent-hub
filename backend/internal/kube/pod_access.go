@@ -196,3 +196,43 @@ func ExecInPod(
 		TerminalSizeQueue: sizeQueue,
 	})
 }
+
+func ExecInPodWebSocket(
+	ctx context.Context,
+	clientset kubernetes.Interface,
+	restConfig *rest.Config,
+	namespace, podName, containerName string,
+	command []string,
+	stdin io.Reader,
+	stdout, stderr io.Writer,
+	tty bool,
+	sizeQueue remotecommand.TerminalSizeQueue,
+) error {
+	req := clientset.CoreV1().RESTClient().
+		Post().
+		Resource("pods").
+		Name(podName).
+		Namespace(namespace).
+		SubResource("exec").
+		VersionedParams(&corev1.PodExecOptions{
+			Container: containerName,
+			Command:   command,
+			Stdin:     stdin != nil,
+			Stdout:    stdout != nil,
+			Stderr:    stderr != nil,
+			TTY:       tty,
+		}, scheme.ParameterCodec)
+
+	executor, err := remotecommand.NewWebSocketExecutor(restConfig, "GET", req.URL().String())
+	if err != nil {
+		return err
+	}
+
+	return executor.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdin:             stdin,
+		Stdout:            stdout,
+		Stderr:            stderr,
+		Tty:               tty,
+		TerminalSizeQueue: sizeQueue,
+	})
+}

@@ -3,13 +3,14 @@
 Endpoint:
 
 - `ws://{host}/api/v1/agents/{agent-name}/ws`
+- `ws://{host}/api/v1/agents/{agent-name}/terminal/ws?authorization=<url-encoded-kubeconfig>`
 
 Authentication:
 
 - Preferred:
   - connect first
   - send `auth` as the first business message
-- Compatibility fallback:
+- Compatibility options:
   - `Authorization` request header
   - `?authorization=<url-encoded-kubeconfig>`
 
@@ -83,7 +84,53 @@ Error:
 - `system.ready`
 - `error`
 
-### Terminal
+### Dedicated Terminal
+
+Use the dedicated terminal endpoint for interactive terminal rendering:
+
+```text
+GET /api/v1/agents/:agentName/terminal/ws?authorization=<url-encoded-kubeconfig>
+```
+
+Client -> server:
+
+```json
+{"type":"stdin","data":"ls\n"}
+```
+
+```json
+{"type":"resize","cols":120,"rows":32}
+```
+
+```json
+{"type":"ping"}
+```
+
+Server -> client:
+
+```json
+{"type":"connected","data":"Terminal connected successfully","namespace":"ns-demo","podName":"agent-pod","container":"agent"}
+```
+
+```json
+{"type":"stdout","data":"..."}
+```
+
+```json
+{"type":"stderr","data":"..."}
+```
+
+```json
+{"type":"error","code":"terminal_exec_failed","data":"..."}
+```
+
+```json
+{"type":"pong"}
+```
+
+This endpoint is the terminal path used by the frontend. It does not fall back to the general `/ws` terminal protocol.
+
+### General WS Terminal Legacy Messages
 
 - `terminal.open`
 - `terminal.opened`
@@ -93,6 +140,7 @@ Error:
 - `terminal.close`
 - `terminal.closed`
 
+The general `/ws` endpoint keeps these messages for non-terminal compatibility and existing internal tests. New terminal UI traffic uses the dedicated endpoint above.
 Supports multiple terminal sessions per WS connection.
 `data.id` is required for every terminal message.
 

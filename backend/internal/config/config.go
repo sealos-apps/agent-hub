@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	DefaultAgentTemplateGitHubURL = "https://github.com/nightwhite/Agent-Hub-Template"
+	DefaultAgentTemplateGitHubURL = "https://github.com/sealos-apps/Agent-Hub-Template"
 )
 
 type Config struct {

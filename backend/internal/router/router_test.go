@@ -756,6 +756,15 @@ func TestWebSocketEndpointRequiresWebSocketUpgrade(t *testing.T) {
 	}
 }
 
+func TestAgentTerminalWebSocketEndpointRequiresWebSocketUpgrade(t *testing.T) {
+	t.Parallel()
+
+	recorder := performRequest(t, http.MethodGet, "/api/v1/agents/demo-agent/terminal/ws", "", "", nil)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("GET /api/v1/agents/:agentName/terminal/ws status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+}
+
 func performRequest(t *testing.T, method, target, body, rawQuery string, headers map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
 

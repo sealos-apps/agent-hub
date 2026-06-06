@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react'
+import { act, render, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentTerminalWorkspace } from './AgentTerminalWorkspace'
 import type { TerminalSessionState } from '../../../domains/agents/types'
@@ -139,5 +139,31 @@ describe('AgentTerminalWorkspace visibility lifecycle', () => {
 
     expect(onInput).toHaveBeenCalledTimes(1)
     expect(onInput).toHaveBeenCalledWith('hermes\r')
+  })
+
+  it('coalesces terminal output chunks in order', async () => {
+    const listeners = new Set<(chunk: string) => void>()
+    const session = createConnectedSession()
+
+    render(
+      <AgentTerminalWorkspace
+        onAttachOutput={(listener) => {
+          listeners.add(listener)
+          return () => listeners.delete(listener)
+        }}
+        session={session}
+      />,
+    )
+
+    await waitFor(() => expect(xtermMock.instances[0]).toBeTruthy())
+
+    act(() => {
+      listeners.forEach((listener) => listener('a'))
+      listeners.forEach((listener) => listener('b'))
+      listeners.forEach((listener) => listener('c'))
+    })
+    await waitFor(() => expect(xtermMock.instances[0]?.write).toHaveBeenCalled())
+
+    expect(xtermMock.instances[0]?.write).toHaveBeenCalledWith('abc', expect.any(Function))
   })
 })

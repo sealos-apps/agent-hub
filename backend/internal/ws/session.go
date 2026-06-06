@@ -31,11 +31,6 @@ import (
 
 const (
 	fileRootDir             = "/"
-	terminalDefaultDir      = "/opt/data/workspace"
-	terminalWorkspaceDir    = "/workspace"
-	terminalHomeDir         = "/opt/data/home"
-	terminalInstallDir      = "/opt/hermes"
-	terminalRuntimeRoot     = "/opt/data"
 	wsReadLimit             = 2 << 20
 	wsWriteWait             = 10 * time.Second
 	wsPongWait              = 60 * time.Second
@@ -1467,12 +1462,12 @@ func resolveUploadFilePath(raw string) (string, error) {
 func resolveTerminalPath(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == "." {
-		return terminalDefaultDir, nil
+		return kube.TerminalDefaultDir, nil
 	}
 
 	cleaned := path.Clean(raw)
 	if path.IsAbs(cleaned) {
-		if isWithinRoot(cleaned, terminalRuntimeRoot) || isWithinRoot(cleaned, terminalInstallDir) || isWithinRoot(cleaned, terminalWorkspaceDir) {
+		if isWithinRoot(cleaned, kube.TerminalRuntimeRoot) || isWithinRoot(cleaned, kube.TerminalInstallDir) || isWithinRoot(cleaned, kube.TerminalWorkspaceDir) {
 			return cleaned, nil
 		}
 		return "", fmt.Errorf("path escapes the terminal workspace")
@@ -1482,8 +1477,8 @@ func resolveTerminalPath(raw string) (string, error) {
 		return "", fmt.Errorf("path escapes the terminal workspace")
 	}
 
-	resolved := path.Join(terminalDefaultDir, cleaned)
-	if !isWithinRoot(resolved, terminalDefaultDir) {
+	resolved := path.Join(kube.TerminalDefaultDir, cleaned)
+	if !isWithinRoot(resolved, kube.TerminalDefaultDir) {
 		return "", fmt.Errorf("path escapes the terminal workspace")
 	}
 	return resolved, nil
@@ -1494,18 +1489,7 @@ func isWithinRoot(target, root string) bool {
 }
 
 func buildTerminalBootstrapCommand(cwd string) string {
-	return strings.Join([]string{
-		"export HERMES_HOME=${HERMES_HOME:-" + shellQuote(terminalRuntimeRoot) + "}",
-		"if [ -z \"${TERM:-}\" ] || [ \"$TERM\" = " + shellQuote("dumb") + " ]; then export TERM=" + shellQuote("xterm-256color") + "; fi",
-		"export COLORTERM=${COLORTERM:-" + shellQuote("truecolor") + "}",
-		"if [ -d " + shellQuote(terminalHomeDir) + " ]; then export HOME=" + shellQuote(terminalHomeDir) + "; fi",
-		"if [ -d " + shellQuote(terminalInstallDir+"/.venv/bin") + " ]; then export PATH=" + shellQuote(terminalInstallDir+"/.venv/bin") + ":$PATH; fi",
-		"if [ -f " + shellQuote(terminalInstallDir+"/.venv/bin/activate") + " ]; then . " + shellQuote(terminalInstallDir+"/.venv/bin/activate") + "; fi",
-		"mkdir -p " + shellQuote(terminalDefaultDir) + " >/dev/null 2>&1 || true",
-		"cd -- " + shellQuote(cwd),
-		"if command -v bash >/dev/null 2>&1; then exec bash; fi",
-		"exec sh",
-	}, " && ")
+	return kube.BuildTerminalBootstrapCommand(cwd)
 }
 
 func shellQuote(input string) string {

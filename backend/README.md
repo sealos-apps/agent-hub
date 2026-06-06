@@ -151,7 +151,7 @@ REGION=us INGRESS_SUFFIX=agent.usw-1.sealos.app AGENT_IMAGE=nousresearch/hermes-
 - `PORT`：默认 `8888`
 - `INGRESS_SUFFIX`：默认 `agent.usw-1.sealos.app`
 - `AGENT_IMAGE`：默认 `nousresearch/hermes-agent:latest`
-- `AGENT_TEMPLATE_GITHUB_URL`：模板仓库或目录 URL。支持 `https://github.com/<owner>/<repo>`、`https://github.com/<owner>/<repo>/tree/<ref>/<path>`，默认 `https://github.com/nightwhite/Agent-Hub-Template`。
+- `AGENT_TEMPLATE_GITHUB_URL`：模板仓库或目录 URL。支持 `https://github.com/<owner>/<repo>`、`https://github.com/<owner>/<repo>/tree/<ref>/<path>`，默认 `https://github.com/sealos-apps/Agent-Hub-Template`。
 - `AGENT_TEMPLATE_GITHUB_TOKEN`：可选，私有 GitHub 仓库访问 token。
 - `AGENT_TEMPLATE_CACHE_DIR`：可选，GitHub 模板下载缓存目录，默认系统临时目录下的 `agenthub-template-cache`。
 - `AGENT_MANIFEST_TEMPLATE_DIR`：本地模板目录根路径，仅用于本地开发或测试兜底；只在 `AGENT_TEMPLATE_GITHUB_URL` 为空时使用。

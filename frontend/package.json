@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "perf:agent-console-smoke": "bun scripts/agentConsolePerfSmoke.ts",
+    "perf:agent-terminal-smoke": "bun scripts/agentTerminalPerfSmoke.ts",
     "test": "vitest run",
     "preview": "vite preview"
   },

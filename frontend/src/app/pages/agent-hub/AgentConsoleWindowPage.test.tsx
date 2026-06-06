@@ -21,6 +21,7 @@ import {
 import { createInitialConsoleTabs, initialConsoleTabId } from './lib/consoleTabs'
 
 vi.mock('../../../api', () => ({
+  buildAgentTerminalWebSocketUrl: vi.fn(() => 'ws://localhost:8888/api/v1/agents/ympp868f/terminal/ws'),
   buildAgentWebSocketUrl: vi.fn(() => 'ws://localhost:8888/api/v1/agents/ympp868f/ws'),
   createClusterContext: vi.fn(() => null),
   createAgentPreview: vi.fn(),
@@ -39,7 +40,7 @@ vi.mock('../../../sealosSdk', () => ({
 
 vi.mock('../../../components/business/terminal/AgentTerminalWorkspace', () => ({
   AgentTerminalWorkspace: ({ onOpenPreviewPort }: { onOpenPreviewPort?: (port: number) => void }) => (
-    <div>
+    <div data-testid="agent-terminal-surface">
       <span>mock terminal workspace</span>
       <button type="button" onClick={() => onOpenPreviewPort?.(3000)}>
         open preview 3000
@@ -281,6 +282,40 @@ describe('AgentConsoleWindowPage helpers', () => {
     expect(second).toEqual([
       { id: initialConsoleTabId, type: 'home', title: 'Console Home' },
     ])
+  })
+
+  it('keeps terminal content outside the scaled console frame', async () => {
+    vi.mocked(createClusterContext).mockReturnValue(clusterContext)
+    vi.mocked(listAgentTemplates).mockResolvedValue({ items: [template], region: 'us' })
+    vi.mocked(getClusterInfo).mockResolvedValue({
+      cluster: clusterContext.server,
+      namespace: clusterContext.namespace,
+      kc: clusterContext.kubeconfig,
+      server: clusterContext.server,
+      operator: clusterContext.operator,
+      updatedAt: '',
+    })
+    vi.mocked(getAgentConsole).mockResolvedValue({
+      agent: agentContract,
+      services: [],
+      workspaceRoot: '/workspace',
+      webSocketPath: '/api/v1/agents/ympp868f/ws',
+    })
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1200 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: 720 })
+
+    renderConsoleWindowPage()
+
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /add terminal|添加终端/i }).length).toBeGreaterThan(0))
+
+    fireEvent.click(screen.getAllByRole('button', { name: /add terminal|添加终端/i })[0])
+
+    await waitFor(() => expect(screen.getByTestId('agent-terminal-surface')).toBeInTheDocument())
+
+    const scaleFrame = screen.queryByTestId('console-scale-frame')
+    if (scaleFrame) {
+      expect(scaleFrame).not.toContainElement(screen.getByTestId('agent-terminal-surface'))
+    }
   })
 
   it('shows only the explorer first on mobile and keeps upload in the explorer toolbar', async () => {
