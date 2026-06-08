@@ -1,0 +1,19 @@
+apiVersion: app.sealos.io/v1
+kind: App
+metadata:
+  name: agenthub-console
+  namespace: app-system
+spec:
+  data:
+    desc: Agent Hub Console Window
+    url: "{{ .agentHubUrl }}"
+  icon: "{{ .agentHubUrl }}/brand/agenthub-console.svg"
+  i18n:
+    zh:
+      name: Agent Hub 控制台
+    zh-Hans:
+      name: Agent Hub 控制台
+  menuData:
+  name: Agent Hub Console
+  type: iframe
+  displayType: hidden

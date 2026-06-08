@@ -29,7 +29,7 @@ import {
   heartbeatAgentPreview,
   listAgentTemplates,
 } from '../../../api'
-import { APP_NAME, APP_TERMINAL_ICON_URL } from '../../../branding'
+import { APP_NAME, APP_CONSOLE_ICON_URL } from '../../../branding'
 import { AgentFileCodeEditor } from '../../../components/business/files/AgentFileCodeEditor'
 import { isTextPreviewableFile } from '../../../components/business/files/fileHelpers'
 import { AgentTerminalWorkspace } from '../../../components/business/terminal/AgentTerminalWorkspace'
@@ -847,7 +847,7 @@ export function AgentConsoleWindowPage() {
     document.title = `${displayName} · ${APP_NAME}`
   }, [displayName])
 
-  useEffect(() => setDocumentFavicon(APP_TERMINAL_ICON_URL), [])
+  useEffect(() => setDocumentFavicon(APP_CONSOLE_ICON_URL), [])
 
   useEffect(() => {
     let active = true
