@@ -51,6 +51,15 @@ describe('App routes', () => {
     expect(screen.queryByText('console window page')).not.toBeInTheDocument()
   })
 
+  it('does not keep the old /terminal console route', async () => {
+    window.history.replaceState({}, '', '/terminal?agentName=ympp868f')
+
+    render(<App />)
+
+    expect(await screen.findByText('agents list page')).toBeInTheDocument()
+    expect(screen.queryByText('console window page')).not.toBeInTheDocument()
+  })
+
   it('opens the console route from Sealos desktop launch events', async () => {
     window.history.replaceState({}, '', '/agents')
 
