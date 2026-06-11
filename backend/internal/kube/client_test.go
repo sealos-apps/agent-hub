@@ -113,7 +113,47 @@ func TestFactoryRejectsTLSServerNameOverride(t *testing.T) {
 	}
 }
 
+func TestProxyAuthAllowsEmptyNamespace(t *testing.T) {
+	raw := testRawKubeconfigWithoutNamespace(
+		[]string{"      server: https://usw-1.sealos.io:6443"},
+		[]string{"      token: test-token"},
+	)
+
+	auth, err := ParseProxyAuthFromEncodedKubeconfig(url.QueryEscape(raw))
+
+	if err != nil {
+		t.Fatalf("ParseProxyAuthFromEncodedKubeconfig() error = %v, want nil", err)
+	}
+	if auth.Server != "https://usw-1.sealos.io:6443" || auth.Token != "test-token" {
+		t.Fatalf("ParseProxyAuthFromEncodedKubeconfig() = %#v, want server/token", auth)
+	}
+}
+
+func TestFactoryRejectsEmptyNamespace(t *testing.T) {
+	raw := testRawKubeconfigWithoutNamespace(
+		[]string{"      server: https://usw-1.sealos.io:6443"},
+		[]string{"      token: test-token"},
+	)
+
+	_, got := NewFactoryFromEncodedKubeconfig(url.QueryEscape(raw))
+
+	if got == nil {
+		t.Fatal("NewFactoryFromEncodedKubeconfig() error = nil, want invalid authorization")
+	}
+	if !strings.Contains(got.Error(), "empty namespace") {
+		t.Fatalf("NewFactoryFromEncodedKubeconfig() error = %q, want empty namespace rejection", got.Error())
+	}
+}
+
 func testRawKubeconfig(clusterLines, userLines []string) string {
+	return testRawKubeconfigWithNamespace(clusterLines, userLines, "ns-test")
+}
+
+func testRawKubeconfigWithoutNamespace(clusterLines, userLines []string) string {
+	return testRawKubeconfigWithNamespace(clusterLines, userLines, "")
+}
+
+func testRawKubeconfigWithNamespace(clusterLines, userLines []string, namespace string) string {
 	lines := []string{
 		"apiVersion: v1",
 		"kind: Config",
@@ -129,7 +169,11 @@ func testRawKubeconfig(clusterLines, userLines []string) string {
 		"    context:",
 		"      cluster: local",
 		"      user: test-user",
-		"      namespace: ns-test",
+	)
+	if strings.TrimSpace(namespace) != "" {
+		lines = append(lines, "      namespace: "+strings.TrimSpace(namespace))
+	}
+	lines = append(lines,
 		"users:",
 		"  - name: test-user",
 		"    user:",

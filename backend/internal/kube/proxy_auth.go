@@ -19,12 +19,12 @@ func ParseProxyAuthFromEncodedKubeconfig(encodedKC string) (ProxyAuth, error) {
 		return ProxyAuth{}, nil
 	}
 
-	clientConfig, err := parseSafeClientConfig([]byte(rawKC))
+	auth, err := parseSafeKubeconfigAuth([]byte(rawKC))
 	if err != nil {
 		return ProxyAuth{}, err
 	}
 	return ProxyAuth{
-		Server: strings.TrimSpace(clientConfig.clusterServer),
-		Token:  strings.TrimSpace(clientConfig.token),
+		Server: strings.TrimSpace(auth.clusterServer),
+		Token:  strings.TrimSpace(auth.token),
 	}, nil
 }
