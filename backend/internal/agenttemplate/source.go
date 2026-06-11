@@ -145,7 +145,7 @@ func (s Source) downloadGitHubArchive(repo githubTemplateRepo, targetDir string)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "agent-hub-template-loader")
-	if token := strings.TrimSpace(s.GitHubToken); token != "" {
+	if token := strings.TrimSpace(s.GitHubToken); token != "" && repo.shouldAttachGitHubToken() {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
@@ -180,6 +180,10 @@ func (r githubTemplateRepo) archiveURL() string {
 		return r.RawURL
 	}
 	return fmt.Sprintf("https://api.github.com/repos/%s/%s/tarball/%s", r.Owner, r.Repo, url.PathEscape(r.Ref))
+}
+
+func (r githubTemplateRepo) shouldAttachGitHubToken() bool {
+	return r.RawURL == "" && strings.TrimSpace(r.Owner) != "" && strings.TrimSpace(r.Repo) != ""
 }
 
 func parseGitHubTemplateURL(raw string) (githubTemplateRepo, error) {

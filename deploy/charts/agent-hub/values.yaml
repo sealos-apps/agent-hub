@@ -5,7 +5,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/sealos-apps/agent-hub
-  tag: sha-795462b
+  tag: ""
   pullPolicy: IfNotPresent
 
 containerPort: 8999
@@ -18,7 +18,7 @@ env:
   AGENT_TEMPLATE_GITHUB_URL: https://github.com/sealos-apps/Agent-Hub-Template
   AIPROXY_MANAGER_BASE_URL: https://aiproxy-web.usw-1.sealos.io
   AIPROXY_MODEL_BASE_URL: https://aiproxy.usw-1.sealos.io/v1
-  K8S_PROXY_ALLOWED_HOSTS: .sealos.io,.sealos.run
+  K8S_PROXY_ALLOWED_HOSTS: usw.sealos.io,usw-1.sealos.io,hzh.sealos.run,bja.sealos.run,gzg.sealos.run
 
 service:
   port: 8999

@@ -332,6 +332,30 @@ func TestGitHubSourceRefreshesExpiredCache(t *testing.T) {
 	}
 }
 
+func TestGitHubSourceDoesNotSendTokenToRawArchiveURL(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Fatalf("Authorization header = %q, want empty for raw archive URL", got)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(makeArchive(t, testTemplateBaseDir(t), filepath.Base(testTemplateBaseDir(t))))
+	}))
+	defer server.Close()
+
+	source := Source{
+		GitHubURL:    server.URL + "/archive.tar.gz",
+		GitHubToken:  "secret-token",
+		CacheDir:     t.TempDir(),
+		ForceRefresh: true,
+	}
+
+	if _, err := ListFromSource(source); err != nil {
+		t.Fatalf("ListFromSource() error = %v", err)
+	}
+}
+
 func newTemplateArchiveServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	templateDir := testTemplateBaseDir(t)

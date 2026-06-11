@@ -83,6 +83,8 @@ Override the backend target when needed:
 VITE_AGENTHUB_BACKEND_TARGET=http://127.0.0.1:<port> npm run dev -- --host 0.0.0.0
 ```
 
+`VITE_AGENTHUB_BACKEND_TARGET` only accepts localhost HTTP URLs.
+
 ## Configuration
 
 | Variable | Description |
@@ -96,7 +98,7 @@ VITE_AGENTHUB_BACKEND_TARGET=http://127.0.0.1:<port> npm run dev -- --host 0.0.0
 | `SSH_DOMAIN` | SSH gateway domain, when SSH access is enabled. |
 | `AIPROXY_MANAGER_BASE_URL` | AIProxy token and workspace management base URL. |
 | `AIPROXY_MODEL_BASE_URL` | AIProxy model API base URL. |
-| `K8S_PROXY_ALLOWED_HOSTS` | Comma-separated allowed hosts for Kubernetes proxy access. |
+| `K8S_PROXY_ALLOWED_HOSTS` | Comma-separated Kubernetes API server allowlist. Default: `usw.sealos.io,usw-1.sealos.io,hzh.sealos.run,bja.sealos.run,gzg.sealos.run`. |
 | `WS_ALLOWED_ORIGINS` | Optional WebSocket origin allowlist. |
 
 ## Deployment

@@ -74,6 +74,7 @@ func KubernetesProxy(c *gin.Context) {
 
 			req.Header.Del("Origin")
 			req.Header.Del("Referer")
+			req.Header.Del("Cookie")
 			req.Header.Del("X-K8s-Server")
 			req.Header.Del("Authorization-Bearer")
 			req.Header.Set("Authorization", "Bearer "+bearerToken)

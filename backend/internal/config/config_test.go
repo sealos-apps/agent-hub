@@ -175,6 +175,26 @@ func TestLoadParsesK8sProxyAllowedHostsFromEnv(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultsK8sProxyAllowedHostsToKnownRegionHosts(t *testing.T) {
+	t.Setenv("LOAD_DOTENV", "")
+	t.Setenv("GO_ENV", "production")
+	t.Setenv("APP_ENV", "")
+	t.Setenv("GIN_MODE", "")
+	t.Setenv("KUBERNETES_SERVICE_HOST", "")
+	t.Setenv("K8S_PROXY_ALLOWED_HOSTS", "")
+
+	cfg := Load()
+	want := []string{"usw.sealos.io", "usw-1.sealos.io", "hzh.sealos.run", "bja.sealos.run", "gzg.sealos.run"}
+	if len(cfg.K8sProxyAllowHosts) != len(want) {
+		t.Fatalf("Load().K8sProxyAllowHosts len = %d, want %d", len(cfg.K8sProxyAllowHosts), len(want))
+	}
+	for i := range want {
+		if cfg.K8sProxyAllowHosts[i] != want[i] {
+			t.Fatalf("Load().K8sProxyAllowHosts[%d] = %q, want %q", i, cfg.K8sProxyAllowHosts[i], want[i])
+		}
+	}
+}
+
 func TestLoadReadsTemplateAndFrontendSourceConfig(t *testing.T) {
 	t.Setenv("LOAD_DOTENV", "")
 	t.Setenv("GO_ENV", "production")

@@ -441,6 +441,9 @@ func (m *previewManager) proxy(writer http.ResponseWriter, request *http.Request
 			stripRequestCookie(req, session.cookieName())
 		},
 		ModifyResponse: func(resp *http.Response) error {
+			resp.Header.Del("Set-Cookie")
+			resp.Header.Set("Content-Security-Policy", "sandbox allow-forms allow-popups allow-scripts")
+			resp.Header.Set("X-Content-Type-Options", "nosniff")
 			return rewritePreviewHTMLResponse(resp, basePath)
 		},
 	}

@@ -9,6 +9,7 @@ import (
 
 const (
 	DefaultAgentTemplateGitHubURL = "https://github.com/sealos-apps/Agent-Hub-Template"
+	DefaultK8sProxyAllowedHosts   = "usw.sealos.io,usw-1.sealos.io,hzh.sealos.run,bja.sealos.run,gzg.sealos.run"
 )
 
 type Config struct {
@@ -49,7 +50,7 @@ func Load() Config {
 		AIProxyBaseURL:           aiProxyManagerBaseURL,
 		AIProxyModelBaseURL:      strings.TrimSpace(os.Getenv("AIPROXY_MODEL_BASE_URL")),
 		Region:                   resolveRegion(),
-		K8sProxyAllowHosts:       parseCSV(getenv("K8S_PROXY_ALLOWED_HOSTS", ".sealos.io,.sealos.run")),
+		K8sProxyAllowHosts:       parseCSV(getenv("K8S_PROXY_ALLOWED_HOSTS", DefaultK8sProxyAllowedHosts)),
 		WSAllowedOrigins:         getenv("WS_ALLOWED_ORIGINS", ""),
 	}
 }

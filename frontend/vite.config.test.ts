@@ -57,6 +57,35 @@ describe('vite local session config', () => {
 
     expect(process.env.VITE_AGENTHUB_ENABLE_LOCAL_SESSION).toBe('true')
   })
+
+  it('accepts local session requests only from loopback hosts', async () => {
+    const { __agentHubViteConfigTest } = await import('./vite.config')
+
+    expect(
+      __agentHubViteConfigTest.isLoopbackRequest({
+        headers: { host: '127.0.0.1:3000' },
+        socket: { remoteAddress: '127.0.0.1' },
+      }),
+    ).toBe(true)
+    expect(
+      __agentHubViteConfigTest.isLoopbackRequest({
+        headers: { host: 'localhost:3000' },
+        socket: { remoteAddress: '::1' },
+      }),
+    ).toBe(true)
+    expect(
+      __agentHubViteConfigTest.isLoopbackRequest({
+        headers: { host: 'evil.example.com:3000' },
+        socket: { remoteAddress: '127.0.0.1' },
+      }),
+    ).toBe(false)
+    expect(
+      __agentHubViteConfigTest.isLoopbackRequest({
+        headers: { host: '127.0.0.1:3000', 'x-forwarded-for': '203.0.113.10' },
+        socket: { remoteAddress: '127.0.0.1' },
+      }),
+    ).toBe(false)
+  })
 })
 
 describe('vite Kubernetes proxy config', () => {
@@ -95,6 +124,21 @@ describe('vite Kubernetes proxy config', () => {
     vi.resetModules()
     vi.restoreAllMocks()
     process.env = { ...originalEnv }
+  })
+
+  it('limits the backend proxy target to localhost HTTP URLs', async () => {
+    const { __agentHubViteConfigTest } = await import('./vite.config')
+
+    expect(__agentHubViteConfigTest.resolveBackendProxyTarget('')).toBe('http://127.0.0.1:8888')
+    expect(__agentHubViteConfigTest.resolveBackendProxyTarget('http://localhost:9000')).toBe(
+      'http://localhost:9000',
+    )
+    expect(() =>
+      __agentHubViteConfigTest.resolveBackendProxyTarget('https://api.example.com'),
+    ).toThrow('VITE_AGENTHUB_BACKEND_TARGET must point to localhost over HTTP')
+    expect(() =>
+      __agentHubViteConfigTest.resolveBackendProxyTarget('http://169.254.169.254'),
+    ).toThrow('VITE_AGENTHUB_BACKEND_TARGET must point to localhost over HTTP')
   })
 
   it('resolves the proxy target only from kubeconfig or configured default server', async () => {
@@ -185,6 +229,11 @@ describe('vite Kubernetes proxy config', () => {
     expect(
       __agentHubViteConfigTest.isAllowedK8sProxyTarget(
         new URL('https://evilsealos.io:6443/api/v1/pods'),
+      ),
+    ).toBe(false)
+    expect(
+      __agentHubViteConfigTest.isAllowedK8sProxyTarget(
+        new URL('https://evil.sealos.run:6443/api/v1/pods'),
       ),
     ).toBe(false)
   })

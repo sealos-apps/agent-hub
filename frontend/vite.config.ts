@@ -72,8 +72,31 @@ if (!readEnv('VITE_AGENTHUB_FAVICON_URL')) {
 }
 
 const DEFAULT_K8S_SERVER = readEnv('VITE_DEFAULT_K8S_SERVER')
-const BACKEND_PROXY_TARGET = readEnv('VITE_AGENTHUB_BACKEND_TARGET', 'http://127.0.0.1:8888')
-const K8S_PROXY_ALLOWED_HOSTS = parseCSV(readEnv('K8S_PROXY_ALLOWED_HOSTS', '.sealos.io,.sealos.run'))
+const resolveBackendProxyTarget = (value = '') => {
+  const raw = value.trim() || 'http://127.0.0.1:8888'
+  let parsed: URL
+  try {
+    parsed = new URL(raw)
+  } catch {
+    throw new Error('VITE_AGENTHUB_BACKEND_TARGET must be an absolute localhost HTTP URL')
+  }
+
+  const hostname = parsed.hostname.toLowerCase()
+  const isLocalhost =
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '[::1]' ||
+    hostname === '::1'
+  if (parsed.protocol !== 'http:' || !isLocalhost) {
+    throw new Error('VITE_AGENTHUB_BACKEND_TARGET must point to localhost over HTTP')
+  }
+
+  return parsed.toString().replace(/\/$/, '')
+}
+const BACKEND_PROXY_TARGET = resolveBackendProxyTarget(readEnv('VITE_AGENTHUB_BACKEND_TARGET'))
+const DEFAULT_K8S_PROXY_ALLOWED_HOSTS =
+  'usw.sealos.io,usw-1.sealos.io,hzh.sealos.run,bja.sealos.run,gzg.sealos.run'
+const K8S_PROXY_ALLOWED_HOSTS = parseCSV(readEnv('K8S_PROXY_ALLOWED_HOSTS', DEFAULT_K8S_PROXY_ALLOWED_HOSTS))
 const AGENT_HUB_BROWSER_TITLE = readEnv('VITE_AGENTHUB_BROWSER_TITLE', 'Agent Hub Web')
 const AGENT_HUB_FAVICON_URL = readEnv('VITE_AGENTHUB_FAVICON_URL', '/brand/agent-hub.svg')
 const LOCAL_KUBECONFIG_ENV = readEnv('AGENTHUB_LOCAL_KUBECONFIG')
@@ -262,17 +285,33 @@ const isAllowedK8sProxyTarget = (target: URL, allowHosts = K8S_PROXY_ALLOWED_HOS
 }
 
 const isLoopbackAddress = (value: unknown) => {
-  const normalized = toScalar(value).toLowerCase()
+  const normalized = toScalar(value).toLowerCase().replace(/^\[|\]$/g, '')
   if (!normalized) return false
-  return normalized === '127.0.0.1' || normalized === '::1' || normalized === '::ffff:127.0.0.1'
+  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1' || normalized === '::ffff:127.0.0.1'
+}
+
+const isLoopbackHost = (value: unknown) => {
+  const raw = toScalar(Array.isArray(value) ? value[0] : value)
+  if (!raw) return false
+
+  try {
+    return isLoopbackAddress(new URL(`http://${raw}`).hostname)
+  } catch {
+    return isLoopbackAddress(raw)
+  }
 }
 
 const isLoopbackRequest = (req: { headers?: Record<string, any>; socket?: { remoteAddress?: string } }) => {
   const remoteAddress = req?.socket?.remoteAddress || ''
+  const host = req?.headers?.host
   const forwardedRaw = req?.headers?.['x-forwarded-for']
   const forwarded = Array.isArray(forwardedRaw)
     ? forwardedRaw[0]
     : String(forwardedRaw || '').split(',')[0] || ''
+
+  if (!isLoopbackHost(host)) {
+    return false
+  }
 
   if (forwarded && !isLoopbackAddress(forwarded)) {
     return false
@@ -322,6 +361,7 @@ const createViteK8sRestMiddlewarePlugin = () => ({
             normalizedKey === 'host' ||
             normalizedKey === 'origin' ||
             normalizedKey === 'referer' ||
+            normalizedKey === 'cookie' ||
             normalizedKey === 'authorization' ||
             normalizedKey === 'authorization-bearer' ||
             normalizedKey === 'x-k8s-server' ||
@@ -444,8 +484,10 @@ const createLocalSealosSessionPlugin = () => ({
 })
 
 export const __agentHubViteConfigTest = {
+  isLoopbackRequest,
   isAllowedK8sProxyTarget,
   parseProxyKubeconfig,
+  resolveBackendProxyTarget,
   resolveProxyBearerToken,
   resolveProxyTarget,
 }

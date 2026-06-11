@@ -177,7 +177,7 @@ export function AgentFilesWorkspace({
       { key: 'files', label: t('files.filesCount', { count: files.length }), items: files, emptyText: t('files.noFiles') },
       { key: 'others', label: t('files.othersCount', { count: others.length }), items: others, emptyText: t('files.noOthers') },
     ]
-  }, [visibleItems])
+  }, [t, visibleItems])
 
   const selectedItem = session?.selectedItem || null
   const openedItem = session?.openedItem || null
@@ -594,7 +594,12 @@ export function AgentFilesWorkspace({
                   </div>
                 ) : browserPreviewActive ? (
                   <div className="h-full min-h-[190px] overflow-hidden rounded-[18px] border border-zinc-200 bg-white md:min-h-[220px] lg:min-h-[240px]">
-                    <iframe className="h-full w-full" src={session.previewObjectUrl} title={openedItem.name} />
+                    <iframe
+                      className="h-full w-full"
+                      sandbox=""
+                      src={session.previewObjectUrl}
+                      title={openedItem.name}
+                    />
                   </div>
                 ) : (
                   <div className="flex h-full min-h-[190px] items-center justify-center rounded-[18px] border border-dashed border-zinc-300 bg-white px-6 text-center text-[12px] text-zinc-400 md:min-h-[220px] lg:min-h-[240px]">

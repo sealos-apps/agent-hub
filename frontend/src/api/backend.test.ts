@@ -1,4 +1,5 @@
 import {
+  __agentHubBackendTest,
   buildAgentTerminalWebSocketUrl,
   createAgentPreview,
   deleteAgentPreview,
@@ -18,6 +19,19 @@ const clusterContext: ClusterContext = {
   sessionToken: '',
   token: '',
 }
+
+describe('agent backend URL config', () => {
+  it('accepts only same-origin backend paths', () => {
+    expect(__agentHubBackendTest.resolveBackendBaseURL('/backend-api')).toBe('/backend-api')
+    expect(__agentHubBackendTest.resolveBackendBaseURL('backend-api')).toBe('/backend-api')
+    expect(() => __agentHubBackendTest.resolveBackendBaseURL('https://api.example.com')).toThrow(
+      'VITE_AGENTHUB_BACKEND_URL must be a same-origin path.',
+    )
+    expect(() => __agentHubBackendTest.resolveBackendBaseURL('//api.example.com')).toThrow(
+      'VITE_AGENTHUB_BACKEND_URL must be a same-origin path.',
+    )
+  })
+})
 
 describe('agent preview backend api', () => {
   const originalFetch = globalThis.fetch

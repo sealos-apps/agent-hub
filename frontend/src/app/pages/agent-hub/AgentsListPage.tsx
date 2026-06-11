@@ -519,7 +519,7 @@ export function AgentsListPage() {
         : ENABLE_MOCK_AGENTS
           ? buildMockAgentItems(controller.templates, controller.clusterInfo, t)
           : [],
-    [controller.clusterInfo, controller.items, controller.templates],
+    [controller.clusterInfo, controller.items, controller.templates, t],
   )
 
   const filteredItems = useMemo(() => {

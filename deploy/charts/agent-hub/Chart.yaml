@@ -3,4 +3,4 @@ name: agent-hub
 description: Agent Hub Console
 type: application
 version: 0.1.0
-appVersion: sha-795462b
+appVersion: "0.1.0"

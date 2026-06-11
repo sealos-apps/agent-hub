@@ -482,6 +482,7 @@ function WebTabPane({ isVisible, tab }: { isVisible: boolean; tab: WebTab }) {
       <iframe
         className="h-full w-full border-0 bg-white"
         key={`${tab.id}-${tab.refreshKey}`}
+        sandbox={tab.preview ? 'allow-forms allow-popups allow-scripts' : undefined}
         src={tab.url}
         tabIndex={isVisible ? undefined : -1}
         title={tab.title}
@@ -1028,7 +1029,7 @@ export function AgentConsoleWindowPage() {
         setExplorerLoading((current) => ({ ...current, [normalizedPath]: false }))
       }
     },
-    [clusterContext, item, readDirectory],
+    [clusterContext, item, readDirectory, t],
   )
 
   useEffect(() => {
@@ -1287,7 +1288,7 @@ export function AgentConsoleWindowPage() {
         return false
       }
     },
-    [saveFile],
+    [saveFile, t],
   )
 
   const confirmDirtyFileTabRemoval = useCallback(async (matchingTabs: FileTab[]) => {
@@ -1445,7 +1446,7 @@ export function AgentConsoleWindowPage() {
         )
       }
     },
-    [readFile],
+    [readFile, t],
   )
 
   const openFileTab = useCallback(

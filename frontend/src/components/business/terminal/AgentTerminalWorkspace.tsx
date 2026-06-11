@@ -48,7 +48,14 @@ const terminalTheme = {
 
 type DisposableLike = { dispose: () => void }
 
-const xtermColorReportPattern = /^(?:\x1b\](?:10|11|12);rgb:[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}(?:\x07|\x1b\\)|\x9d(?:10|11|12);rgb:[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}\x9c)$/
+const escapeCharacter = String.fromCharCode(0x1b)
+const bellCharacter = String.fromCharCode(0x07)
+const operatingSystemCommandCharacter = String.fromCharCode(0x9d)
+const stringTerminatorCharacter = String.fromCharCode(0x9c)
+const rgbColorPattern = 'rgb:[0-9a-fA-F]{1,4}\\/[0-9a-fA-F]{1,4}\\/[0-9a-fA-F]{1,4}'
+const xtermColorReportPattern = new RegExp(
+  `^(?:${escapeCharacter}\\](?:10|11|12);${rgbColorPattern}(?:${bellCharacter}|${escapeCharacter}\\\\)|${operatingSystemCommandCharacter}(?:10|11|12);${rgbColorPattern}${stringTerminatorCharacter})$`,
+)
 
 const isXtermColorReportResponse = (data: string) => xtermColorReportPattern.test(data)
 const terminalPendingOutputLimit = 1024 * 1024
