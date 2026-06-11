@@ -1023,6 +1023,10 @@ func ChatCompletions(c *gin.Context) {
 		writeAppError(c, http.StatusInternalServerError, appErr.New(appErr.CodeKubernetesOperation, "agent ingress domain is unavailable"))
 		return
 	}
+	if domainErr := validateAgentIngressDomain(view.Agent.IngressDomain, cfg.IngressSuffix); domainErr != nil {
+		writeAppError(c, http.StatusBadGateway, domainErr)
+		return
+	}
 
 	apiServerKey := strings.TrimSpace(view.Agent.APIServerKey)
 	if apiServerKey == "" {

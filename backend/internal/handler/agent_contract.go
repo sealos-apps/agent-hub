@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -208,6 +209,10 @@ func resolveAgentAccessItem(
 	switch item.Key {
 	case "api":
 		entry.Auth = item.Auth
+		if domainErr := validateAgentIngressDomain(spec.IngressDomain, cfg.IngressSuffix); domainErr != nil {
+			entry.Reason = "ingress_domain_invalid"
+			return entry
+		}
 		entry.URL = joinAccessURL(spec.IngressDomain, item.Path)
 		if entry.URL == "" {
 			entry.Reason = "api_url_unavailable"
@@ -270,6 +275,10 @@ func resolveAgentAccessItem(
 		entry.Reason = ssh.Reason
 		return entry
 	case "web-ui":
+		if domainErr := validateAgentIngressDomain(spec.IngressDomain, cfg.IngressSuffix); domainErr != nil {
+			entry.Reason = "ingress_domain_invalid"
+			return entry
+		}
 		entry.URL = joinAccessURL(spec.IngressDomain, item.Path)
 		if entry.URL == "" {
 			entry.Reason = "web_ui_url_unavailable"
@@ -482,6 +491,39 @@ func joinAccessURL(host, path string) string {
 		normalizedPath = "/" + normalizedPath
 	}
 	return "https://" + host + normalizedPath
+}
+
+func validateAgentIngressDomain(host, ingressSuffix string) *appErr.AppError {
+	normalizedHost := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
+	normalizedSuffix := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(ingressSuffix), "."))
+	if normalizedHost == "" || normalizedSuffix == "" {
+		return appErr.New(appErr.CodeKubernetesOperation, "agent ingress domain is unavailable")
+	}
+	if !isDNSSubdomain(normalizedHost) || !isDNSSubdomain(normalizedSuffix) {
+		return appErr.New(appErr.CodeKubernetesOperation, "agent ingress domain is invalid")
+	}
+	if ip := net.ParseIP(normalizedHost); ip != nil {
+		return appErr.New(appErr.CodeKubernetesOperation, "agent ingress domain is invalid")
+	}
+	if normalizedHost != normalizedSuffix && strings.HasSuffix(normalizedHost, "."+normalizedSuffix) {
+		return nil
+	}
+	return appErr.New(appErr.CodeKubernetesOperation, "agent ingress domain does not match configured suffix").WithDetails(map[string]any{
+		"host":   normalizedHost,
+		"suffix": normalizedSuffix,
+	})
+}
+
+func isDNSSubdomain(value string) bool {
+	if value == "" || len(value) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(value, ".") {
+		if !agent.ValidateName(label) {
+			return false
+		}
+	}
+	return true
 }
 
 func firstNonEmpty(values ...string) string {

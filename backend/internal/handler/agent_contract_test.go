@@ -70,6 +70,52 @@ func TestTemplateSourceFromConfigKeepsGitHubWhenLocalDirIsSet(t *testing.T) {
 	}
 }
 
+func TestValidateAgentIngressDomainRequiresConfiguredSuffix(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		host    string
+		suffix  string
+		wantErr bool
+	}{
+		"allows generated agent domain": {
+			host:   "demo-agent.agent.usw-1.sealos.app",
+			suffix: "agent.usw-1.sealos.app",
+		},
+		"rejects lookalike suffix": {
+			host:    "demo-agent.agent.usw-1.sealos.app.evil.example",
+			suffix:  "agent.usw-1.sealos.app",
+			wantErr: true,
+		},
+		"rejects arbitrary external host": {
+			host:    "metadata.google.internal",
+			suffix:  "agent.usw-1.sealos.app",
+			wantErr: true,
+		},
+		"rejects ip address": {
+			host:    "169.254.169.254",
+			suffix:  "agent.usw-1.sealos.app",
+			wantErr: true,
+		},
+		"rejects host with port": {
+			host:    "demo-agent.agent.usw-1.sealos.app:443",
+			suffix:  "agent.usw-1.sealos.app",
+			wantErr: true,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateAgentIngressDomain(tc.host, tc.suffix)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("validateAgentIngressDomain(%q, %q) error = %v, wantErr %v", tc.host, tc.suffix, err, tc.wantErr)
+			}
+		})
+	}
+}
+
 func TestBuildAgentContractReturnsModelSlots(t *testing.T) {
 	t.Parallel()
 
@@ -96,6 +142,40 @@ func TestBuildAgentContractReturnsModelSlots(t *testing.T) {
 	}
 	if main.APIMode != "chat_completions" {
 		t.Fatalf("contract.Runtime.ModelSlots[main].APIMode = %q, want chat_completions", main.APIMode)
+	}
+}
+
+func TestBuildAgentContractDisablesExternalIngressURLs(t *testing.T) {
+	t.Parallel()
+
+	contract, contractErr := buildAgentContract(kube.AgentView{
+		Agent: agent.Agent{
+			Name:          "agent-test",
+			TemplateID:    "template-test",
+			Namespace:     "ns-test",
+			IngressDomain: "metadata.google.internal",
+			Ready:         true,
+		},
+	}, agenttemplate.Definition{
+		Access: []agenttemplate.AccessDefinition{
+			{Key: "api", Label: "API", Path: "/v1"},
+			{Key: "web-ui", Label: "Web UI", Path: "/"},
+		},
+	}, config.Config{IngressSuffix: "agent.usw-1.sealos.app"})
+	if contractErr != nil {
+		t.Fatalf("buildAgentContract() error = %v, want nil", contractErr)
+	}
+
+	for _, item := range contract.Access {
+		if item.URL != "" {
+			t.Fatalf("contract access %s URL = %q, want empty for external ingress host", item.Key, item.URL)
+		}
+		if item.Enabled {
+			t.Fatalf("contract access %s enabled = true, want false for external ingress host", item.Key)
+		}
+		if item.Reason != "ingress_domain_invalid" {
+			t.Fatalf("contract access %s reason = %q, want ingress_domain_invalid", item.Key, item.Reason)
+		}
 	}
 }
 
