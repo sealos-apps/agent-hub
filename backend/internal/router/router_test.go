@@ -1,7 +1,9 @@
 package router
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -747,6 +749,50 @@ func TestAgentKeyReadbackEndpointIsDisabled(t *testing.T) {
 	}
 }
 
+func TestChatCompletionsRejectsOutOfSuffixIngressBeforeProxying(t *testing.T) {
+	t.Parallel()
+
+	upstreamCalls := 0
+	kubernetesAPI := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/chat/completions" {
+			upstreamCalls++
+			if got := r.Header.Get("Authorization"); got != "" {
+				t.Fatalf("upstream Authorization = %q, want empty because request must not be proxied", got)
+			}
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		writeFakeKubernetesAgentResponse(t, w, r, "metadata.google.internal")
+	}))
+	defer kubernetesAPI.Close()
+
+	recorder := performRequestWithConfig(t, config.Config{
+		Port:                   "8080",
+		IngressSuffix:          "agent.usw-1.sealos.app",
+		APIServerImage:         "nousresearch/hermes-agent:latest",
+		AIProxyModelBaseURL:    "https://aiproxy.example.com/v1",
+		Region:                 "us",
+		AgentTemplateGitHubURL: "",
+	}, http.MethodPost, "/api/v1/agents/demo-agent/chat/completions", `{"model":"test","messages":[]}`, "", map[string]string{
+		"Authorization": validEncodedKubeconfigWithServerAndCA(kubernetesAPI.URL, encodedCertificateAuthorityData(kubernetesAPI)),
+		"Content-Type":  "application/json",
+	})
+
+	if recorder.Code != http.StatusBadGateway {
+		t.Fatalf("POST /chat/completions status = %d, want %d; body=%s", recorder.Code, http.StatusBadGateway, recorder.Body.String())
+	}
+	body := decodeEnvelope(t, recorder)
+	if body.Code != 50010 {
+		t.Fatalf("POST /chat/completions code = %d, want 50010", body.Code)
+	}
+	if body.Message != "agent ingress domain does not match configured suffix" {
+		t.Fatalf("POST /chat/completions message = %q, want ingress suffix rejection", body.Message)
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("chat upstream calls = %d, want 0", upstreamCalls)
+	}
+}
+
 func TestWebSocketEndpointRequiresWebSocketUpgrade(t *testing.T) {
 	t.Parallel()
 
@@ -816,6 +862,18 @@ func decodeEnvelope(t *testing.T, recorder *httptest.ResponseRecorder) testEnvel
 }
 
 func validEncodedKubeconfig() string {
+	return validEncodedKubeconfigWithServer("https://127.0.0.1")
+}
+
+func validEncodedKubeconfigWithServer(server string) string {
+	return validEncodedKubeconfigWithServerAndCA(server, "")
+}
+
+func validEncodedKubeconfigWithServerAndCA(server, caData string) string {
+	certificateAuthorityLine := ""
+	if strings.TrimSpace(caData) != "" {
+		certificateAuthorityLine = "\n      certificate-authority-data: " + strings.TrimSpace(caData)
+	}
 	raw := strings.TrimSpace(`
 apiVersion: v1
 kind: Config
@@ -823,7 +881,7 @@ current-context: test
 clusters:
   - name: local
     cluster:
-      server: https://127.0.0.1
+      server: ` + server + certificateAuthorityLine + `
 contexts:
   - name: test
     context:
@@ -836,6 +894,78 @@ users:
       token: test-token
 `)
 	return url.QueryEscape(raw)
+}
+
+func encodedCertificateAuthorityData(server *httptest.Server) string {
+	return base64.StdEncoding.EncodeToString(pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: server.Certificate().Raw,
+	}))
+}
+
+func writeFakeKubernetesAgentResponse(t *testing.T, w http.ResponseWriter, r *http.Request, ingressHost string) {
+	t.Helper()
+	if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+		t.Fatalf("kubernetes Authorization = %q, want bearer token from kubeconfig", got)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	switch r.URL.Path {
+	case "/apis/devbox.sealos.io/v1alpha2/namespaces/ns-test/devboxes/demo-agent":
+		_, _ = w.Write([]byte(`{
+			"apiVersion":"devbox.sealos.io/v1alpha2",
+			"kind":"Devbox",
+			"metadata":{
+				"name":"demo-agent",
+				"namespace":"ns-test",
+				"creationTimestamp":"2026-06-11T00:00:00Z",
+				"labels":{
+					"agent.sealos.io/name":"demo-agent",
+					"agent.sealos.io/managed-by":"agent-hub-backend",
+					"app.kubernetes.io/name":"hermes-agent"
+				},
+				"annotations":{
+					"agent.sealos.io/template-id":"hermes-agent",
+					"agent.sealos.io/bootstrap-phase":"ready"
+				}
+			},
+			"spec":{
+				"state":"Running",
+				"config":{
+					"workingDir":"/workspace",
+					"user":"hermes",
+					"env":[{"name":"API_SERVER_KEY","value":"agent-api-secret"}]
+				}
+			},
+			"status":{"phase":"Running"}
+		}`))
+	case "/apis/networking.k8s.io/v1/namespaces/ns-test/ingresses/demo-agent":
+		_, _ = w.Write([]byte(`{
+			"apiVersion":"networking.k8s.io/v1",
+			"kind":"Ingress",
+			"metadata":{"name":"demo-agent","namespace":"ns-test"},
+			"spec":{"rules":[{"host":"` + ingressHost + `"}]}
+		}`))
+	case "/api/v1/namespaces/ns-test/pods":
+		_, _ = w.Write([]byte(`{
+			"apiVersion":"v1",
+			"kind":"PodList",
+			"items":[{
+				"metadata":{
+					"name":"demo-agent-pod",
+					"namespace":"ns-test",
+					"creationTimestamp":"2026-06-11T00:00:00Z"
+				},
+				"spec":{"containers":[{"name":"main"}]},
+				"status":{
+					"phase":"Running",
+					"containerStatuses":[{"name":"main","ready":true,"state":{"running":{"startedAt":"2026-06-11T00:00:00Z"}}}]
+				}
+			}]
+		}`))
+	default:
+		t.Fatalf("unexpected kubernetes request: %s %s", r.Method, r.URL.String())
+	}
 }
 
 func jsonNewDecoder(raw string, target any) error {
