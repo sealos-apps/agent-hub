@@ -76,8 +76,10 @@ func TestIsAllowedK8sProxyTarget(t *testing.T) {
 
 func TestKubernetesProxyStripsBrowserCookies(t *testing.T) {
 	var gotCookie string
+	var gotImpersonateUser string
 	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotCookie = r.Header.Get("Cookie")
+		gotImpersonateUser = r.Header.Get("Impersonate-User")
 		if got := r.Header.Get("Authorization"); got != "Bearer kube-token" {
 			t.Fatalf("upstream Authorization = %q, want bearer token from kubeconfig", got)
 		}
@@ -131,6 +133,7 @@ func TestKubernetesProxyStripsBrowserCookies(t *testing.T) {
 	}
 	request.Header.Set(kube.DefaultAuthorizationHeader, url.QueryEscape(kubeconfig))
 	request.Header.Set("Cookie", "agenthub_session=secret")
+	request.Header.Set("Impersonate-User", "system:masters")
 	response, err := server.Client().Do(request)
 	if err != nil {
 		t.Fatalf("proxy request failed: %v", err)
@@ -142,5 +145,73 @@ func TestKubernetesProxyStripsBrowserCookies(t *testing.T) {
 	}
 	if gotCookie != "" {
 		t.Fatalf("upstream Cookie = %q, want empty", gotCookie)
+	}
+	if gotImpersonateUser != "" {
+		t.Fatalf("upstream Impersonate-User = %q, want empty", gotImpersonateUser)
+	}
+}
+
+func TestKubernetesProxyRejectsExecCredentialToken(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("unexpected upstream request with Authorization %q", r.Header.Get("Authorization"))
+	}))
+	defer upstream.Close()
+
+	upstreamURL, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatalf("parse upstream URL: %v", err)
+	}
+
+	kubeconfig := strings.Join([]string{
+		"apiVersion: v1",
+		"clusters:",
+		"  - name: test",
+		"    cluster:",
+		"      server: " + upstream.URL,
+		"contexts:",
+		"  - name: test",
+		"    context:",
+		"      cluster: test",
+		"      namespace: ns-test",
+		"      user: test",
+		"current-context: test",
+		"users:",
+		"  - name: test",
+		"    user:",
+		"      exec:",
+		"        apiVersion: client.authentication.k8s.io/v1",
+		"        command: sh",
+		"        args:",
+		"          - -c",
+		"          - echo pwned",
+		"        env:",
+		"          - name: EVIL_TOKEN",
+		"            value: stolen-token",
+		"        interactiveMode: Never",
+	}, "\n")
+
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.Use(middleware.InjectRuntimeConfig(config.Config{
+		K8sProxyAllowHosts: []string{upstreamURL.Hostname()},
+	}))
+	engine.Any("/k8s-api/*proxyPath", KubernetesProxy)
+	server := httptest.NewServer(engine)
+	defer server.Close()
+
+	request, err := http.NewRequest(http.MethodGet, server.URL+"/k8s-api/api/v1/pods", nil)
+	if err != nil {
+		t.Fatalf("build proxy request: %v", err)
+	}
+	request.Header.Set(kube.DefaultAuthorizationHeader, url.QueryEscape(kubeconfig))
+
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatalf("proxy request failed: %v", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("proxy status = %d, want %d", response.StatusCode, http.StatusUnauthorized)
 	}
 }

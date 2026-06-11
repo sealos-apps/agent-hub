@@ -175,8 +175,8 @@ func createAgentPreview(c *gin.Context, manager *previewManager) {
 	}
 
 	agentName := strings.TrimSpace(c.Param("agentName"))
-	if agentName == "" {
-		writeValidationError(c, appErr.New(appErr.CodeInvalidAgentName, "invalid agent name"))
+	if err := validateAgentName(agentName); err != nil {
+		writeValidationError(c, err)
 		return
 	}
 

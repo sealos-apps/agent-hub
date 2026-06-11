@@ -12,7 +12,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/nightwhite/Agent-Hub/internal/kube"
 	agentws "github.com/nightwhite/Agent-Hub/internal/ws"
-	appErr "github.com/nightwhite/Agent-Hub/pkg/errors"
 	"k8s.io/client-go/tools/remotecommand"
 )
 
@@ -48,8 +47,8 @@ type agentTerminalSession struct {
 
 func AgentTerminalWebSocket(c *gin.Context) {
 	agentName := strings.TrimSpace(c.Param("agentName"))
-	if agentName == "" {
-		writeValidationError(c, appErr.New(appErr.CodeInvalidAgentName, "invalid agent name"))
+	if err := validateAgentName(agentName); err != nil {
+		writeValidationError(c, err)
 		return
 	}
 

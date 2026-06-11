@@ -25,6 +25,14 @@ type Factory struct {
 	clusterServer string
 }
 
+type safeClientConfig struct {
+	restConfig    *rest.Config
+	namespace     string
+	clusterServer string
+	userName      string
+	token         string
+}
+
 func NewFactoryFromHeaders(header http.Header) (*Factory, *appErr.AppError) {
 	encodedKC := strings.TrimSpace(header.Get(DefaultAuthorizationHeader))
 	if encodedKC == "" {
@@ -52,25 +60,15 @@ func NewFactoryFromEncodedKubeconfig(encodedKC string) (*Factory, *appErr.AppErr
 		})
 	}
 
-	restConfig, err := clientcmd.RESTConfigFromKubeConfig([]byte(rawKC))
+	clientConfig, err := parseSafeClientConfig([]byte(rawKC))
 	if err != nil {
-		return nil, appErr.New(appErr.CodeInvalidAuthorizationHeader, "failed to build client config from Authorization header kubeconfig").WithDetails(map[string]any{
+		return nil, appErr.New(appErr.CodeInvalidAuthorizationHeader, err.Error()).WithDetails(map[string]any{
 			"header": DefaultAuthorizationHeader,
 			"reason": "invalid_kubeconfig",
 		})
 	}
-	clusterServer := strings.TrimSpace(restConfig.Host)
-	restConfig.Host = preferredAPIServerHost(restConfig.Host)
 
-	namespace, err := namespaceFromKubeconfig([]byte(rawKC))
-	if err != nil {
-		return nil, appErr.New(appErr.CodeInvalidAuthorizationHeader, err.Error()).WithDetails(map[string]any{
-			"header": DefaultAuthorizationHeader,
-			"reason": "invalid_context_namespace",
-		})
-	}
-
-	return &Factory{restConfig: restConfig, namespace: namespace, clusterServer: clusterServer}, nil
+	return &Factory{restConfig: clientConfig.restConfig, namespace: clientConfig.namespace, clusterServer: clientConfig.clusterServer}, nil
 }
 
 func namespaceFromKubeconfig(rawKC []byte) (string, error) {
@@ -95,6 +93,123 @@ func namespaceFromKubeconfig(rawKC []byte) (string, error) {
 	}
 
 	return namespace, nil
+}
+
+func parseSafeClientConfig(rawKC []byte) (safeClientConfig, error) {
+	cfg, err := clientcmd.Load(rawKC)
+	if err != nil {
+		return safeClientConfig{}, fmt.Errorf("failed to parse kubeconfig from Authorization header")
+	}
+
+	ctxName := strings.TrimSpace(cfg.CurrentContext)
+	if ctxName == "" {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig current-context is empty")
+	}
+
+	ctx, ok := cfg.Contexts[ctxName]
+	if !ok || ctx == nil {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig current-context %q not found", ctxName)
+	}
+
+	namespace := strings.TrimSpace(ctx.Namespace)
+	if namespace == "" {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig current-context %q has empty namespace", ctxName)
+	}
+
+	clusterName := strings.TrimSpace(ctx.Cluster)
+	if clusterName == "" {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig current-context %q has empty cluster", ctxName)
+	}
+	cluster := cfg.Clusters[clusterName]
+	if cluster == nil {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig cluster %q not found", clusterName)
+	}
+
+	userName := strings.TrimSpace(ctx.AuthInfo)
+	if userName == "" {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig current-context %q has empty user", ctxName)
+	}
+	user := cfg.AuthInfos[userName]
+	if user == nil {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig user %q not found", userName)
+	}
+
+	if user.Exec != nil {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig user %q exec credential plugins are not allowed", userName)
+	}
+	if user.AuthProvider != nil {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig user %q auth-provider plugins are not allowed", userName)
+	}
+	if strings.TrimSpace(user.TokenFile) != "" {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig user %q tokenFile is not allowed", userName)
+	}
+	if strings.TrimSpace(user.ClientCertificate) != "" || strings.TrimSpace(user.ClientKey) != "" {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig user %q client certificate file references are not allowed", userName)
+	}
+	if len(user.ClientCertificateData) > 0 || len(user.ClientKeyData) > 0 {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig user %q client certificate data is not allowed", userName)
+	}
+	if strings.TrimSpace(user.Username) != "" || strings.TrimSpace(user.Password) != "" {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig user %q basic auth is not allowed", userName)
+	}
+	if hasImpersonation(user.Impersonate, user.ImpersonateUID, user.ImpersonateGroups, user.ImpersonateUserExtra) {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig user %q impersonation is not allowed", userName)
+	}
+
+	token := strings.TrimSpace(user.Token)
+	if token == "" {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig user %q has empty token", userName)
+	}
+
+	if cluster.InsecureSkipTLSVerify {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig cluster %q insecure-skip-tls-verify is not allowed", clusterName)
+	}
+	if strings.TrimSpace(cluster.CertificateAuthority) != "" {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig cluster %q certificate-authority file references are not allowed", clusterName)
+	}
+	if strings.TrimSpace(cluster.ProxyURL) != "" {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig cluster %q proxy-url is not allowed", clusterName)
+	}
+	if strings.TrimSpace(cluster.TLSServerName) != "" {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig cluster %q tls-server-name is not allowed", clusterName)
+	}
+
+	clusterServer := strings.TrimSpace(cluster.Server)
+	if clusterServer == "" {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig cluster %q has empty server", clusterName)
+	}
+	parsedServer, err := url.Parse(clusterServer)
+	if err != nil || parsedServer.Scheme == "" || parsedServer.Host == "" {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig cluster %q has invalid server", clusterName)
+	}
+	if !strings.EqualFold(parsedServer.Scheme, "https") {
+		return safeClientConfig{}, fmt.Errorf("kubeconfig cluster %q server must use https", clusterName)
+	}
+
+	return safeClientConfig{
+		restConfig: &rest.Config{
+			Host:        preferredAPIServerHost(clusterServer),
+			BearerToken: token,
+			TLSClientConfig: rest.TLSClientConfig{
+				CAData:   append([]byte(nil), cluster.CertificateAuthorityData...),
+				Insecure: false,
+			},
+		},
+		namespace:     namespace,
+		clusterServer: clusterServer,
+		userName:      userName,
+		token:         token,
+	}, nil
+}
+
+func hasImpersonation(userName, uid string, groups []string, extra map[string][]string) bool {
+	if strings.TrimSpace(userName) != "" || strings.TrimSpace(uid) != "" {
+		return true
+	}
+	if len(groups) > 0 || len(extra) > 0 {
+		return true
+	}
+	return false
 }
 
 func (f *Factory) Namespace() string {

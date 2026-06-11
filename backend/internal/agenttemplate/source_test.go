@@ -215,6 +215,32 @@ func TestParseDefinitionRejectsMissingRequiredMainModelIntegrationSlot(t *testin
 	}
 }
 
+func TestParseDefinitionRejectsPathTraversal(t *testing.T) {
+	t.Parallel()
+
+	raw, err := os.ReadFile(filepath.Join(testTemplateBaseDir(t), "hermes-agent", "template.yaml"))
+	if err != nil {
+		t.Fatalf("read template fixture: %v", err)
+	}
+	invalid := strings.Replace(string(raw), "manifestDir: manifests\n", "manifestDir: ../manifests\n", 1)
+
+	_, err = parseDefinition([]byte(invalid), t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "manifestDir must stay within template root") {
+		t.Fatalf("parseDefinition() error = %v, want manifestDir path traversal error", err)
+	}
+}
+
+func TestResolveFromSourceRejectsUnsafeTemplateID(t *testing.T) {
+	t.Parallel()
+
+	source := Source{Dir: testTemplateBaseDir(t)}
+
+	_, err := ResolveFromSource("../hermes-agent", source)
+	if err == nil || !strings.Contains(err.Error(), "template id must be a DNS label") {
+		t.Fatalf("ResolveFromSource() error = %v, want unsafe template id error", err)
+	}
+}
+
 func TestGitHubSourceRejectsMismatchedSingleTemplateArchive(t *testing.T) {
 	t.Parallel()
 

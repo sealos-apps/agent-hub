@@ -126,20 +126,42 @@ const dedupeTokens = (tokens: unknown[] = []) => {
 }
 
 const getUserTokenCandidates = (userConfig: Record<string, any> = {}) => {
-  const authProviderConfig = userConfig?.['auth-provider']?.config || userConfig?.authProvider?.config || {}
-  const execEnv = Array.isArray(userConfig?.exec?.env) ? userConfig.exec.env : []
-
   return dedupeTokens([
     userConfig?.token,
     userConfig?.['id-token'],
     userConfig?.['access-token'],
-    authProviderConfig?.['id-token'],
-    authProviderConfig?.['access-token'],
-    ...execEnv
-      .filter((entry: { name?: string }) => /token/i.test(entry?.name || ''))
-      .map((entry: { value?: string }) => entry?.value),
   ])
 }
+
+const isUnsafeProxyUserConfig = (userConfig: Record<string, any> = {}) =>
+  Boolean(
+    userConfig?.exec ||
+      userConfig?.['auth-provider'] ||
+      userConfig?.authProvider ||
+      userConfig?.tokenFile ||
+      userConfig?.clientCertificate ||
+      userConfig?.['client-certificate'] ||
+      userConfig?.clientCertificateData ||
+      userConfig?.['client-certificate-data'] ||
+      userConfig?.clientKey ||
+      userConfig?.['client-key'] ||
+      userConfig?.clientKeyData ||
+      userConfig?.['client-key-data'] ||
+      userConfig?.username ||
+      userConfig?.password,
+  )
+
+const isUnsafeProxyClusterConfig = (clusterConfig: Record<string, any> = {}) =>
+  Boolean(
+    clusterConfig?.['insecure-skip-tls-verify'] ||
+      clusterConfig?.insecureSkipTlsVerify ||
+      clusterConfig?.['certificate-authority'] ||
+      clusterConfig?.certificateAuthority ||
+      clusterConfig?.['proxy-url'] ||
+      clusterConfig?.proxyUrl ||
+      clusterConfig?.['tls-server-name'] ||
+      clusterConfig?.tlsServerName,
+  )
 
 const parseProxyKubeconfig = (authorizationHeader = '') => {
   if (!authorizationHeader || typeof authorizationHeader !== 'string') {
@@ -159,11 +181,17 @@ const parseProxyKubeconfig = (authorizationHeader = '') => {
       users.find((item: any) => item?.name === selectedContext?.context?.user) || users[0]
     const selectedCluster =
       clusters.find((item: any) => item?.name === selectedContext?.context?.cluster) || clusters[0]
+    const userConfig = selectedUser?.user || {}
+    const clusterConfig = selectedCluster?.cluster || {}
+
+    if (isUnsafeProxyUserConfig(userConfig) || isUnsafeProxyClusterConfig(clusterConfig)) {
+      return { kubeconfig: '', server: '', token: '' }
+    }
 
     return {
       kubeconfig,
-      server: toScalar(selectedCluster?.cluster?.server),
-      token: getUserTokenCandidates(selectedUser?.user || {})[0] || '',
+      server: toScalar(clusterConfig?.server),
+      token: getUserTokenCandidates(userConfig)[0] || '',
     }
   } catch {
     return { kubeconfig: '', server: '', token: '' }
@@ -364,6 +392,7 @@ const createViteK8sRestMiddlewarePlugin = () => ({
             normalizedKey === 'cookie' ||
             normalizedKey === 'authorization' ||
             normalizedKey === 'authorization-bearer' ||
+            normalizedKey.startsWith('impersonate-') ||
             normalizedKey === 'x-k8s-server' ||
             normalizedKey === 'content-length' ||
             normalizedKey === 'connection'

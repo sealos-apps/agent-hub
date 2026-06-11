@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/remotecommand"
 
+	"github.com/nightwhite/Agent-Hub/internal/agent"
 	"github.com/nightwhite/Agent-Hub/internal/config"
 	"github.com/nightwhite/Agent-Hub/internal/dto"
 	"github.com/nightwhite/Agent-Hub/internal/kube"
@@ -57,7 +58,7 @@ type Handler struct {
 
 func (h Handler) Serve(c *gin.Context, requestID string) {
 	agentName := strings.TrimSpace(c.Param("agentName"))
-	if agentName == "" {
+	if !agent.ValidateName(agentName) {
 		resp.WriteGinError(c, http.StatusUnprocessableEntity, appErr.New(appErr.CodeInvalidAgentName, "invalid agent name"), requestID)
 		return
 	}

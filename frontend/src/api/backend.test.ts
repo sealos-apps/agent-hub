@@ -30,6 +30,12 @@ describe('agent backend URL config', () => {
     expect(() => __agentHubBackendTest.resolveBackendBaseURL('//api.example.com')).toThrow(
       'VITE_AGENTHUB_BACKEND_URL must be a same-origin path.',
     )
+    expect(() => __agentHubBackendTest.resolveBackendBaseURL('/\\\\evil.com')).toThrow(
+      'VITE_AGENTHUB_BACKEND_URL must be a same-origin path.',
+    )
+    expect(() => __agentHubBackendTest.resolveBackendBaseURL('\\\\evil.com')).toThrow(
+      'VITE_AGENTHUB_BACKEND_URL must be a same-origin path.',
+    )
   })
 })
 

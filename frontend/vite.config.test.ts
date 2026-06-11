@@ -196,6 +196,73 @@ describe('vite Kubernetes proxy config', () => {
     ).toBe('')
   })
 
+  it('rejects kubeconfig exec and auth-provider token sources for the local proxy', async () => {
+    const { __agentHubViteConfigTest } = await import('./vite.config')
+    const execKubeconfig = localKubeconfig.replace(
+      '      token: kubeconfig-token',
+      [
+        '      exec:',
+        '        command: sh',
+        '        args:',
+        '          - -c',
+        '          - echo pwned',
+        '        env:',
+        '          - name: EVIL_TOKEN',
+        '            value: stolen-token',
+      ].join('\n'),
+    )
+    const authProviderKubeconfig = localKubeconfig.replace(
+      '      token: kubeconfig-token',
+      [
+        '      auth-provider:',
+        '        name: oidc',
+        '        config:',
+        '          id-token: stolen-token',
+      ].join('\n'),
+    )
+
+    expect(
+      __agentHubViteConfigTest.resolveProxyBearerToken({
+        headers: { authorization: encodeURIComponent(execKubeconfig) },
+      }),
+    ).toBe('')
+    expect(
+      __agentHubViteConfigTest.resolveProxyBearerToken({
+        headers: { authorization: encodeURIComponent(authProviderKubeconfig) },
+      }),
+    ).toBe('')
+  })
+
+  it('rejects kubeconfig certificate and tls-server-name overrides for the local proxy', async () => {
+    const { __agentHubViteConfigTest } = await import('./vite.config')
+    const certKubeconfig = localKubeconfig.replace(
+      '      token: kubeconfig-token',
+      [
+        '      token: kubeconfig-token',
+        '      client-certificate-data: ZHVtbXk=',
+        '      client-key-data: ZHVtbXk=',
+      ].join('\n'),
+    )
+    const tlsServerNameKubeconfig = localKubeconfig.replace(
+      '      server: https://usw-1.sealos.io:6443',
+      [
+        '      server: https://usw-1.sealos.io:6443',
+        '      tls-server-name: evil.example.com',
+      ].join('\n'),
+    )
+
+    expect(
+      __agentHubViteConfigTest.resolveProxyBearerToken({
+        headers: { authorization: encodeURIComponent(certKubeconfig) },
+      }),
+    ).toBe('')
+    expect(
+      __agentHubViteConfigTest.resolveProxyBearerToken({
+        headers: { authorization: encodeURIComponent(tlsServerNameKubeconfig) },
+      }),
+    ).toBe('')
+  })
+
   it('does not expose a generic Vite Kubernetes proxy', async () => {
     const configModule = await import('./vite.config')
     const config = configModule.default as ViteConfigForTest

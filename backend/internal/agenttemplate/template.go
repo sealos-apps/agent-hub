@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
 	"sigs.k8s.io/yaml"
 )
+
+var templateIDPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 
 type Definition struct {
 	ID                   string                   `yaml:"id"`
@@ -155,6 +158,9 @@ func ResolveFromSource(templateID string, source Source) (Definition, error) {
 	id := strings.TrimSpace(templateID)
 	if id == "" {
 		return Definition{}, fmt.Errorf("template id is required")
+	}
+	if err := ValidateTemplateID(id); err != nil {
+		return Definition{}, err
 	}
 
 	rootDir, err := source.ResolvedRootDir(id)
@@ -334,6 +340,9 @@ func validateDefinition(definition Definition) error {
 	if strings.TrimSpace(definition.ID) == "" {
 		return fmt.Errorf("id is required")
 	}
+	if err := ValidateTemplateID(strings.TrimSpace(definition.ID)); err != nil {
+		return err
+	}
 	if strings.TrimSpace(definition.Name) == "" {
 		return fmt.Errorf("name is required")
 	}
@@ -414,14 +423,46 @@ func validateDefinition(definition Definition) error {
 		if strings.TrimSpace(definition.ManifestDir) == "" {
 			return fmt.Errorf("manifestDir is required for backendSupported template")
 		}
+		if err := validateTemplateRelativePath("manifestDir", definition.ManifestDir); err != nil {
+			return err
+		}
 		if HasScriptSpec(definition.Bootstrap) && !isCompleteScriptSpec(definition.Bootstrap) {
 			return fmt.Errorf("bootstrap is incomplete")
+		}
+		if HasScriptSpec(definition.Bootstrap) {
+			if err := validateTemplateRelativePath("bootstrap.script", definition.Bootstrap.Script); err != nil {
+				return err
+			}
 		}
 		if HasScriptSpec(definition.Healthcheck) && !isCompleteScriptSpec(definition.Healthcheck) {
 			return fmt.Errorf("healthcheck is incomplete")
 		}
+		if HasScriptSpec(definition.Healthcheck) {
+			if err := validateTemplateRelativePath("healthcheck.script", definition.Healthcheck.Script); err != nil {
+				return err
+			}
+		}
 	}
 
+	return nil
+}
+
+func ValidateTemplateID(id string) error {
+	if !templateIDPattern.MatchString(strings.TrimSpace(id)) {
+		return fmt.Errorf("template id must be a DNS label")
+	}
+	return nil
+}
+
+func validateTemplateRelativePath(field, value string) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return fmt.Errorf("%s is required", field)
+	}
+	cleaned := filepath.Clean(trimmed)
+	if filepath.IsAbs(cleaned) || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("%s must stay within template root", field)
+	}
 	return nil
 }
 

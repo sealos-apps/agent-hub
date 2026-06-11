@@ -47,7 +47,7 @@ type ChatStreamPayload = {
 
 const resolveBackendBaseURL = (value = "") => {
   const raw = String(value || "").trim() || (import.meta.env.DEV ? "/backend-api" : "/");
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) || raw.startsWith("//")) {
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) || raw.startsWith("//") || raw.includes("\\")) {
     throw new Error("VITE_AGENTHUB_BACKEND_URL must be a same-origin path.");
   }
   return raw.startsWith("/") ? raw : `/${raw}`;
