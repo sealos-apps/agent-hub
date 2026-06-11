@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import fs from 'node:fs'
-import http from 'node:http'
 import https from 'node:https'
 import path from 'node:path'
 import { defineConfig, loadEnv } from 'vite'
@@ -19,6 +18,12 @@ const toScalar = (value: unknown) => {
   if (typeof value !== 'string') return ''
   return value.trim().replace(/^['"]|['"]$/g, '')
 }
+
+const parseCSV = (value = '') =>
+  value
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean)
 
 const normalizeLocalKubeconfigEnv = (value = '') => {
   const kubeconfig = toScalar(value)
@@ -67,11 +72,10 @@ if (!readEnv('VITE_AGENTHUB_FAVICON_URL')) {
 }
 
 const DEFAULT_K8S_SERVER = readEnv('VITE_DEFAULT_K8S_SERVER')
-const FALLBACK_PROXY_TARGET = DEFAULT_K8S_SERVER || 'https://127.0.0.1:6443'
 const BACKEND_PROXY_TARGET = readEnv('VITE_AGENTHUB_BACKEND_TARGET', 'http://127.0.0.1:8888')
+const K8S_PROXY_ALLOWED_HOSTS = parseCSV(readEnv('K8S_PROXY_ALLOWED_HOSTS', '.sealos.io,.sealos.run'))
 const AGENT_HUB_BROWSER_TITLE = readEnv('VITE_AGENTHUB_BROWSER_TITLE', 'Agent Hub Web')
 const AGENT_HUB_FAVICON_URL = readEnv('VITE_AGENTHUB_FAVICON_URL', '/brand/agent-hub.svg')
-const INSECURE_HTTPS_AGENT = new https.Agent({ rejectUnauthorized: false })
 const LOCAL_KUBECONFIG_ENV = readEnv('AGENTHUB_LOCAL_KUBECONFIG')
 const LOCAL_KUBECONFIG_B64_ENV = readEnv('AGENTHUB_LOCAL_KUBECONFIG_B64')
 const LOCAL_KUBECONFIG_INLINE =
@@ -86,17 +90,6 @@ if (ENABLE_LOCAL_SESSION) {
 const LOCAL_KUBECONFIG_PATH =
   readEnv('VITE_AGENTHUB_LOCAL_KUBECONFIG_PATH') ||
   path.resolve(process.cwd(), '../.local/kubeconfig.yaml')
-
-const decodeHeaderValue = (value: unknown) => {
-  const scalar = Array.isArray(value) ? value[0] : value
-  if (typeof scalar !== 'string') return ''
-
-  try {
-    return decodeURIComponent(scalar)
-  } catch {
-    return scalar.trim()
-  }
-}
 
 const dedupeTokens = (tokens: unknown[] = []) => {
   const seen = new Set<string>()
@@ -195,62 +188,14 @@ const loadLocalSealosSession = () => {
 
 const getRequestUrl = (req: { url?: string }) => new URL(req?.url || '/', 'http://localhost')
 
-const getRequestQueryParam = (req: { url?: string }, key: string) => {
-  if (!key) return ''
-  return toScalar(getRequestUrl(req).searchParams.get(key) || '')
-}
-
 const resolveProxyBearerToken = (req: { headers?: Record<string, any>; url?: string }) => {
   const parsedKubeconfig = parseProxyKubeconfig(req?.headers?.authorization)
-  const headerToken = toScalar(decodeHeaderValue(req?.headers?.['authorization-bearer']))
-  return parsedKubeconfig.token || headerToken || getRequestQueryParam(req, 'k8sToken')
+  return parsedKubeconfig.token
 }
 
 const resolveProxyTarget = (req: { headers?: Record<string, any>; url?: string }) => {
-  const requestUrl = getRequestUrl(req)
-  const queryServer = requestUrl.searchParams.get('k8sServer')
   const parsedKubeconfig = parseProxyKubeconfig(req?.headers?.authorization)
-  const fallbackServer = toScalar(decodeHeaderValue(req?.headers?.['x-k8s-server']))
-
-  if (queryServer) {
-    return queryServer
-  }
-
-  if (parsedKubeconfig.server) {
-    return parsedKubeconfig.server
-  }
-  if (fallbackServer) {
-    return fallbackServer
-  }
-
-  return DEFAULT_K8S_SERVER
-}
-
-const applyProxyHeaders = (
-  proxyReq: {
-    removeHeader: (name: string) => void
-    setHeader: (name: string, value: string) => void
-  },
-  req: { headers?: Record<string, any>; url?: string },
-) => {
-  proxyReq.removeHeader('origin')
-  proxyReq.removeHeader('referer')
-  proxyReq.removeHeader('x-k8s-server')
-  proxyReq.removeHeader('authorization-bearer')
-
-  const bearerToken = resolveProxyBearerToken(req)
-  if (bearerToken) {
-    proxyReq.setHeader('authorization', `Bearer ${bearerToken}`)
-  } else {
-    proxyReq.removeHeader('authorization')
-  }
-
-  try {
-    const targetUrl = new URL(resolveProxyTarget(req) || FALLBACK_PROXY_TARGET)
-    proxyReq.setHeader('host', targetUrl.host)
-  } catch {
-    proxyReq.removeHeader('host')
-  }
+  return parsedKubeconfig.server || DEFAULT_K8S_SERVER
 }
 
 const K8S_STATUS_HEADERS = {
@@ -294,6 +239,28 @@ const isHandledK8sRestPath = (pathname = '') =>
     pathname,
   )
 
+const isAllowedK8sProxyTarget = (target: URL, allowHosts = K8S_PROXY_ALLOWED_HOSTS) => {
+  if (target.protocol !== 'https:') {
+    return false
+  }
+
+  const host = target.hostname.toLowerCase().trim()
+  if (!host) {
+    return false
+  }
+
+  return allowHosts.some((item) => {
+    const pattern = item.toLowerCase().trim()
+    if (!pattern) {
+      return false
+    }
+    if (pattern.startsWith('.')) {
+      return host === pattern.slice(1) || host.endsWith(pattern)
+    }
+    return host === pattern
+  })
+}
+
 const isLoopbackAddress = (value: unknown) => {
   const normalized = toScalar(value).toLowerCase()
   if (!normalized) return false
@@ -328,7 +295,7 @@ const createViteK8sRestMiddlewarePlugin = () => ({
         return
       }
 
-      const targetBase = resolveProxyTarget(req) || FALLBACK_PROXY_TARGET
+      const targetBase = resolveProxyTarget(req)
       const bearerToken = resolveProxyBearerToken(req)
 
       if (!targetBase || !bearerToken) {
@@ -339,6 +306,10 @@ const createViteK8sRestMiddlewarePlugin = () => ({
       try {
         const targetUrl = new URL(requestUrl.pathname.replace(/^\/k8s-api/, ''), targetBase)
         targetUrl.search = requestUrl.search
+        if (!isAllowedK8sProxyTarget(targetUrl)) {
+          writeJson(res, 403, createStatusBody(403, 'Kubernetes proxy target is not allowed', 'Forbidden'))
+          return
+        }
 
         const bodyBuffer = await readRequestBody(req)
         const headers: Record<string, string> = {}
@@ -370,14 +341,11 @@ const createViteK8sRestMiddlewarePlugin = () => ({
           headers['content-length'] = String(bodyBuffer.length)
         }
 
-        const transport = targetUrl.protocol === 'https:' ? https : http
-        const upstreamRequest = transport.request(
+        const upstreamRequest = https.request(
           targetUrl,
           {
             method,
             headers,
-            agent: targetUrl.protocol === 'https:' ? INSECURE_HTTPS_AGENT : undefined,
-            rejectUnauthorized: false,
           },
           (upstreamResponse) => {
             const statusCode = upstreamResponse.statusCode || 502
@@ -475,6 +443,13 @@ const createLocalSealosSessionPlugin = () => ({
   },
 })
 
+export const __agentHubViteConfigTest = {
+  isAllowedK8sProxyTarget,
+  parseProxyKubeconfig,
+  resolveProxyBearerToken,
+  resolveProxyTarget,
+}
+
 export default defineConfig({
   plugins: [
     createAgentHubBrandHtmlPlugin(),
@@ -484,7 +459,6 @@ export default defineConfig({
     createLocalSealosSessionPlugin(),
   ],
   server: {
-    allowedHosts: true,
     host: '0.0.0.0',
     port: 3000,
     strictPort: true,
@@ -492,7 +466,7 @@ export default defineConfig({
       '/backend-api': {
         target: BACKEND_PROXY_TARGET,
         changeOrigin: true,
-        secure: false,
+        secure: true,
         ws: true,
         rewriteWsOrigin: true,
         rewrite: (path: string) => path.replace(/^\/backend-api/, ''),
@@ -500,32 +474,10 @@ export default defineConfig({
       '/__preview': {
         target: BACKEND_PROXY_TARGET,
         changeOrigin: true,
-        secure: false,
+        secure: true,
         ws: true,
         rewriteWsOrigin: true,
       },
-      '/k8s-api': {
-        target: FALLBACK_PROXY_TARGET,
-        agent: INSECURE_HTTPS_AGENT,
-        changeOrigin: true,
-        secure: false,
-        ws: true,
-        rewrite: (path: string) => path.replace(/^\/k8s-api/, ''),
-        router: (req: any) => resolveProxyTarget(req),
-        configure: (proxy: any) => {
-          proxy.on('proxyReq', (proxyReq: any, req: any) => {
-            applyProxyHeaders(proxyReq, req)
-          })
-
-          proxy.on('proxyReqWs', (proxyReq: any, req: any) => {
-            applyProxyHeaders(proxyReq, req)
-          })
-
-          proxy.on('error', (error: Error) => {
-            console.error('[vite:k8s-proxy]', error.message)
-          })
-        },
-      } as any,
     },
   },
 })

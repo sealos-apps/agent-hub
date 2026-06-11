@@ -117,19 +117,6 @@ func resolveK8sProxyBearerToken(request *http.Request) string {
 	return ""
 }
 
-func decodeHeaderScalar(value string) string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return ""
-	}
-
-	decoded, err := url.QueryUnescape(trimmed)
-	if err != nil {
-		return trimmed
-	}
-	return strings.TrimSpace(decoded)
-}
-
 func isAllowedK8sProxyTarget(target *url.URL, allowHosts []string) bool {
 	if target == nil {
 		return false

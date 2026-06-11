@@ -1,0 +1,74 @@
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/sealos-apps/agent-hub
+  tag: sha-795462b
+  pullPolicy: IfNotPresent
+
+containerPort: 8999
+
+env:
+  PORT: "8999"
+  REGION: us
+  INGRESS_SUFFIX: agent.usw-1.sealos.app
+  SSH_DOMAIN: ssh.usw-1.sealos.app
+  AGENT_TEMPLATE_GITHUB_URL: https://github.com/sealos-apps/Agent-Hub-Template
+  AIPROXY_MANAGER_BASE_URL: https://aiproxy-web.usw-1.sealos.io
+  AIPROXY_MODEL_BASE_URL: https://aiproxy.usw-1.sealos.io/v1
+  K8S_PROXY_ALLOWED_HOSTS: .sealos.io,.sealos.run
+
+service:
+  port: 8999
+
+ingress:
+  enabled: true
+  className: nginx
+  host: agenthub.example.usw-1.sealos.app
+  tlsSecretName: wildcard-cert
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+    nginx.ingress.kubernetes.io/client-body-buffer-size: 64k
+    nginx.ingress.kubernetes.io/proxy-body-size: 32m
+    nginx.ingress.kubernetes.io/proxy-buffer-size: 64k
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/server-snippet: |
+      client_header_buffer_size 64k;
+      large_client_header_buffers 4 128k;
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+probes:
+  startup:
+    path: /healthz
+    periodSeconds: 5
+    failureThreshold: 24
+  readiness:
+    path: /readyz
+    periodSeconds: 10
+    failureThreshold: 3
+  liveness:
+    path: /healthz
+    periodSeconds: 10
+    failureThreshold: 3

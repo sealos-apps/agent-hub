@@ -33,6 +33,11 @@ func TestIsAllowedK8sProxyTarget(t *testing.T) {
 			allowHosts: []string{".sealos.io", ".sealos.run"},
 			want:       false,
 		},
+		"disallow suffix lookalike host": {
+			rawURL:     "https://evilsealos.io:6443",
+			allowHosts: []string{".sealos.io"},
+			want:       false,
+		},
 		"allow root suffix host itself": {
 			rawURL:     "https://sealos.run:6443",
 			allowHosts: []string{".sealos.run"},
@@ -54,4 +59,3 @@ func TestIsAllowedK8sProxyTarget(t *testing.T) {
 		})
 	}
 }
-
