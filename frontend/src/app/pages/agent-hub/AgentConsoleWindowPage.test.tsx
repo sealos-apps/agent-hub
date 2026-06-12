@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { act } from 'react'
 import { BrowserRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { AgentConsoleWindowPage } from './AgentConsoleWindowPage'
+import { AgentConsoleWindowPage, getWebTabSandboxPolicy } from './AgentConsoleWindowPage'
 import {
   createAgentPreview,
   createClusterContext,
@@ -1116,7 +1116,7 @@ describe('AgentConsoleWindowPage helpers', () => {
     expect(previewFrame).toHaveAttribute('tabindex', '-1')
   })
 
-  it('sandboxes web tab iframes', async () => {
+  it('keeps preview web tab iframes isolated from same-origin state', async () => {
     window.history.replaceState({}, '', '/console?agentName=ympp868f')
     vi.mocked(createClusterContext).mockReturnValue(clusterContext)
     vi.mocked(getClusterInfo).mockResolvedValue({
@@ -1157,6 +1157,16 @@ describe('AgentConsoleWindowPage helpers', () => {
     expect(screen.getByTitle('预览 3000')).toHaveAttribute(
       'referrerpolicy',
       'strict-origin-when-cross-origin',
+    )
+  })
+
+  it('allows same-origin behavior for regular service web tabs', () => {
+    expect(getWebTabSandboxPolicy({})).toBe('allow-forms allow-popups allow-same-origin allow-scripts')
+  })
+
+  it('keeps preview web tabs on the stricter sandbox policy', () => {
+    expect(getWebTabSandboxPolicy({ preview: { agentName: 'ympp868f', id: 'p_3000', port: 3000 } })).toBe(
+      'allow-forms allow-popups allow-scripts',
     )
   })
 

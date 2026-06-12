@@ -71,6 +71,13 @@ type WebTab = {
   refreshKey: number
   preview?: PreviewMetadata
 }
+
+const PREVIEW_WEB_TAB_SANDBOX_POLICY = 'allow-forms allow-popups allow-scripts'
+const SERVICE_WEB_TAB_SANDBOX_POLICY = 'allow-forms allow-popups allow-same-origin allow-scripts'
+
+export const getWebTabSandboxPolicy = (tab: { preview?: unknown }) =>
+  tab.preview ? PREVIEW_WEB_TAB_SANDBOX_POLICY : SERVICE_WEB_TAB_SANDBOX_POLICY
+
 type FileTab = {
   id: string
   type: 'file'
@@ -483,7 +490,7 @@ function WebTabPane({ isVisible, tab }: { isVisible: boolean; tab: WebTab }) {
         className="h-full w-full border-0 bg-white"
         key={`${tab.id}-${tab.refreshKey}`}
         referrerPolicy="strict-origin-when-cross-origin"
-        sandbox="allow-forms allow-popups allow-scripts"
+        sandbox={getWebTabSandboxPolicy(tab)}
         src={tab.url}
         tabIndex={isVisible ? undefined : -1}
         title={tab.title}

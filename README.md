@@ -111,9 +111,8 @@ ghcr.io/sealos-apps/agent-hub:<tag>
 
 Deployment options are documented in [docs/Deployment-US-CN.md](docs/Deployment-US-CN.md):
 
-- Sealos App Launchpad
-- Kubernetes YAML
-- Helm chart
+- Helm chart as the production deployment path
+- Kubernetes YAML for review, troubleshooting, and manual deployment
 - Sealos app registration for `agenthub` and `agenthub-console`
 
 ## Verification
@@ -163,4 +162,4 @@ npm install
 npm run dev -- --host 0.0.0.0
 ```
 
-上线方式请看 [docs/Deployment-US-CN.md](docs/Deployment-US-CN.md)，里面包含 Sealos App Launchpad、Kubernetes YAML、Helm Chart 和 `agenthub` / `agenthub-console` App 注册说明。
+上线方式请看 [docs/Deployment-US-CN.md](docs/Deployment-US-CN.md)。当前标准是生产使用 Helm Chart，上线前保留 Kubernetes YAML 用于审阅和排障，并注册 `agenthub` / `agenthub-console` 两个 App 资源。

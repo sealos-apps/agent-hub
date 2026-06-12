@@ -51,7 +51,7 @@ export function AgentWebUIWorkspace({ url, reason }: AgentWebUIWorkspaceProps) {
         <iframe
           className="h-full min-h-[360px] w-full rounded-xl border border-slate-200 bg-white"
           referrerPolicy="strict-origin-when-cross-origin"
-          sandbox="allow-forms allow-popups allow-scripts"
+          sandbox="allow-forms allow-popups allow-same-origin allow-scripts"
           src={url}
           title="Agent Web UI"
         />

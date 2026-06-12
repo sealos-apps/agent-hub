@@ -5,7 +5,7 @@ import { I18nProvider } from '../../../i18n'
 import { AgentWebUIWorkspace } from './AgentWebUIWorkspace'
 
 describe('AgentWebUIWorkspace', () => {
-  it('sandboxes embedded agent web UI pages', () => {
+  it('allows same-origin behavior for embedded agent web UI pages', () => {
     render(
       <I18nProvider>
         <AgentWebUIWorkspace url="https://agent.example.com/" />
@@ -14,7 +14,7 @@ describe('AgentWebUIWorkspace', () => {
 
     expect(screen.getByTitle('Agent Web UI')).toHaveAttribute(
       'sandbox',
-      'allow-forms allow-popups allow-scripts',
+      'allow-forms allow-popups allow-same-origin allow-scripts',
     )
   })
 })

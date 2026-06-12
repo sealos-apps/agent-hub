@@ -1,10 +1,16 @@
-# Agent Hub US / CN 上线填写说明
+# Agent Hub US / CN Deployment Standard
 
-本文用于在 Sealos App Launchpad 表单里上线 Agent Hub。Agent Hub 是一个镜像，里面已经包含 Web 页面和后端 API，不需要拆成两个服务。
+本文定义 Agent Hub 的上线标准。Agent Hub 是一个单镜像服务，镜像内同时包含 Web 页面和后端 API，不需要拆成 Web、API 两个 Deployment。
 
-## 参考截图
+## 0. 标准结论
 
-![Agent Hub Launchpad 表单](./deploy.png)
+生产上线必须满足以下 3 点：
+
+1. 使用 Helm Chart 作为正式上线入口。
+2. 保留等价的 Kubernetes YAML，用于审阅、排障和必要时手动部署。
+3. 单独注册 `agenthub` 和 `agenthub-console` 两个 Sealos App 资源。
+
+不使用表单式部署作为标准上线方式。
 
 ## 1. 镜像
 
@@ -14,19 +20,22 @@
 ghcr.io/sealos-apps/agent-hub:sha-<短 SHA>
 ```
 
-当前 main 镜像 tag 以 GitHub Actions 的 Docker Image 结果为准：
+生产环境不要使用 `latest`。镜像 tag 以 GitHub Actions 的 Docker Image 结果为准。
+
+示例：
 
 ```text
-ghcr.io/sealos-apps/agent-hub:sha-<main 短 SHA>
+ghcr.io/sealos-apps/agent-hub:sha-795462b
 ```
 
-生产不要填 `latest`。
+## 2. 命名
 
-## 2. 名称
-
-| 表单项 | 建议值 |
+| 项目 | 建议值 |
 | --- | --- |
-| Name | `agent-hub` 或 `agenthub-<后缀>` |
+| Helm release | `agenthub` |
+| Deployment / Service / Ingress | `agenthub-<后缀>` |
+| 桌面主入口 App | `agenthub` |
+| Console 隐藏入口 App | `agenthub-console` |
 
 线上已有实例示例：
 
@@ -34,47 +43,36 @@ ghcr.io/sealos-apps/agent-hub:sha-<main 短 SHA>
 agenthub-fxeji0zb
 ```
 
-## 3. 配置
+## 3. 端口和健康检查
 
-| 表单项 | 建议值 |
-| --- | --- |
-| Deployment Information | `Fixed` |
-| Replicas | `1` |
-| CPU | `0.5 Core` 起步 |
-| Memory | `512 Mi` 起步 |
-| Command | 留空 |
-| Arguments | 留空 |
-| Configmaps | 不需要 |
-| Local Storage | 不需要 |
-
-## 4. 端口
-
-| 表单项 | 值 |
+| 项目 | 值 |
 | --- | --- |
 | Container Port | `8999` |
-| Enable Internet Access | 开启 |
-| Public URL | 使用 Sealos 自动生成域名即可 |
+| Service Port | `8999` |
+| 环境变量 `PORT` | `8999` |
+| Healthz | `/healthz` |
+| Readyz | `/readyz` |
 
-`Container Port` 必须和环境变量 `PORT` 一致。当前线上用 `8999`，镜像默认值是 `8888`。
+`Container Port`、`Service Port` 和 `PORT` 必须保持一致。当前线上标准端口是 `8999`，镜像默认端口是 `8888`，所以上线时必须显式设置 `PORT=8999`。
 
-健康检查：
+验证：
 
 ```bash
 curl -fsS https://<APP_HOST>/healthz
 curl -fsS https://<APP_HOST>/readyz
 ```
 
-## 5. 环境变量
+## 4. 环境变量
 
-模板仓库地址使用 `AGENT_TEMPLATE_GITHUB_URL`：
+模板仓库地址固定使用：
 
 ```text
 https://github.com/sealos-apps/Agent-Hub-Template
 ```
 
-`INGRESS_SUFFIX` 用来拼接 Agent Hub 创建的新 Agent 访问域名，不是 Agent Hub Console 自己的 Public URL。
+`INGRESS_SUFFIX` 用于拼接 Agent Hub 创建出来的新 Agent 访问域名，不是 Agent Hub Console 自己的访问域名。
 
-US：
+### US 默认配置
 
 | Key | Value |
 | --- | --- |
@@ -87,21 +85,21 @@ US：
 | `AIPROXY_MODEL_BASE_URL` | `https://aiproxy.usw-1.sealos.io/v1` |
 | `K8S_PROXY_ALLOWED_HOSTS` | `usw.sealos.io,usw-1.sealos.io,hzh.sealos.run,bja.sealos.run,gzg.sealos.run` |
 
-USW 可选 AIProxy 地址：
+US 可选 AIProxy 地址：
 
 | 集群 | `AIPROXY_MANAGER_BASE_URL` | `AIPROXY_MODEL_BASE_URL` |
 | --- | --- | --- |
 | `usw` | `https://aiproxy-web.usw.sealos.io` | `https://aiproxy.usw.sealos.io/v1` |
 | `usw-1` | `https://aiproxy-web.usw-1.sealos.io` | `https://aiproxy.usw-1.sealos.io/v1` |
 
-USW 可选入口域名：
+US 可选入口域名：
 
 | 集群 | `INGRESS_SUFFIX` | `SSH_DOMAIN` |
 | --- | --- | --- |
 | `usw` | `agent.usw.sealos.io` | `ssh.usw.sealos.io` |
 | `usw-1` | `agent.usw-1.sealos.app` | `ssh.usw-1.sealos.app` |
 
-CN：
+### CN 默认配置
 
 | Key | Value |
 | --- | --- |
@@ -130,81 +128,76 @@ CN 可选入口域名：
 | `bja` | `agent.bja.sealos.run` | `ssh.bja.sealos.run` |
 | `gzg` | `agent.gzg.sealos.run` | `ssh.gzg.sealos.run` |
 
-注意：`REGION` 只能填 `us` 或 `cn`，不要填 `usw-1` 或 `hzh`。
+注意：
 
-可选项：如果 WebSocket 需要跨域访问，再配置 `WS_ALLOWED_ORIGINS`，多个 Origin 用英文逗号分隔；同域访问不需要填。
+- `REGION` 只能填 `us` 或 `cn`，不要填 `usw-1`、`hzh`、`bja` 或 `gzg`。
+- `WS_ALLOWED_ORIGINS` 是可选项。只有 WebSocket 需要跨域访问时才配置，多个 Origin 用英文逗号分隔；同域访问不需要配置。
 
-## 6. App 资源
+## 5. Helm Chart 部署
 
-Launchpad 表单只负责 Web/API 服务。桌面入口还需要注册 2 个 Sealos App 资源：
-
-| App | displayType | 作用 |
-| --- | --- | --- |
-| `agenthub` | `normal` | Sealos 桌面主入口 |
-| `agenthub-console` | `hidden` | Console 窗口入口 |
-
-直接注册以下 YAML。把 `<AGENT_HUB_URL>` 替换成 Launchpad 生成的 Public URL，例如 `https://agenthub-fxeji0zb.usw-1.sealos.app`。
-
-主入口：
-
-```yaml
-apiVersion: app.sealos.io/v1
-kind: App
-metadata:
-  name: agenthub
-  namespace: app-system
-spec:
-  data:
-    desc: Agent Hub Workspace
-    url: "<AGENT_HUB_URL>"
-  icon: "<AGENT_HUB_URL>/brand/agent-hub.svg"
-  i18n:
-    zh:
-      name: Agent Hub
-    zh-Hans:
-      name: Agent Hub
-  menuData:
-  name: Agent Hub
-  type: iframe
-  displayType: normal
-```
-
-Console 窗口入口：
-
-```yaml
-apiVersion: app.sealos.io/v1
-kind: App
-metadata:
-  name: agenthub-console
-  namespace: app-system
-spec:
-  data:
-    desc: Agent Hub Console Window
-    url: "<AGENT_HUB_URL>"
-  icon: "<AGENT_HUB_URL>/brand/agenthub-console.svg"
-  i18n:
-    zh:
-      name: Agent Hub 控制台
-    zh-Hans:
-      name: Agent Hub 控制台
-  menuData:
-  name: Agent Hub Console
-  type: iframe
-  displayType: hidden
-```
-
-对应仓库模板：
+Helm Chart 路径：
 
 ```text
-deploy/manifests/agenthub-app.yaml.tmpl
-deploy/manifests/agenthub-console-app.yaml.tmpl
+deploy/charts/agent-hub
 ```
 
-`agenthub-console` 必须注册，否则前端无法通过 `openDesktopApp` 打开 Console 窗口。
+### USW-1
 
-## 7. K8s YAML 直接部署
+```bash
+helm upgrade --install agenthub deploy/charts/agent-hub \
+  -n <NAMESPACE> \
+  --set fullnameOverride=<APP_NAME> \
+  --set image.tag=sha-<短 SHA> \
+  --set ingress.host=<APP_HOST>
+```
 
-Launchpad 填表方式需要保留；如果要直接走 Kubernetes，可以用下面这份 YAML。替换其中的占位符：
+### CN hzh
+
+```bash
+helm upgrade --install agenthub deploy/charts/agent-hub \
+  -n <NAMESPACE> \
+  -f deploy/charts/agent-hub/values-cn.yaml \
+  --set fullnameOverride=<APP_NAME> \
+  --set image.tag=sha-<短 SHA> \
+  --set ingress.host=<APP_HOST>
+```
+
+### 占位符
+
+| 占位符 | 示例 |
+| --- | --- |
+| `<NAMESPACE>` | `ns-fxeji0zb` |
+| `<APP_NAME>` | `agenthub-fxeji0zb` |
+| `<APP_HOST>` | `agenthub-fxeji0zb.usw-1.sealos.app` |
+| `sha-<短 SHA>` | `sha-795462b` |
+
+### 渲染检查
+
+上线前先渲染检查：
+
+```bash
+helm template agenthub deploy/charts/agent-hub \
+  -n <NAMESPACE> \
+  --set fullnameOverride=<APP_NAME> \
+  --set image.tag=sha-<短 SHA> \
+  --set ingress.host=<APP_HOST>
+```
+
+### Rollout 检查
+
+```bash
+kubectl -n <NAMESPACE> rollout status deploy/<APP_NAME> --timeout=180s
+kubectl -n <NAMESPACE> get deploy <APP_NAME> -o wide
+kubectl -n <NAMESPACE> get pods -l app.kubernetes.io/instance=agenthub -o wide
+```
+
+如果 `fullnameOverride` 和 release name 不一致，以 `deploy/<APP_NAME>` 为准。
+
+## 6. Kubernetes YAML
+
+Kubernetes YAML 用于等价审阅、排障和必要时手动部署。正式上线仍以 Helm Chart 为准。
+
+替换以下占位符：
 
 | 占位符 | 说明 |
 | --- | --- |
@@ -359,49 +352,82 @@ CN 部署时只改 5 个值：
 | `AIPROXY_MANAGER_BASE_URL` | `https://aiproxy-web.usw-1.sealos.io` | `https://aiproxy-web.hzh.sealos.run` |
 | `AIPROXY_MODEL_BASE_URL` | `https://aiproxy.usw-1.sealos.io/v1` | `https://aiproxy.hzh.sealos.run/v1` |
 
-## 8. Helm Chart 部署
+## 7. Sealos App 资源
 
-Helm Chart 放在：
+Agent Hub 服务上线后，还需要注册 2 个 Sealos App 资源：
+
+| App | displayType | 作用 |
+| --- | --- | --- |
+| `agenthub` | `normal` | Sealos 桌面主入口 |
+| `agenthub-console` | `hidden` | Console 窗口入口 |
+
+把 `<AGENT_HUB_URL>` 替换成 Agent Hub 的正式访问地址，例如 `https://agenthub-fxeji0zb.usw-1.sealos.app`。
+
+主入口：
+
+```yaml
+apiVersion: app.sealos.io/v1
+kind: App
+metadata:
+  name: agenthub
+  namespace: app-system
+spec:
+  data:
+    desc: Agent Hub Workspace
+    url: "<AGENT_HUB_URL>"
+  icon: "<AGENT_HUB_URL>/brand/agent-hub.svg"
+  i18n:
+    zh:
+      name: Agent Hub
+    zh-Hans:
+      name: Agent Hub
+  menuData:
+  name: Agent Hub
+  type: iframe
+  displayType: normal
+```
+
+Console 窗口入口：
+
+```yaml
+apiVersion: app.sealos.io/v1
+kind: App
+metadata:
+  name: agenthub-console
+  namespace: app-system
+spec:
+  data:
+    desc: Agent Hub Console Window
+    url: "<AGENT_HUB_URL>"
+  icon: "<AGENT_HUB_URL>/brand/agenthub-console.svg"
+  i18n:
+    zh:
+      name: Agent Hub 控制台
+    zh-Hans:
+      name: Agent Hub 控制台
+  menuData:
+  name: Agent Hub Console
+  type: iframe
+  displayType: hidden
+```
+
+对应仓库模板：
 
 ```text
-deploy/charts/agent-hub
+deploy/manifests/agenthub-app.yaml.tmpl
+deploy/manifests/agenthub-console-app.yaml.tmpl
 ```
 
-USW-1：
+`agenthub-console` 必须注册，否则前端无法通过 `openDesktopApp` 打开 Console 窗口。
 
-```bash
-helm upgrade --install agenthub deploy/charts/agent-hub \
-  -n <NAMESPACE> \
-  --set fullnameOverride=<APP_NAME> \
-  --set image.tag=sha-<短 SHA> \
-  --set ingress.host=<APP_HOST>
-```
+## 8. 发布核对清单
 
-CN hzh：
-
-```bash
-helm upgrade --install agenthub deploy/charts/agent-hub \
-  -n <NAMESPACE> \
-  -f deploy/charts/agent-hub/values-cn.yaml \
-  --set fullnameOverride=<APP_NAME> \
-  --set image.tag=sha-<短 SHA> \
-  --set ingress.host=<APP_HOST>
-```
-
-占位符和上面的 K8s YAML 一致：
-
-| 占位符 | 示例 |
-| --- | --- |
-| `<NAMESPACE>` | `ns-fxeji0zb` |
-| `<APP_NAME>` | `agenthub-fxeji0zb` |
-| `<APP_HOST>` | `agenthub-fxeji0zb.usw-1.sealos.app` |
-
-渲染检查：
-
-```bash
-helm template agenthub deploy/charts/agent-hub \
-  -n <NAMESPACE> \
-  --set fullnameOverride=<APP_NAME> \
-  --set image.tag=sha-<短 SHA> \
-  --set ingress.host=<APP_HOST>
-```
+- [ ] 使用 GitHub Actions 产出的 `sha-<短 SHA>` 镜像。
+- [ ] 使用 Helm Chart 执行正式上线。
+- [ ] `PORT`、Container Port 和 Service Port 都是 `8999`。
+- [ ] `REGION` 只填写 `us` 或 `cn`。
+- [ ] `AGENT_TEMPLATE_GITHUB_URL` 指向 `https://github.com/sealos-apps/Agent-Hub-Template`。
+- [ ] `INGRESS_SUFFIX` 和 `SSH_DOMAIN` 与目标集群一致。
+- [ ] AIProxy 管理地址和模型地址与目标集群一致。
+- [ ] `agenthub` 和 `agenthub-console` 两个 App 资源都已注册。
+- [ ] `/healthz` 和 `/readyz` 返回成功。
