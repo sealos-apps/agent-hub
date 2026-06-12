@@ -25,25 +25,23 @@ https://aiproxy-web.usw-1.sealos.io
 
 推荐约定：
 
-- 后端 token 管理地址：`AIPROXY_BASE_URL`
-- 前端 token 管理地址兜底：`VITE_AGENTHUB_AIPROXY_MANAGER_BASE_URL`
-- 前端模型地址兜底：`VITE_AGENTHUB_AIPROXY_MODEL_BASE_URL`
+- 后端 token 管理地址：`AIPROXY_MANAGER_BASE_URL`，兼容旧的 `AIPROXY_BASE_URL`
+- 前端模型地址优先来自 `/api/v1/system/config` 返回的 `aiProxyModelBaseURL`
+- 未配置显式地址时，系统只会从允许的 Sealos 集群地址推导 AIProxy 地址
 
-默认值：
+示例值：
 
 ```text
-AIPROXY_BASE_URL=https://aiproxy-web.hzh.sealos.run
-VITE_AGENTHUB_AIPROXY_MANAGER_BASE_URL=https://aiproxy-web.hzh.sealos.run
-VITE_AGENTHUB_AIPROXY_MODEL_BASE_URL=https://aiproxy.hzh.sealos.run
+AIPROXY_MANAGER_BASE_URL=https://aiproxy-web.usw-1.sealos.io
+AIPROXY_MODEL_BASE_URL=https://aiproxy.usw-1.sealos.io/v1
 ```
 
 说明：
 
 - 文档里的 `https://aiproxy-web.usw-1.sealos.io` 是当前你提供的接口地址示例
-- 项目配置层默认走 `https://aiproxy-web.hzh.sealos.run` 访问 token 管理接口
 - Hermes 运行时真正写入 `agent-model-baseurl` 的模型地址应使用 `https://aiproxy.<region-host>`
 - 例如 `https://usw-1.sealos.io:6443` 对应 `https://aiproxy.usw-1.sealos.io`
-- 如果部署到其他 region，再通过环境变量覆盖兜底值
+- 如果部署到其他 region，通过环境变量配置对应区域地址
 
 ---
 
@@ -52,7 +50,7 @@ VITE_AGENTHUB_AIPROXY_MODEL_BASE_URL=https://aiproxy.hzh.sealos.run
 ### 1.1 创建 token
 
 ```bash
-curl https://aiproxy-web.usw-1.sealos.io/api/v2alpha/token \
+curl https://aiproxy-web.usw-1.sealos.io/api/v2alpha/tokens \
   --request POST \
   --header 'Content-Type: application/json' \
   --header 'Authorization: Bearer YOUR_SECRET_TOKEN' \
@@ -69,7 +67,7 @@ curl https://aiproxy-web.usw-1.sealos.io/api/v2alpha/token \
 ### 1.2 查询 token 列表
 
 ```bash
-curl 'https://aiproxy-web.usw-1.sealos.io/api/v2alpha/token/search' \
+curl 'https://aiproxy-web.usw-1.sealos.io/api/v2alpha/tokens' \
   --header 'Authorization: Bearer YOUR_SECRET_TOKEN'
 ```
 
@@ -81,7 +79,7 @@ curl 'https://aiproxy-web.usw-1.sealos.io/api/v2alpha/token/search' \
 ### 1.3 删除 token
 
 ```bash
-curl https://aiproxy-web.usw-1.sealos.io/api/v2alpha/token/{name} \
+curl https://aiproxy-web.usw-1.sealos.io/api/v2alpha/tokens/{name} \
   --request DELETE \
   --header 'Authorization: Bearer YOUR_SECRET_TOKEN'
 ```
@@ -89,7 +87,7 @@ curl https://aiproxy-web.usw-1.sealos.io/api/v2alpha/token/{name} \
 说明：
 
 - `{name}` 替换成真实 token 名称
-- 例如删除 `brain` 时，路径为 `/api/v2alpha/token/brain`
+- 例如删除 `brain` 时，路径为 `/api/v2alpha/tokens/brain`
 
 ---
 
@@ -103,7 +101,7 @@ curl https://aiproxy-web.usw-1.sealos.io/api/v2alpha/token/{name} \
 ### 2.1 按名称查询 token
 
 ```bash
-curl 'https://aiproxy-web.usw-1.sealos.io/api/v2alpha/token/search?name=brain' \
+curl 'https://aiproxy-web.usw-1.sealos.io/api/v2alpha/tokens?name=brain' \
   --header 'Authorization: URL_ENCODED_KUBECONFIG'
 ```
 
@@ -213,8 +211,9 @@ POST /api/v1/aiproxy/token/ensure
 
 - 前端在用户首次打开 Agent Hub 页面时调用一次该接口
 - 前端仍然把 url encoded kubeconfig 放在 `Authorization` 头里发给后端
-- 后端使用 `AIPROXY_BASE_URL` 访问 token 管理接口，先查询再按需创建
-- 默认 token 名称规则为 `agenthub-<namespace>`
+- 后端使用 `AIPROXY_MANAGER_BASE_URL` 访问 token 管理接口，兼容旧的环境变量名 `AIPROXY_BASE_URL`
+- 后端固定调用 `GET/POST /api/v2alpha/tokens`，不会尝试旧路径或跨区域地址
+- 默认 token 名称规则优先使用 `agent-hub`，兼容旧的命名
 - 名称会被标准化为小写、保留 `a-z` / `0-9` / `-`，并截断到 32 个字符以内
 - 如果 token 已存在，直接复用；如果不存在，再调用创建接口
 - 创建 Agent 时，前端会把 ensure 返回的 `key` 自动注入 `agent-model-apikey`

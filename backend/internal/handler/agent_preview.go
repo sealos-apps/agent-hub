@@ -175,8 +175,8 @@ func createAgentPreview(c *gin.Context, manager *previewManager) {
 	}
 
 	agentName := strings.TrimSpace(c.Param("agentName"))
-	if agentName == "" {
-		writeValidationError(c, appErr.New(appErr.CodeInvalidAgentName, "invalid agent name"))
+	if err := validateAgentName(agentName); err != nil {
+		writeValidationError(c, err)
 		return
 	}
 
@@ -192,6 +192,18 @@ func createAgentPreview(c *gin.Context, manager *previewManager) {
 		resolvedClientset, err := factory.Kubernetes()
 		if err != nil {
 			writeAppError(c, http.StatusInternalServerError, appErr.New(appErr.CodeKubernetesOperation, "failed to build kubernetes clientset"))
+			return
+		}
+		dynamicClient, err := factory.Dynamic()
+		if err != nil {
+			writeAppError(c, http.StatusInternalServerError, appErr.New(appErr.CodeKubernetesOperation, "failed to build kubernetes dynamic client"))
+			return
+		}
+		view, found := getAgentView(c.Request.Context(), factory.Namespace(), agentName, kube.NewRepository(dynamicClient, factory.Namespace()), resolvedClientset, c)
+		if !found {
+			return
+		}
+		if !ensureAgentRunning(c, view.Agent) {
 			return
 		}
 		podRef, err := kube.ResolveAgentPod(c.Request.Context(), resolvedClientset, factory.Namespace(), agentName)
@@ -438,13 +450,25 @@ func (m *previewManager) proxy(writer http.ResponseWriter, request *http.Request
 			req.URL.RawQuery = request.URL.RawQuery
 			req.Host = targetURL.Host
 			req.Header.Set("Accept-Encoding", "identity")
-			stripRequestCookie(req, session.cookieName())
+			req.Header.Del("Cookie")
+			stripPreviewProxySensitiveHeaders(req.Header)
 		},
 		ModifyResponse: func(resp *http.Response) error {
+			resp.Header.Del("Set-Cookie")
+			resp.Header.Set("Content-Security-Policy", "sandbox allow-forms allow-popups allow-scripts")
+			resp.Header.Set("X-Content-Type-Options", "nosniff")
 			return rewritePreviewHTMLResponse(resp, basePath)
 		},
 	}
 	proxy.ServeHTTP(writer, request)
+}
+
+func stripPreviewProxySensitiveHeaders(header http.Header) {
+	header.Del("Authorization")
+	header.Del("Proxy-Authorization")
+	header.Del("X-API-Key")
+	header.Del("X-Api-Key")
+	header.Del("X-Auth-Token")
 }
 
 func (m *previewManager) get(id, agentName, namespace string) *previewSession {

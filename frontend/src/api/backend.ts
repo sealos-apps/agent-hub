@@ -45,9 +45,15 @@ type ChatStreamPayload = {
   messages: Array<{ role: string; content: string }>;
 };
 
-const BACKEND_BASE_URL =
-  import.meta.env.VITE_AGENTHUB_BACKEND_URL ||
-  (import.meta.env.DEV ? "/backend-api" : "/");
+const resolveBackendBaseURL = (value = "") => {
+  const raw = String(value || "").trim() || (import.meta.env.DEV ? "/backend-api" : "/");
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) || raw.startsWith("//") || raw.includes("\\")) {
+    throw new Error("VITE_AGENTHUB_BACKEND_URL must be a same-origin path.");
+  }
+  return raw.startsWith("/") ? raw : `/${raw}`;
+};
+
+const BACKEND_BASE_URL = resolveBackendBaseURL(import.meta.env.VITE_AGENTHUB_BACKEND_URL);
 
 const joinUrlPath = (basePath = "", nextPath = "") => {
   const normalizedBase = String(basePath || "").replace(/\/$/, "");
@@ -364,6 +370,11 @@ export const buildAgentWebSocketUrl = (agentName: string) =>
 
 export const buildAgentTerminalWebSocketUrl = (agentName: string) =>
   buildBackendWsUrl(`/api/v1/agents/${encodeURIComponent(agentName)}/terminal/ws`);
+
+export const __agentHubBackendTest = {
+  buildBackendUrl,
+  resolveBackendBaseURL,
+};
 
 export const createAgentPreview = async (
   agentName: string,

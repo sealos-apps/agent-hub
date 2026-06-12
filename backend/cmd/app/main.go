@@ -30,8 +30,10 @@ func main() {
 		cfg.AIProxyModelBaseURL,
 	)
 	server := &http.Server{
-		Addr:    ":" + cfg.Port,
-		Handler: engine,
+		Addr:              ":" + cfg.Port,
+		Handler:           engine,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 	go func() {
 		<-ctx.Done()

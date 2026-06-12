@@ -82,8 +82,7 @@ PY
 - 推荐：
   1. 先连接 WS
   2. 第一条消息发送 `auth`
-- 兼容：
-  - `/api/v1/agents/:agentName/ws?authorization=<url-encoded-kubeconfig>`
+- 不支持在 URL query 中传 kubeconfig，避免凭证进入访问日志
 
 ## 7. 返回格式
 

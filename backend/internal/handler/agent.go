@@ -999,6 +999,9 @@ func ChatCompletions(c *gin.Context) {
 	if !found {
 		return
 	}
+	if !ensureAgentRunning(c, view.Agent) {
+		return
+	}
 
 	cfg := runtimeConfig(c)
 	templateDef, resolveErr := resolveTemplateDefinition(cfg, view.Agent.TemplateID)
@@ -1021,6 +1024,10 @@ func ChatCompletions(c *gin.Context) {
 	apiBaseURL := strings.TrimSpace(joinAccessURL(view.Agent.IngressDomain, accessPath(templateDef, "api")))
 	if apiBaseURL == "" {
 		writeAppError(c, http.StatusInternalServerError, appErr.New(appErr.CodeKubernetesOperation, "agent ingress domain is unavailable"))
+		return
+	}
+	if domainErr := validateAgentIngressDomain(view.Agent.IngressDomain, cfg.IngressSuffix); domainErr != nil {
+		writeAppError(c, http.StatusBadGateway, domainErr)
 		return
 	}
 

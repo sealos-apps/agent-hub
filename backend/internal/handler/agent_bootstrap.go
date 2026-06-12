@@ -57,6 +57,24 @@ func bootstrapLifecycleTimeout(templateDef agenttemplate.Definition) time.Durati
 	return time.Duration(total) * time.Second
 }
 
+func waitForAgentPod(ctx context.Context, clientset kubernetes.Interface, factory *kube.Factory, agentName string) (kube.PodRef, error) {
+	ticker := time.NewTicker(bootstrapPollInterval)
+	defer ticker.Stop()
+
+	for {
+		pod, err := kube.ResolveAgentPod(ctx, clientset, factory.Namespace(), agentName)
+		if err == nil {
+			return pod, nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return kube.PodRef{}, fmt.Errorf("agent pod %s is not ready: %w", agentName, ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
 func runAgentBootstrapLifecycle(
 	ctx context.Context,
 	factory *kube.Factory,
@@ -89,11 +107,10 @@ func runAgentBootstrapLifecycle(
 		}
 
 		if err := executeTemplateScript(ctx, clientset, factory, spec.Name, templateDef.Bootstrap.Script, templateDef.BootstrapScriptPath(), templateDef.Bootstrap.TimeoutSeconds); err != nil {
-			if fallbackErr := runBootstrapFallback(ctx, factory, spec, err); fallbackErr != nil {
-				message := truncateBootstrapMessage(fallbackErr.Error())
-				_ = persistBootstrapStatus(context.Background(), repo, spec.Name, kube.BootstrapPhaseFailed, message)
-				return fallbackErr
-			}
+			bootstrapErr := fmt.Errorf("template bootstrap failed: %w", err)
+			message := truncateBootstrapMessage(bootstrapErr.Error())
+			_ = persistBootstrapStatus(context.Background(), repo, spec.Name, kube.BootstrapPhaseFailed, message)
+			return bootstrapErr
 		}
 	}
 
@@ -139,19 +156,6 @@ func bootstrapAgentSpec(ctx context.Context, repo *kube.Repository, agentName st
 		return agent.Agent{}, fmt.Errorf("read agent model metadata after bootstrap script: %w", err)
 	}
 	return view.Agent, nil
-}
-
-func runBootstrapFallback(ctx context.Context, factory *kube.Factory, spec agent.Agent, bootstrapErr error) error {
-	if strings.TrimSpace(spec.TemplateID) != "hermes-agent" {
-		return fmt.Errorf("template bootstrap failed: %w", bootstrapErr)
-	}
-
-	if err := configureHermesModel(ctx, factory, spec); err != nil {
-		return fmt.Errorf("template bootstrap failed: %w; hermes fallback failed: %v", bootstrapErr, err)
-	}
-
-	log.Printf("template bootstrap failed for %s/%s, recovered via Hermes fallback: %v", factory.Namespace(), spec.Name, bootstrapErr)
-	return nil
 }
 
 func waitForTemplateHealthcheck(

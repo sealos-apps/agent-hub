@@ -114,7 +114,7 @@ func (s Source) resolveGitHubCacheDir() (string, error) {
 	if err := os.RemoveAll(tmpDir); err != nil {
 		return "", fmt.Errorf("clear github template cache: %w", err)
 	}
-	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
+	if err := os.MkdirAll(tmpDir, 0o750); err != nil {
 		return "", fmt.Errorf("create github template cache: %w", err)
 	}
 	if err := s.downloadGitHubArchive(repo, tmpDir); err != nil {
@@ -122,7 +122,7 @@ func (s Source) resolveGitHubCacheDir() (string, error) {
 		return "", err
 	}
 
-	if err := os.WriteFile(filepath.Join(tmpDir, ".ready"), []byte(time.Now().UTC().Format(time.RFC3339Nano)+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpDir, ".ready"), []byte(time.Now().UTC().Format(time.RFC3339Nano)+"\n"), 0o600); err != nil {
 		_ = os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("mark github template cache ready: %w", err)
 	}
@@ -145,7 +145,7 @@ func (s Source) downloadGitHubArchive(repo githubTemplateRepo, targetDir string)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "agent-hub-template-loader")
-	if token := strings.TrimSpace(s.GitHubToken); token != "" {
+	if token := strings.TrimSpace(s.GitHubToken); token != "" && repo.shouldAttachGitHubToken() {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
@@ -168,18 +168,18 @@ func (s Source) downloadGitHubArchive(repo githubTemplateRepo, targetDir string)
 }
 
 type githubTemplateRepo struct {
-	Owner  string
-	Repo   string
-	Ref    string
-	Path   string
-	RawURL string
+	Owner string
+	Repo  string
+	Ref   string
+	Path  string
 }
 
 func (r githubTemplateRepo) archiveURL() string {
-	if r.RawURL != "" {
-		return r.RawURL
-	}
 	return fmt.Sprintf("https://api.github.com/repos/%s/%s/tarball/%s", r.Owner, r.Repo, url.PathEscape(r.Ref))
+}
+
+func (r githubTemplateRepo) shouldAttachGitHubToken() bool {
+	return strings.TrimSpace(r.Owner) != "" && strings.TrimSpace(r.Repo) != ""
 }
 
 func parseGitHubTemplateURL(raw string) (githubTemplateRepo, error) {
@@ -199,9 +199,6 @@ func parseGitHubTemplateURL(raw string) (githubTemplateRepo, error) {
 		}
 	}
 
-	if strings.HasSuffix(parsed.Path, ".tar.gz") {
-		return githubTemplateRepo{Ref: defaultGitHubRef, RawURL: parsed.String()}, nil
-	}
 	if !strings.EqualFold(parsed.Host, "github.com") {
 		return githubTemplateRepo{}, fmt.Errorf("github template url must use github.com")
 	}
@@ -286,11 +283,11 @@ func extractTemplateArchive(reader io.Reader, targetDir, sourcePath string) erro
 
 		switch header.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(targetPath, 0o755); err != nil {
+			if err := os.MkdirAll(targetPath, 0o750); err != nil {
 				return fmt.Errorf("create template archive directory: %w", err)
 			}
 		case tar.TypeReg, tar.TypeRegA:
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0o750); err != nil {
 				return fmt.Errorf("create template archive directory: %w", err)
 			}
 			if err := writeArchiveFile(targetPath, tarReader, header.FileInfo().Mode()); err != nil {
@@ -330,7 +327,7 @@ func archiveRelativePath(name, sourcePath string) (string, bool) {
 }
 
 func writeArchiveFile(targetPath string, reader io.Reader, mode os.FileMode) error {
-	file, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode.Perm())
+	file, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode.Perm()&0o600)
 	if err != nil {
 		return fmt.Errorf("create template archive file: %w", err)
 	}

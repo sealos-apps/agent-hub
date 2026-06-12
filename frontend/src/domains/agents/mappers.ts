@@ -118,6 +118,55 @@ export const getWorkspaceItem = (
   key: string,
 ) => item.workspacesByKey[key] || null;
 
+const runtimeUnavailableReason = (status: AgentRuntimeStatus) =>
+  status === "stopped" ? "agent_paused" : "";
+
+const blockRuntimeAccessWhenNotRunning = (
+  item: AgentAccessItem,
+  status: AgentRuntimeStatus,
+): AgentAccessItem => {
+  if (status === "running" || !["api", "terminal", "files", "web-ui", "ssh", "ide"].includes(item.key)) {
+    return item;
+  }
+
+  return {
+    ...item,
+    enabled: false,
+    status: status === "stopped" ? "paused" : "pending",
+    reason: runtimeUnavailableReason(status) || item.reason,
+  };
+};
+
+const blockRuntimeActionWhenNotRunning = (
+  item: AgentActionItem,
+  status: AgentRuntimeStatus,
+): AgentActionItem => {
+  if (status === "running" || !["open-chat", "open-terminal", "open-files"].includes(item.key)) {
+    return item;
+  }
+
+  return {
+    ...item,
+    enabled: false,
+    reason: runtimeUnavailableReason(status) || item.reason,
+  };
+};
+
+const blockRuntimeWorkspaceWhenNotRunning = (
+  item: AgentWorkspaceItem,
+  status: AgentRuntimeStatus,
+): AgentWorkspaceItem => {
+  if (status === "running" || !["chat", "terminal", "files", "web-ui"].includes(item.key)) {
+    return item;
+  }
+
+  return {
+    ...item,
+    enabled: false,
+    reason: runtimeUnavailableReason(status) || item.reason,
+  };
+};
+
 const collectBlueprintSettingsValues = (fields: AgentSettingField[] = []) =>
   fields.reduce<Record<string, string>>((result, field) => {
     if (typeof field.value === "string") {
@@ -188,10 +237,19 @@ const buildAgentListItem = (
   template: AgentTemplateDefinition,
   clusterInfo: ClusterInfo | null,
 ): AgentListItem => {
-  const accessByKey = indexAccessItems(contract.access);
-  const actionsByKey = indexActionItems(contract.actions);
-  const workspacesByKey = indexWorkspaceItems(contract.workspaces);
   const status = mapRawStatusToRuntimeStatus(contract.core.status);
+  const access = contract.access.map((item) =>
+    blockRuntimeAccessWhenNotRunning(item, status),
+  );
+  const actions = contract.actions.map((item) =>
+    blockRuntimeActionWhenNotRunning(item, status),
+  );
+  const workspaces = contract.workspaces.map((item) =>
+    blockRuntimeWorkspaceWhenNotRunning(item, status),
+  );
+  const accessByKey = indexAccessItems(access);
+  const actionsByKey = indexActionItems(actions);
+  const workspacesByKey = indexWorkspaceItems(workspaces);
   const apiAccess = accessByKey.api || null;
   const terminalAccess = accessByKey.terminal || null;
   const sshAccess = accessByKey.ssh || null;
@@ -219,11 +277,11 @@ const buildAgentListItem = (
     templateId: template.id,
     template,
     contract,
-    workspaces: contract.workspaces,
+    workspaces,
     workspacesByKey,
-    access: contract.access,
+    access,
     accessByKey,
-    actions: contract.actions,
+    actions,
     actionsByKey,
     rawStatus: contract.core.status,
     modelProvider: contract.runtime.modelProvider || "",

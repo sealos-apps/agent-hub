@@ -3,8 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	agentws "github.com/nightwhite/Agent-Hub/internal/ws"
 	"k8s.io/client-go/tools/remotecommand"
 )
@@ -30,6 +32,21 @@ func TestAgentTerminalAuthMessageDecode(t *testing.T) {
 	}
 	if msg.Type != "auth" || msg.Authorization != "apiVersion%3A%20v1" || msg.Cwd != "/workspace" {
 		t.Fatalf("decoded auth message = %#v", msg)
+	}
+}
+
+func TestAgentTerminalWebSocketRejectsInvalidAgentName(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.GET("/api/v1/agents/:agentName/terminal/ws", AgentTerminalWebSocket)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/agents/../terminal/ws", nil)
+	recorder := httptest.NewRecorder()
+
+	engine.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("terminal websocket invalid agent status = %d, want %d", recorder.Code, http.StatusUnprocessableEntity)
 	}
 }
 

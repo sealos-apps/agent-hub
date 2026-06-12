@@ -71,6 +71,13 @@ type WebTab = {
   refreshKey: number
   preview?: PreviewMetadata
 }
+
+const PREVIEW_WEB_TAB_SANDBOX_POLICY = 'allow-forms allow-popups allow-scripts'
+const SERVICE_WEB_TAB_SANDBOX_POLICY = 'allow-forms allow-popups allow-same-origin allow-scripts'
+
+export const getWebTabSandboxPolicy = (tab: { preview?: unknown }) =>
+  tab.preview ? PREVIEW_WEB_TAB_SANDBOX_POLICY : SERVICE_WEB_TAB_SANDBOX_POLICY
+
 type FileTab = {
   id: string
   type: 'file'
@@ -482,6 +489,8 @@ function WebTabPane({ isVisible, tab }: { isVisible: boolean; tab: WebTab }) {
       <iframe
         className="h-full w-full border-0 bg-white"
         key={`${tab.id}-${tab.refreshKey}`}
+        referrerPolicy="strict-origin-when-cross-origin"
+        sandbox={getWebTabSandboxPolicy(tab)}
         src={tab.url}
         tabIndex={isVisible ? undefined : -1}
         title={tab.title}
@@ -1028,7 +1037,7 @@ export function AgentConsoleWindowPage() {
         setExplorerLoading((current) => ({ ...current, [normalizedPath]: false }))
       }
     },
-    [clusterContext, item, readDirectory],
+    [clusterContext, item, readDirectory, t],
   )
 
   useEffect(() => {
@@ -1287,7 +1296,7 @@ export function AgentConsoleWindowPage() {
         return false
       }
     },
-    [saveFile],
+    [saveFile, t],
   )
 
   const confirmDirtyFileTabRemoval = useCallback(async (matchingTabs: FileTab[]) => {
@@ -1445,7 +1454,7 @@ export function AgentConsoleWindowPage() {
         )
       }
     },
-    [readFile],
+    [readFile, t],
   )
 
   const openFileTab = useCallback(

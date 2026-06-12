@@ -2,7 +2,7 @@
 // @ts-nocheck
 
 import { parse as parseYaml } from 'yaml'
-import { dedupeAuthCandidates, getNow, maskTokenForLog, toKubeconfigScalar } from './shared'
+import { getNow, toKubeconfigScalar } from './shared'
 
 const isRecord = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -85,71 +85,36 @@ const decodeBase64Utf8 = (value = '') => {
   return ''
 }
 
-const extractExecEnvTokenCandidates = (envList = []) =>
-  dedupeAuthCandidates(
-    (Array.isArray(envList) ? envList : [])
-      .filter((entry) => /token/i.test(entry?.name || ''))
-      .map((entry) => ({
-        source: `kubeconfig exec env ${entry?.name || 'token'}`,
-        token: entry?.value,
-      })),
-  )
-
-const extractKubeconfigAuthCandidates = (userConfig = {}) => {
-  const authProviderConfig = userConfig?.['auth-provider']?.config || userConfig?.authProvider?.config || {}
-
-  return dedupeAuthCandidates([
-    { source: 'kubeconfig token', token: userConfig?.token },
-    { source: 'kubeconfig id-token', token: userConfig?.['id-token'] },
-    { source: 'kubeconfig access-token', token: userConfig?.['access-token'] },
-    {
-      source: 'kubeconfig auth-provider id-token',
-      token: authProviderConfig?.['id-token'] || authProviderConfig?.idToken,
-    },
-    {
-      source: 'kubeconfig auth-provider access-token',
-      token: authProviderConfig?.['access-token'] || authProviderConfig?.accessToken,
-    },
-    ...extractExecEnvTokenCandidates(userConfig?.exec?.env),
-  ])
-}
-
 const parseKubeconfigStruct = (kubeconfig = '') => {
   if (!kubeconfig) return {}
 
   try {
     const parsed = parseYaml(kubeconfig) || {}
     const contexts = Array.isArray(parsed.contexts) ? parsed.contexts : []
-    const users = Array.isArray(parsed.users) ? parsed.users : []
     const clusters = Array.isArray(parsed.clusters) ? parsed.clusters : []
 
     const currentContextName = parsed['current-context']
     const selectedContext = contexts.find((item) => item?.name === currentContextName) || contexts[0]
 
     const namespace = toKubeconfigScalar(selectedContext?.context?.namespace)
-    const userName = selectedContext?.context?.user
     const clusterName = selectedContext?.context?.cluster
 
-    const selectedUser = users.find((item) => item?.name === userName) || users[0]
     const selectedCluster = clusters.find((item) => item?.name === clusterName) || clusters[0]
-    const authCandidates = extractKubeconfigAuthCandidates(selectedUser?.user || {})
 
     return {
       namespace,
-      token: authCandidates[0]?.token || '',
-      authCandidates,
       server: toKubeconfigScalar(selectedCluster?.cluster?.server),
     }
   } catch (error) {
-    console.warn('[k8s-api] parse kubeconfig with yaml failed, fallback to line parser', {
+    console.warn('[k8s-api] parse kubeconfig with yaml failed', {
       message: error?.message,
     })
     return {}
   }
 }
 
-const parseKubeconfigValues = (kubeconfig = '', key) => {
-  if (!kubeconfig || !key) return []
+const parseKubeconfigValue = (kubeconfig = '', key) => {
+  if (!kubeconfig || !key) return ''
 
   const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const lines = kubeconfig.split('\n')
@@ -187,10 +152,8 @@ const parseKubeconfigValues = (kubeconfig = '', key) => {
     }
   }
 
-  return values
+  return values[0] || ''
 }
-
-const parseKubeconfigValue = (kubeconfig = '', key) => parseKubeconfigValues(kubeconfig, key)[0] || ''
 
 const normalizeKubeconfig = (raw = '') => {
   const source = toKubeconfigScalar(raw)
@@ -253,14 +216,12 @@ const extractSessionSnapshot = (session) => {
     kubeconfig,
     server: findScalarByKeys(records, ['server', 'clusterServer', 'apiServer']),
     namespace: findScalarByKeys(records, ['namespace', 'nsid', 'ns']),
-    token: findScalarByKeys(records, ['token', 'accessToken', 'access_token', 'idToken', 'id_token']),
     userId: findScalarByKeys(records, ['id', 'userId', 'uid']),
     userName: findScalarByKeys(records, ['name', 'username', 'userName']),
   }
 }
 
 export const createClusterContext = (session) => {
-  const storedOperator = typeof window !== 'undefined' ? sessionStorage.getItem('hermes-operator') || '' : ''
   const sessionSnapshot = extractSessionSnapshot(session)
   const kubeconfig = sessionSnapshot.kubeconfig
   const parsedKubeconfig = parseKubeconfigStruct(kubeconfig)
@@ -270,25 +231,7 @@ export const createClusterContext = (session) => {
       parsedKubeconfig.namespace ||
       parseKubeconfigValue(kubeconfig, 'namespace'),
   )
-  const sessionToken = toKubeconfigScalar(sessionSnapshot.token)
-  const authCandidates = dedupeAuthCandidates([
-    ...(parsedKubeconfig.authCandidates || []),
-    ...parseKubeconfigValues(kubeconfig, 'token').map((token) => ({
-      source: 'kubeconfig token (line fallback)',
-      token,
-    })),
-    ...parseKubeconfigValues(kubeconfig, 'id-token').map((token) => ({
-      source: 'kubeconfig id-token (line fallback)',
-      token,
-    })),
-    ...parseKubeconfigValues(kubeconfig, 'access-token').map((token) => ({
-      source: 'kubeconfig access-token (line fallback)',
-      token,
-    })),
-    { source: 'session token', token: sessionToken },
-  ])
-  const token = parsedKubeconfig.token || authCandidates[0]?.token || ''
-  const operator = sessionSnapshot.userId || sessionSnapshot.userName || storedOperator || 'workspace'
+  const operator = sessionSnapshot.userId || sessionSnapshot.userName || 'workspace'
   const agentLabel = operator
 
   if (!kubeconfig) {
@@ -303,25 +246,17 @@ export const createClusterContext = (session) => {
     throw new Error('No namespace parsed from SDK session')
   }
 
-  if (typeof window !== 'undefined') {
-    sessionStorage.setItem('hermes-kubeconfig', kubeconfig)
-    sessionStorage.setItem('hermes-operator', operator)
-  }
-
   console.info('[k8s-api] cluster context parsed', {
     namespace,
     server,
-    tokenFromKubeconfig: maskTokenForLog(token),
-    tokenFromSession: maskTokenForLog(sessionToken),
-    authSources: authCandidates.map((candidate) => candidate.source),
   })
 
   return {
     server,
     namespace,
-    token,
-    sessionToken,
-    authCandidates,
+    token: '',
+    sessionToken: '',
+    authCandidates: [] as Array<{ source: string; token: string }>,
     activeAuthToken: '',
     activeAuthSource: '',
     operator,

@@ -10,9 +10,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/nightwhite/Agent-Hub/internal/agent"
 	"github.com/nightwhite/Agent-Hub/internal/kube"
 	agentws "github.com/nightwhite/Agent-Hub/internal/ws"
-	appErr "github.com/nightwhite/Agent-Hub/pkg/errors"
 	"k8s.io/client-go/tools/remotecommand"
 )
 
@@ -48,8 +48,8 @@ type agentTerminalSession struct {
 
 func AgentTerminalWebSocket(c *gin.Context) {
 	agentName := strings.TrimSpace(c.Param("agentName"))
-	if agentName == "" {
-		writeValidationError(c, appErr.New(appErr.CodeInvalidAgentName, "invalid agent name"))
+	if err := validateAgentName(agentName); err != nil {
+		writeValidationError(c, err)
 		return
 	}
 
@@ -92,6 +92,25 @@ func (s *agentTerminalSession) run(c *gin.Context, agentName string) {
 	clientset, err := factory.Kubernetes()
 	if err != nil {
 		_ = s.send(agentTerminalMessage{Type: "error", Code: "kubernetes_client_failed", Data: "failed to build kubernetes clientset"})
+		return
+	}
+	dynamicClient, err := factory.Dynamic()
+	if err != nil {
+		_ = s.send(agentTerminalMessage{Type: "error", Code: "kubernetes_client_failed", Data: "failed to build kubernetes dynamic client"})
+		return
+	}
+	devbox, err := kube.NewRepository(dynamicClient, factory.Namespace()).Get(s.ctx, agentName)
+	if err != nil {
+		_ = s.send(agentTerminalMessage{Type: "error", Code: "agent_not_found", Data: "agent not found"})
+		return
+	}
+	view, err := kube.DevboxToAgentView(devbox)
+	if err != nil {
+		_ = s.send(agentTerminalMessage{Type: "error", Code: "agent_state_unavailable", Data: "failed to load agent state"})
+		return
+	}
+	if view.Agent.Status != agent.StatusRunning {
+		_ = s.send(agentTerminalMessage{Type: "error", Code: "agent_not_running", Data: "agent is not running"})
 		return
 	}
 

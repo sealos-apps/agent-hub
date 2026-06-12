@@ -8,9 +8,15 @@ import (
 	"github.com/nightwhite/Agent-Hub/internal/aiproxy"
 )
 
-const fallbackAIProxyBaseURL = "https://aiproxy-web.hzh.sealos.run"
-const fallbackAIProxyModelBaseURL = "https://aiproxy.hzh.sealos.run/v1"
 const agentHubAIProxyTokenDisplayName = "Agent-Hub"
+
+var sealosServiceHosts = []string{
+	"usw.sealos.io",
+	"usw-1.sealos.io",
+	"hzh.sealos.run",
+	"bja.sealos.run",
+	"gzg.sealos.run",
+}
 
 func resolveAIProxyBaseURL(explicitBaseURL, clusterServer string) string {
 	if baseURL := strings.TrimSpace(explicitBaseURL); baseURL != "" {
@@ -21,7 +27,7 @@ func resolveAIProxyBaseURL(explicitBaseURL, clusterServer string) string {
 		return derived
 	}
 
-	return fallbackAIProxyBaseURL
+	return ""
 }
 
 func deriveAIProxyBaseURL(clusterServer string) string {
@@ -37,7 +43,7 @@ func resolveAIProxyModelBaseURL(explicitBaseURL, clusterServer string) string {
 		return normalizeAIProxyModelBaseURL(derived)
 	}
 
-	return normalizeAIProxyModelBaseURL(fallbackAIProxyModelBaseURL)
+	return ""
 }
 
 func deriveAIProxyModelBaseURL(clusterServer string) string {
@@ -54,11 +60,36 @@ func deriveClusterServiceURL(clusterServer, subdomain string) string {
 	if host == "" {
 		return ""
 	}
-	if !strings.Contains(host, "sealos.") {
+	if !isAllowedSealosServiceHost(host) {
 		return ""
 	}
 
 	return "https://" + subdomain + "." + host
+}
+
+func isAllowedSealosServiceHost(host string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(host))
+	if normalized == "" {
+		return false
+	}
+
+	for _, item := range sealosServiceHosts {
+		pattern := strings.ToLower(strings.TrimSpace(item))
+		if pattern == "" {
+			continue
+		}
+		if strings.HasPrefix(pattern, ".") {
+			if normalized == strings.TrimPrefix(pattern, ".") || strings.HasSuffix(normalized, pattern) {
+				return true
+			}
+			continue
+		}
+		if normalized == pattern {
+			return true
+		}
+	}
+
+	return false
 }
 
 func normalizeAIProxyModelBaseURL(value string) string {

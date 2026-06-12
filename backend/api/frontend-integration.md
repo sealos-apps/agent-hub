@@ -95,8 +95,7 @@ WebSocket 当前也可联调：
 - 推荐浏览器流程：
   1. 先连接 WS
   2. 第一条消息发送 `auth`
-- 兼容方式：
-  - `/api/v1/agents/:agentName/ws?authorization=<url-encoded-kubeconfig>`
+- 不支持在 URL query 中传 kubeconfig，避免凭证进入访问日志
 
 ## 4. 统一响应格式
 

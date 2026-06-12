@@ -128,6 +128,9 @@ func TestBuildDoesNotLeakIngressAnnotationsToOtherResources(t *testing.T) {
 	if got := objects.Ingress.Annotations["nginx.ingress.kubernetes.io/proxy-body-size"]; got != "32m" {
 		t.Fatalf("Build() ingress proxy-body-size = %q, want 32m", got)
 	}
+	if got := objects.Ingress.Annotations["nginx.ingress.kubernetes.io/server-snippet"]; got != "" {
+		t.Fatalf("Build() ingress server-snippet = %q, want empty", got)
+	}
 }
 
 func TestBuildWithManagedAIProxyProviderClearsOpenAIBaseURL(t *testing.T) {

@@ -145,7 +145,7 @@ export function AgentActionsCell({
             <DropdownMenuItem
               destructive={menuItem.destructive}
               disabled={menuItem.disabled}
-              onClick={menuItem.onClick}
+              onClick={menuItem.disabled ? undefined : menuItem.onClick}
               title={menuItem.title}
             >
               <Icon size={15} />

@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -205,9 +206,30 @@ func resolveAgentAccessItem(
 		Modes:      append([]string(nil), item.Modes...),
 	}
 
+	if !isRuntimeAccessAllowed(spec) {
+		entry.Status = runtimeAccessStatus(spec)
+		entry.Reason = runtimeAccessReason(spec)
+		switch item.Key {
+		case "api", "web-ui":
+			entry.URL = joinAccessURL(spec.IngressDomain, item.Path)
+			entry.Auth = item.Auth
+		case "files":
+			entry.RootPath = firstNonEmpty(item.RootPath, spec.WorkingDir)
+		case "ssh", "ide":
+			entry.Host = strings.TrimSpace(cfg.SSHDomain)
+			entry.Port = spec.SSHPort
+			entry.UserName = firstNonEmpty(spec.User, templateDef.User)
+		}
+		return entry
+	}
+
 	switch item.Key {
 	case "api":
 		entry.Auth = item.Auth
+		if domainErr := validateAgentIngressDomain(spec.IngressDomain, cfg.IngressSuffix); domainErr != nil {
+			entry.Reason = "ingress_domain_invalid"
+			return entry
+		}
 		entry.URL = joinAccessURL(spec.IngressDomain, item.Path)
 		if entry.URL == "" {
 			entry.Reason = "api_url_unavailable"
@@ -270,6 +292,10 @@ func resolveAgentAccessItem(
 		entry.Reason = ssh.Reason
 		return entry
 	case "web-ui":
+		if domainErr := validateAgentIngressDomain(spec.IngressDomain, cfg.IngressSuffix); domainErr != nil {
+			entry.Reason = "ingress_domain_invalid"
+			return entry
+		}
 		entry.URL = joinAccessURL(spec.IngressDomain, item.Path)
 		if entry.URL == "" {
 			entry.Reason = "web_ui_url_unavailable"
@@ -462,6 +488,24 @@ func accessStatus(ready bool) string {
 	return "pending"
 }
 
+func isRuntimeAccessAllowed(spec agent.Agent) bool {
+	return (spec.Status == "" || spec.Status == agent.StatusRunning) && spec.Ready
+}
+
+func runtimeAccessStatus(spec agent.Agent) string {
+	if spec.Status == agent.StatusPaused {
+		return "paused"
+	}
+	return accessStatus(spec.Ready)
+}
+
+func runtimeAccessReason(spec agent.Agent) string {
+	if spec.Status == agent.StatusPaused {
+		return "agent_paused"
+	}
+	return bootstrapReason(spec)
+}
+
 func bootstrapReason(spec agent.Agent) string {
 	if strings.TrimSpace(spec.BootstrapMessage) != "" {
 		return spec.BootstrapMessage
@@ -482,6 +526,39 @@ func joinAccessURL(host, path string) string {
 		normalizedPath = "/" + normalizedPath
 	}
 	return "https://" + host + normalizedPath
+}
+
+func validateAgentIngressDomain(host, ingressSuffix string) *appErr.AppError {
+	normalizedHost := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
+	normalizedSuffix := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(ingressSuffix), "."))
+	if normalizedHost == "" || normalizedSuffix == "" {
+		return appErr.New(appErr.CodeKubernetesOperation, "agent ingress domain is unavailable")
+	}
+	if !isDNSSubdomain(normalizedHost) || !isDNSSubdomain(normalizedSuffix) {
+		return appErr.New(appErr.CodeKubernetesOperation, "agent ingress domain is invalid")
+	}
+	if ip := net.ParseIP(normalizedHost); ip != nil {
+		return appErr.New(appErr.CodeKubernetesOperation, "agent ingress domain is invalid")
+	}
+	if normalizedHost != normalizedSuffix && strings.HasSuffix(normalizedHost, "."+normalizedSuffix) {
+		return nil
+	}
+	return appErr.New(appErr.CodeKubernetesOperation, "agent ingress domain does not match configured suffix").WithDetails(map[string]any{
+		"host":   normalizedHost,
+		"suffix": normalizedSuffix,
+	})
+}
+
+func isDNSSubdomain(value string) bool {
+	if value == "" || len(value) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(value, ".") {
+		if !agent.ValidateName(label) {
+			return false
+		}
+	}
+	return true
 }
 
 func firstNonEmpty(values ...string) string {

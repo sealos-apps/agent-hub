@@ -20,12 +20,39 @@ func TestResolveAIProxyBaseURLDerivesFromClusterServer(t *testing.T) {
 	}
 }
 
-func TestResolveAIProxyBaseURLFallsBackWhenClusterServerIsUnsupported(t *testing.T) {
+func TestResolveAIProxyBaseURLRejectsUnknownSealosSubdomain(t *testing.T) {
+	t.Parallel()
+
+	got := resolveAIProxyBaseURL("", "https://evil.sealos.run:6443")
+	if got != "" {
+		t.Fatalf("resolveAIProxyBaseURL() = %q, want empty value", got)
+	}
+}
+
+func TestResolveAIProxyBaseURLReturnsEmptyWhenClusterServerIsUnsupported(t *testing.T) {
 	t.Parallel()
 
 	got := resolveAIProxyBaseURL("", "https://127.0.0.1:6443")
-	if got != fallbackAIProxyBaseURL {
-		t.Fatalf("resolveAIProxyBaseURL() = %q, want fallback %q", got, fallbackAIProxyBaseURL)
+	if got != "" {
+		t.Fatalf("resolveAIProxyBaseURL() = %q, want empty value", got)
+	}
+}
+
+func TestResolveAIProxyBaseURLRejectsSealosSuffixLookalikes(t *testing.T) {
+	t.Parallel()
+
+	for _, clusterServer := range []string{
+		"https://evilsealos.io:6443",
+		"https://usw-1.sealos.io.evil.com:6443",
+	} {
+		t.Run(clusterServer, func(t *testing.T) {
+			t.Parallel()
+
+			got := resolveAIProxyBaseURL("", clusterServer)
+			if got != "" {
+				t.Fatalf("resolveAIProxyBaseURL(%q) = %q, want empty value", clusterServer, got)
+			}
+		})
 	}
 }
 
@@ -65,12 +92,39 @@ func TestResolveAIProxyModelBaseURLDerivesFromClusterServer(t *testing.T) {
 	}
 }
 
-func TestResolveAIProxyModelBaseURLFallsBackWhenClusterServerIsUnsupported(t *testing.T) {
+func TestResolveAIProxyModelBaseURLRejectsUnknownSealosSubdomain(t *testing.T) {
+	t.Parallel()
+
+	got := resolveAIProxyModelBaseURL("", "https://evil.sealos.io:6443")
+	if got != "" {
+		t.Fatalf("resolveAIProxyModelBaseURL() = %q, want empty value", got)
+	}
+}
+
+func TestResolveAIProxyModelBaseURLReturnsEmptyWhenClusterServerIsUnsupported(t *testing.T) {
 	t.Parallel()
 
 	got := resolveAIProxyModelBaseURL("", "https://127.0.0.1:6443")
-	if got != fallbackAIProxyModelBaseURL {
-		t.Fatalf("resolveAIProxyModelBaseURL() = %q, want fallback %q", got, fallbackAIProxyModelBaseURL)
+	if got != "" {
+		t.Fatalf("resolveAIProxyModelBaseURL() = %q, want empty value", got)
+	}
+}
+
+func TestResolveAIProxyModelBaseURLRejectsSealosSuffixLookalikes(t *testing.T) {
+	t.Parallel()
+
+	for _, clusterServer := range []string{
+		"https://evilsealos.run:6443",
+		"https://hzh.sealos.run.evil.com:6443",
+	} {
+		t.Run(clusterServer, func(t *testing.T) {
+			t.Parallel()
+
+			got := resolveAIProxyModelBaseURL("", clusterServer)
+			if got != "" {
+				t.Fatalf("resolveAIProxyModelBaseURL(%q) = %q, want empty value", clusterServer, got)
+			}
+		})
 	}
 }
 

@@ -1,0 +1,9 @@
+env:
+  REGION: cn
+  INGRESS_SUFFIX: agent.hzh.sealos.run
+  SSH_DOMAIN: ssh.hzh.sealos.run
+  AIPROXY_MANAGER_BASE_URL: https://aiproxy-web.hzh.sealos.run
+  AIPROXY_MODEL_BASE_URL: https://aiproxy.hzh.sealos.run/v1
+
+ingress:
+  host: agenthub.example.hzh.sealos.run

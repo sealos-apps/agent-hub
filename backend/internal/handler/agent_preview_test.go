@@ -337,7 +337,7 @@ func TestPreviewProxyRequestsIdentityEncoding(t *testing.T) {
 	}
 }
 
-func TestPreviewProxyStripsSessionCookieFromUpstreamRequest(t *testing.T) {
+func TestPreviewProxyStripsCookiesFromUpstreamRequest(t *testing.T) {
 	t.Parallel()
 
 	seenCookie := make(chan string, 1)
@@ -371,8 +371,53 @@ func TestPreviewProxyStripsSessionCookieFromUpstreamRequest(t *testing.T) {
 
 	manager.proxy(recorder, request, session.ID, "/")
 
-	if got := <-seenCookie; got != "app_session=keep" {
-		t.Fatalf("upstream Cookie = %q, want only non-preview cookie", got)
+	if got := <-seenCookie; got != "" {
+		t.Fatalf("upstream Cookie = %q, want no cookies", got)
+	}
+}
+
+func TestPreviewProxyStripsSensitiveRequestHeaders(t *testing.T) {
+	t.Parallel()
+
+	seenHeaders := make(chan http.Header, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenHeaders <- r.Header.Clone()
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("preview ok"))
+	}))
+	defer upstream.Close()
+
+	manager := newPreviewManager(previewManagerOptions{
+		basePath: "/__preview",
+		starter: previewTunnelStarterFunc(func(context.Context, previewTunnelTarget) (previewTunnel, error) {
+			return &fakePreviewTunnel{target: upstream.URL}, nil
+		}),
+	})
+	session, err := manager.create(context.Background(), previewCreateOptions{
+		agentName: "demo-agent",
+		namespace: "ns-test",
+		podName:   "demo-pod",
+		port:      3000,
+	})
+	if err != nil {
+		t.Fatalf("manager.create() error = %v, want nil", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/__preview/"+session.ID+"/", nil)
+	request.AddCookie(&http.Cookie{Name: session.cookieName(), Value: session.Secret})
+	request.Header.Set("Authorization", "Bearer agenthub-token")
+	request.Header.Set("Proxy-Authorization", "Basic secret")
+	request.Header.Set("X-API-Key", "agenthub-api-key")
+	request.Header.Set("X-Auth-Token", "agenthub-auth-token")
+	recorder := httptest.NewRecorder()
+
+	manager.proxy(recorder, request, session.ID, "/")
+
+	headers := <-seenHeaders
+	for _, key := range []string{"Authorization", "Proxy-Authorization", "X-API-Key", "X-Auth-Token"} {
+		if got := headers.Get(key); got != "" {
+			t.Fatalf("upstream %s = %q, want empty", key, got)
+		}
 	}
 }
 
@@ -412,6 +457,51 @@ func TestPreviewProxyRequiresSessionCookie(t *testing.T) {
 	}
 	if upstreamCalled {
 		t.Fatal("proxy without cookie reached upstream")
+	}
+}
+
+func TestPreviewProxyAddsSandboxHeadersAndStripsUpstreamCookies(t *testing.T) {
+	t.Parallel()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Set-Cookie", "upstream_session=secret; Path=/")
+		_, _ = w.Write([]byte("preview ok"))
+	}))
+	defer upstream.Close()
+
+	manager := newPreviewManager(previewManagerOptions{
+		basePath: "/__preview",
+		starter: previewTunnelStarterFunc(func(context.Context, previewTunnelTarget) (previewTunnel, error) {
+			return &fakePreviewTunnel{target: upstream.URL}, nil
+		}),
+	})
+	session, err := manager.create(context.Background(), previewCreateOptions{
+		agentName: "demo-agent",
+		namespace: "ns-test",
+		podName:   "demo-pod",
+		port:      3000,
+	})
+	if err != nil {
+		t.Fatalf("manager.create() error = %v, want nil", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/__preview/"+session.ID+"/", nil)
+	request.AddCookie(&http.Cookie{Name: session.cookieName(), Value: session.Secret})
+	recorder := httptest.NewRecorder()
+
+	manager.proxy(recorder, request, session.ID, "/")
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("proxy status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	if got := recorder.Header().Values("Set-Cookie"); len(got) != 0 {
+		t.Fatalf("proxy Set-Cookie headers = %v, want none", got)
+	}
+	if got := recorder.Header().Get("Content-Security-Policy"); got != "sandbox allow-forms allow-popups allow-scripts" {
+		t.Fatalf("proxy CSP = %q, want preview sandbox policy", got)
+	}
+	if got := recorder.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("proxy X-Content-Type-Options = %q, want nosniff", got)
 	}
 }
 

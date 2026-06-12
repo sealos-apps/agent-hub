@@ -33,10 +33,32 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^7.14.1",
+    "react-router-dom": "^7.17.0",
     "remark-gfm": "^4.0.1",
     "tailwindcss": "^4.2.2",
     "yaml": "^2.8.3"
+  },
+  "overrides": {
+    "@labring/sealos-desktop-sdk": {
+      "axios": "1.17.0",
+      "js-cookie": "3.0.8"
+    },
+    "js-cookie": "3.0.8",
+    "@kubernetes/client-node": {
+      "jsonpath-plus": "10.3.0",
+      "tar": "7.5.16",
+      "ws": "8.21.0"
+    },
+    "postcss": "8.5.15",
+    "request": {
+      "form-data": "2.5.5",
+      "qs": "6.15.2",
+      "tough-cookie": "4.1.4"
+    },
+    "tmp-promise": {
+      "tmp": "0.2.7"
+    },
+    "ws": "8.21.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

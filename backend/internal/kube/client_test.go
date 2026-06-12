@@ -1,6 +1,12 @@
 package kube
 
-import "testing"
+import (
+	"net/url"
+	"strings"
+	"testing"
+
+	appErr "github.com/nightwhite/Agent-Hub/pkg/errors"
+)
 
 func TestPreferredAPIServerHostUsesInClusterAddress(t *testing.T) {
 	t.Setenv("KUBERNETES_SERVICE_HOST", "10.96.0.1")
@@ -39,6 +45,141 @@ func TestFactoryPreservesOriginalClusterServer(t *testing.T) {
 	if got := factory.ClusterServer(); got != "https://usw-1.sealos.io:6443" {
 		t.Fatalf("ClusterServer() = %q, want original kubeconfig server", got)
 	}
+}
+
+func TestFactoryRejectsExecCredentialPlugin(t *testing.T) {
+	raw := testRawKubeconfig(
+		[]string{"      server: https://usw-1.sealos.io:6443"},
+		[]string{
+			"      exec:",
+			"        apiVersion: client.authentication.k8s.io/v1",
+			"        command: sh",
+			"        args:",
+			"          - -c",
+			"          - echo pwned",
+			"        interactiveMode: Never",
+		},
+	)
+
+	_, got := NewFactoryFromEncodedKubeconfig(url.QueryEscape(raw))
+
+	if got == nil {
+		t.Fatal("NewFactoryFromEncodedKubeconfig() error = nil, want invalid authorization")
+	}
+	if got.Code() != appErr.CodeInvalidAuthorizationHeader {
+		t.Fatalf("NewFactoryFromEncodedKubeconfig() code = %d, want %d", got.Code(), appErr.CodeInvalidAuthorizationHeader)
+	}
+	if !strings.Contains(got.Error(), "exec credential plugins are not allowed") {
+		t.Fatalf("NewFactoryFromEncodedKubeconfig() error = %q, want exec plugin rejection", got.Error())
+	}
+}
+
+func TestFactoryRejectsClientCertificateData(t *testing.T) {
+	raw := testRawKubeconfig(
+		[]string{"      server: https://usw-1.sealos.io:6443"},
+		[]string{
+			"      token: test-token",
+			"      client-certificate-data: ZHVtbXk=",
+			"      client-key-data: ZHVtbXk=",
+		},
+	)
+
+	_, got := NewFactoryFromEncodedKubeconfig(url.QueryEscape(raw))
+
+	if got == nil {
+		t.Fatal("NewFactoryFromEncodedKubeconfig() error = nil, want invalid authorization")
+	}
+	if !strings.Contains(got.Error(), "client certificate data is not allowed") {
+		t.Fatalf("NewFactoryFromEncodedKubeconfig() error = %q, want client certificate data rejection", got.Error())
+	}
+}
+
+func TestFactoryRejectsTLSServerNameOverride(t *testing.T) {
+	raw := testRawKubeconfig(
+		[]string{
+			"      server: https://usw-1.sealos.io:6443",
+			"      tls-server-name: evil.example.com",
+		},
+		[]string{"      token: test-token"},
+	)
+
+	_, got := NewFactoryFromEncodedKubeconfig(url.QueryEscape(raw))
+
+	if got == nil {
+		t.Fatal("NewFactoryFromEncodedKubeconfig() error = nil, want invalid authorization")
+	}
+	if !strings.Contains(got.Error(), "tls-server-name is not allowed") {
+		t.Fatalf("NewFactoryFromEncodedKubeconfig() error = %q, want tls-server-name rejection", got.Error())
+	}
+}
+
+func TestProxyAuthAllowsEmptyNamespace(t *testing.T) {
+	raw := testRawKubeconfigWithoutNamespace(
+		[]string{"      server: https://usw-1.sealos.io:6443"},
+		[]string{"      token: test-token"},
+	)
+
+	auth, err := ParseProxyAuthFromEncodedKubeconfig(url.QueryEscape(raw))
+
+	if err != nil {
+		t.Fatalf("ParseProxyAuthFromEncodedKubeconfig() error = %v, want nil", err)
+	}
+	if auth.Server != "https://usw-1.sealos.io:6443" || auth.Token != "test-token" {
+		t.Fatalf("ParseProxyAuthFromEncodedKubeconfig() = %#v, want server/token", auth)
+	}
+}
+
+func TestFactoryRejectsEmptyNamespace(t *testing.T) {
+	raw := testRawKubeconfigWithoutNamespace(
+		[]string{"      server: https://usw-1.sealos.io:6443"},
+		[]string{"      token: test-token"},
+	)
+
+	_, got := NewFactoryFromEncodedKubeconfig(url.QueryEscape(raw))
+
+	if got == nil {
+		t.Fatal("NewFactoryFromEncodedKubeconfig() error = nil, want invalid authorization")
+	}
+	if !strings.Contains(got.Error(), "empty namespace") {
+		t.Fatalf("NewFactoryFromEncodedKubeconfig() error = %q, want empty namespace rejection", got.Error())
+	}
+}
+
+func testRawKubeconfig(clusterLines, userLines []string) string {
+	return testRawKubeconfigWithNamespace(clusterLines, userLines, "ns-test")
+}
+
+func testRawKubeconfigWithoutNamespace(clusterLines, userLines []string) string {
+	return testRawKubeconfigWithNamespace(clusterLines, userLines, "")
+}
+
+func testRawKubeconfigWithNamespace(clusterLines, userLines []string, namespace string) string {
+	lines := []string{
+		"apiVersion: v1",
+		"kind: Config",
+		"current-context: test",
+		"clusters:",
+		"  - name: local",
+		"    cluster:",
+	}
+	lines = append(lines, clusterLines...)
+	lines = append(lines,
+		"contexts:",
+		"  - name: test",
+		"    context:",
+		"      cluster: local",
+		"      user: test-user",
+	)
+	if strings.TrimSpace(namespace) != "" {
+		lines = append(lines, "      namespace: "+strings.TrimSpace(namespace))
+	}
+	lines = append(lines,
+		"users:",
+		"  - name: test-user",
+		"    user:",
+	)
+	lines = append(lines, userLines...)
+	return strings.Join(lines, "\n")
 }
 
 func testEncodedKubeconfig() string {

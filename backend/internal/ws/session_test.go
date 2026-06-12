@@ -3,34 +3,38 @@ package ws
 import (
 	"context"
 	"encoding/base64"
+	"math"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/nightwhite/Agent-Hub/internal/config"
 	"github.com/nightwhite/Agent-Hub/internal/dto"
+	"github.com/nightwhite/Agent-Hub/internal/kube"
 	"k8s.io/client-go/tools/remotecommand"
 )
 
 func TestResolveFilePathResolvesRelativePath(t *testing.T) {
 	t.Parallel()
 
-	got, err := resolveFilePath("notes/today.txt")
+	got, err := resolveFilePath("notes/today.txt", "/opt/hermes")
 	if err != nil {
 		t.Fatalf("resolveFilePath() error = %v", err)
 	}
-	if got != "/notes/today.txt" {
-		t.Fatalf("resolveFilePath() = %q, want /notes/today.txt", got)
+	if got != "/opt/hermes/notes/today.txt" {
+		t.Fatalf("resolveFilePath() = %q, want /opt/hermes/notes/today.txt", got)
 	}
 }
 
-func TestResolveFilePathAllowsAbsolutePath(t *testing.T) {
+func TestResolveFilePathAllowsAbsolutePathInsideRoot(t *testing.T) {
 	t.Parallel()
 
-	for _, input := range []string{"/tmp/file", "/opt/hermes/notes/today.txt"} {
-		got, err := resolveFilePath(input)
+	for _, input := range []string{"/opt/hermes", "/opt/hermes/notes/today.txt"} {
+		got, err := resolveFilePath(input, "/opt/hermes")
 		if err != nil {
 			t.Fatalf("resolveFilePath(%q) error = %v", input, err)
 		}
@@ -40,15 +44,52 @@ func TestResolveFilePathAllowsAbsolutePath(t *testing.T) {
 	}
 }
 
+func TestResolveFilePathRejectsEscapes(t *testing.T) {
+	t.Parallel()
+
+	for _, input := range []string{"../etc/passwd", "/tmp/file", "/opt/hermes-notes/file"} {
+		if _, err := resolveFilePath(input, "/opt/hermes"); err == nil {
+			t.Fatalf("resolveFilePath(%q) error = nil, want escape rejection", input)
+		}
+	}
+}
+
+func TestResolveFileRootRejectsFilesystemRoot(t *testing.T) {
+	t.Parallel()
+
+	if _, err := resolveFileRoot("/"); err == nil {
+		t.Fatal("resolveFileRoot(/) error = nil, want root rejection")
+	}
+}
+
 func TestResolveUploadFilePathPreservesFilenameSpacing(t *testing.T) {
 	t.Parallel()
 
-	got, err := resolveUploadFilePath("/workspace/foo ")
+	got, err := resolveUploadFilePath("/workspace/foo ", "/workspace")
 	if err != nil {
 		t.Fatalf("resolveUploadFilePath() error = %v", err)
 	}
 	if got != "/workspace/foo " {
 		t.Fatalf("resolveUploadFilePath() = %q, want trailing filename space preserved", got)
+	}
+}
+
+func TestBootstrapAuthorizationIgnoresQueryCredentials(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest("GET", "/api/v1/agents/demo/ws?authorization=query-secret", nil)
+	context.Request.Header.Set(kube.DefaultAuthorizationHeader, "header-secret")
+
+	if got := bootstrapAuthorization(context); got != "header-secret" {
+		t.Fatalf("bootstrapAuthorization() = %q, want header-secret", got)
+	}
+
+	context.Request.Header.Del(kube.DefaultAuthorizationHeader)
+	if got := bootstrapAuthorization(context); got != "" {
+		t.Fatalf("bootstrapAuthorization() = %q, want empty query ignored", got)
 	}
 }
 
@@ -445,18 +486,6 @@ func TestValidateMessageAllowsWhitespaceTerminalInput(t *testing.T) {
 	}
 }
 
-func TestResolveFilePathResolvesDotDotRelativePath(t *testing.T) {
-	t.Parallel()
-
-	got, err := resolveFilePath("../etc/passwd")
-	if err != nil {
-		t.Fatalf("resolveFilePath() error = %v", err)
-	}
-	if got != "/etc/passwd" {
-		t.Fatalf("resolveFilePath() = %q, want /etc/passwd", got)
-	}
-}
-
 func TestResolveTerminalPathDefaultsToWorkspace(t *testing.T) {
 	t.Parallel()
 
@@ -663,6 +692,14 @@ func TestDecodeWSBinaryMessageRejectsUnsupportedVersion(t *testing.T) {
 	}
 }
 
+func TestUint32FrameLengthRejectsOverflowLength(t *testing.T) {
+	t.Parallel()
+
+	if _, err := uint32FrameLengthFromInt(int64(math.MaxUint32) + 1); err == nil {
+		t.Fatal("uint32FrameLengthFromInt() error = nil, want overflow error")
+	}
+}
+
 func TestWSReadLimitAllowsMaximumUploadChunkFrame(t *testing.T) {
 	t.Parallel()
 
@@ -687,6 +724,7 @@ func TestFileUploadBeginEnforcesSessionCap(t *testing.T) {
 	t.Parallel()
 
 	s := newSession(nil, "req-upload-cap", config.Config{}, "agent-hub", "")
+	s.fileRoot = "/tmp"
 	for i := 0; i < maxConcurrentUploads; i++ {
 		id := "upload-" + string(rune('a'+i))
 		s.uploads[id] = &uploadSession{ID: id, Path: "/tmp/" + id}

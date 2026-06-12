@@ -74,8 +74,10 @@ func KubernetesProxy(c *gin.Context) {
 
 			req.Header.Del("Origin")
 			req.Header.Del("Referer")
+			req.Header.Del("Cookie")
 			req.Header.Del("X-K8s-Server")
 			req.Header.Del("Authorization-Bearer")
+			stripK8sImpersonationHeaders(req.Header)
 			req.Header.Set("Authorization", "Bearer "+bearerToken)
 		},
 		ErrorHandler: func(writer http.ResponseWriter, _ *http.Request, proxyErr error) {
@@ -89,6 +91,14 @@ func KubernetesProxy(c *gin.Context) {
 	}
 
 	proxy.ServeHTTP(c.Writer, c.Request)
+}
+
+func stripK8sImpersonationHeaders(header http.Header) {
+	for key := range header {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(key)), "impersonate-") {
+			header.Del(key)
+		}
+	}
 }
 
 func resolveK8sProxyTarget(request *http.Request) string {
@@ -115,19 +125,6 @@ func resolveK8sProxyBearerToken(request *http.Request) string {
 		}
 	}
 	return ""
-}
-
-func decodeHeaderScalar(value string) string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return ""
-	}
-
-	decoded, err := url.QueryUnescape(trimmed)
-	if err != nil {
-		return trimmed
-	}
-	return strings.TrimSpace(decoded)
 }
 
 func isAllowedK8sProxyTarget(target *url.URL, allowHosts []string) bool {

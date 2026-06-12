@@ -80,4 +80,18 @@ describe('createClusterContext', () => {
 
     expect(() => createClusterContext(null)).toThrow('No kubeconfig was found from Sealos SDK')
   })
+
+  it('does not persist kubeconfig or operator values in sessionStorage', () => {
+    const context = createClusterContext({
+      kubeconfig,
+      user: {
+        id: 'user-demo',
+        nsid: 'ns-demo',
+      },
+    })
+
+    expect(context.kubeconfig).toBe(kubeconfig)
+    expect(sessionStorage.getItem('hermes-kubeconfig')).toBeNull()
+    expect(sessionStorage.getItem('hermes-operator')).toBeNull()
+  })
 })

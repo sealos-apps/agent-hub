@@ -77,7 +77,7 @@ WebSocket 使用独立消息协议，不复用 HTTP JSON envelope。
 - `GET /api/v1/agents/:agentName/ws`
 - 当前已支持终端、日志、文件操作
 - 推荐浏览器先连接，再发送 `auth` 首消息完成鉴权
-- 兼容 query：`?authorization=<url-encoded-kubeconfig>`
+- 不支持在 URL query 中传 kubeconfig，避免凭证进入访问日志
 
 ## Install dependencies
 
@@ -156,7 +156,8 @@ REGION=us INGRESS_SUFFIX=agent.usw-1.sealos.app AGENT_IMAGE=nousresearch/hermes-
 - `AGENT_TEMPLATE_CACHE_DIR`：可选，GitHub 模板下载缓存目录，默认系统临时目录下的 `agenthub-template-cache`。
 - `AGENT_MANIFEST_TEMPLATE_DIR`：本地模板目录根路径，仅用于本地开发或测试兜底；只在 `AGENT_TEMPLATE_GITHUB_URL` 为空时使用。
 - `FRONTEND_DIST_DIR`：前端静态产物目录；兼容旧的 `WEB_DIST_DIR`。
-- `AIPROXY_BASE_URL`：AIProxy token 管理地址，默认 `https://aiproxy-web.hzh.sealos.run`
+- `AIPROXY_MANAGER_BASE_URL`：AIProxy token 管理地址；兼容旧的 `AIPROXY_BASE_URL`
+- `AIPROXY_MODEL_BASE_URL`：AIProxy 模型 API 地址，例如 `https://aiproxy.usw-1.sealos.io/v1`
 - `K8S_PROXY_ALLOWED_HOSTS`：K8s API 反向代理允许的目标主机白名单（逗号分隔，支持精确主机或 `.suffix` 后缀规则），默认 `.sealos.io,.sealos.run`
 - `REGION`：模型预设区域，支持 `us` / `cn`，必须显式配置
 - `LOAD_DOTENV`：是否读取 `.env`（`1` 强制开启，`0` 强制关闭；未设置时开发默认开启、生产默认关闭）
@@ -164,9 +165,10 @@ REGION=us INGRESS_SUFFIX=agent.usw-1.sealos.app AGENT_IMAGE=nousresearch/hermes-
 说明：
 - 本地开发统一使用 `backend/.env`
 - `.env` 只用于本地开发；Sealos 线上部署仍然使用 Deployment `env`
-- `AIPROXY_BASE_URL` 只用于后端访问 AIProxy token 管理接口
-- Hermes 部署时写入 `agent-model-baseurl` 的模型地址，不走这个配置
-- 当前前后端会根据集群地址自动推导模型地址，例如 `https://usw-1.sealos.io:6443` 会推导为 `https://aiproxy.usw-1.sealos.io/v1`
+- `AIPROXY_MANAGER_BASE_URL` 只用于后端访问 AIProxy token 管理接口
+- Hermes 部署时写入 `agent-model-baseurl` 的模型地址使用 `AIPROXY_MODEL_BASE_URL`
+- 未显式配置时，当前前后端会根据允许的集群地址推导模型地址，例如 `https://usw-1.sealos.io:6443` 会推导为 `https://aiproxy.usw-1.sealos.io/v1`
+- 如果显式地址和集群地址都不可用，系统不会退到其他区域地址
 - 推荐值：海外工作区统一使用 `REGION=us`
 
 模板 YAML 支持按模型类型分组。推荐使用 `regionModelTypes`，前端会先渲染模型类型，再渲染该类型下的模型；旧的 `regionModelPresets` 平铺结构仍会自动兼容分组。
@@ -736,7 +738,7 @@ http://127.0.0.1:8888
 鉴权方式：
 - 推荐先连接，再发送 `auth` 消息
 - 非浏览器客户端可继续使用 `Authorization` 头
-- 兼容 query：`?authorization=<url-encoded-kubeconfig>`
+- 不支持在 URL query 中传 kubeconfig，避免凭证进入访问日志
 
 详细协议见：
 - `api/websocket.md`
@@ -854,7 +856,7 @@ curl -s -X DELETE \
 
 1. WebSocket 已支持基础交互能力
 - 已支持终端、日志、文件操作
-- 浏览器端请用 `?authorization=<url-encoded-kubeconfig>`
+- 浏览器端请先连接 WebSocket，再发送 `auth` 首消息
 
 2. CPU 在 create 响应里可能显示 `1000m`，在 list/detail 里可能显示 `1`
 - 这是 Kubernetes quantity 标准化现象
