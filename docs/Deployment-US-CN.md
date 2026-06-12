@@ -195,6 +195,32 @@ helm template agenthub deploy/charts/agent-hub \
 
 默认 Helm Chart 不开启 `server-snippet`，避免在禁用 snippet annotation 的集群上部署失败。
 
+## 5.1 Sealos 集群镜像部署
+
+集群镜像入口位于：
+
+```text
+deploy/Kubefile
+deploy/agent-hub-entrypoint.sh
+```
+
+`sealos run` 时 entrypoint 会自动读取 `sealos-system/sealos-config`，并注入 Agent Hub 域名、Agent 访问域名后缀、SSH 域名、证书、区域和 AIProxy 地址。它也会通过 Helm 注册 `agenthub` 和 `agenthub-console` 两个 App 资源。
+
+默认运行镜像 tag 是 `latest`，只用于让 `sealos build` 可以渲染 chart 并扫描镜像。生产发布集群镜像时应把 `deploy/Kubefile` 的 `agentHubImageTag` 和 `deploy/images/shim/images` 更新为同一个 GitHub Actions 产出的 `sha-<短 SHA>`。
+
+构建示例：
+
+```bash
+cd deploy
+sealos build -t ghcr.io/sealos-apps/agent-hub-cluster:sha-<短 SHA> .
+```
+
+运行示例：
+
+```bash
+sealos run ghcr.io/sealos-apps/agent-hub-cluster:sha-<短 SHA>
+```
+
 ### Rollout 检查
 
 ```bash
