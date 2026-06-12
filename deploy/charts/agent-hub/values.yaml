@@ -5,7 +5,9 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/sealos-apps/agent-hub
-  tag: ""
+  # Render-safe default for sealos build image scanning. Production Helm deploys
+  # should override this with a sha-* tag from GitHub Actions.
+  tag: "latest"
   pullPolicy: IfNotPresent
 
 containerPort: 8999
@@ -26,7 +28,7 @@ service:
 ingress:
   enabled: true
   className: nginx
-  host: agenthub.example.usw-1.sealos.app
+  host: ""
   tlsSecretName: wildcard-cert
   annotations:
     nginx.ingress.kubernetes.io/backend-protocol: HTTP
@@ -41,6 +43,16 @@ ingress:
     clientHeaderBufferSize: 64k
     count: 4
     size: 128k
+
+agentHubConfig:
+  cloudDomain: "127.0.0.1.nip.io"
+  cloudPort: ""
+  httpPort: ""
+  disableHttps: false
+  certSecretName: "wildcard-cert"
+
+appRegistration:
+  enabled: false
 
 resources:
   requests:

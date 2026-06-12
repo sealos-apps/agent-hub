@@ -1,0 +1,17 @@
+# Custom values for the Agent Hub cluster image install.
+# This file is copied to /root/.sealos/cloud/values/core/agent-hub-values.yaml
+# on first install so operators can keep local overrides across upgrades.
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+ingress:
+  largeClientHeaderBuffers:
+    enabled: false

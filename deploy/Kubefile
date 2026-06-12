@@ -1,0 +1,11 @@
+FROM scratch
+
+USER 65532:65532
+
+COPY registry registry
+COPY charts charts
+COPY agent-hub-entrypoint.sh agent-hub-entrypoint.sh
+
+ENV agentHubImageTag="latest"
+
+CMD ["bash agent-hub-entrypoint.sh"]

@@ -17,8 +17,9 @@ metadata:
       large_client_header_buffers {{ .Values.ingress.largeClientHeaderBuffers.count }} {{ .Values.ingress.largeClientHeaderBuffers.size }};
     {{- end }}
 spec:
+  ingressClassName: {{ .Values.ingress.className | quote }}
   rules:
-    - host: {{ .Values.ingress.host | quote }}
+    - host: {{ include "agent-hub.host" . | quote }}
       http:
         paths:
           - path: /
@@ -28,8 +29,10 @@ spec:
                 name: {{ include "agent-hub.fullname" . }}
                 port:
                   number: {{ .Values.service.port }}
+  {{- if not (eq (toString .Values.agentHubConfig.disableHttps) "true") }}
   tls:
     - hosts:
-        - {{ .Values.ingress.host | quote }}
-      secretName: {{ .Values.ingress.tlsSecretName | quote }}
+        - {{ include "agent-hub.host" . | quote }}
+      secretName: {{ .Values.agentHubConfig.certSecretName | default .Values.ingress.tlsSecretName | quote }}
+  {{- end }}
 {{- end }}
