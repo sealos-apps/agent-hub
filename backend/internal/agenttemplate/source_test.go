@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -22,11 +23,7 @@ func TestGitHubSourceListsTemplatesFromArchive(t *testing.T) {
 	server := newTemplateArchiveServer(t)
 	defer server.Close()
 
-	source := Source{
-		GitHubURL:    server.URL + "/archive.tar.gz",
-		CacheDir:     t.TempDir(),
-		ForceRefresh: true,
-	}
+	source := newGitHubTestSource(t, server, t.TempDir(), true)
 
 	definitions, err := ListFromSource(source)
 	if err != nil {
@@ -46,11 +43,7 @@ func TestGitHubSourceListsSingleTemplateArchive(t *testing.T) {
 	server := newSingleTemplateArchiveServer(t)
 	defer server.Close()
 
-	source := Source{
-		GitHubURL:    server.URL + "/archive.tar.gz",
-		CacheDir:     t.TempDir(),
-		ForceRefresh: true,
-	}
+	source := newGitHubTestSource(t, server, t.TempDir(), true)
 
 	definitions, err := ListFromSource(source)
 	if err != nil {
@@ -67,11 +60,7 @@ func TestGitHubSourceResolvesSingleTemplateArchive(t *testing.T) {
 	server := newSingleTemplateArchiveServer(t)
 	defer server.Close()
 
-	source := Source{
-		GitHubURL:    server.URL + "/archive.tar.gz",
-		CacheDir:     t.TempDir(),
-		ForceRefresh: true,
-	}
+	source := newGitHubTestSource(t, server, t.TempDir(), true)
 
 	definition, err := ResolveFromSource("hermes-agent", source)
 	if err != nil {
@@ -88,11 +77,7 @@ func TestGitHubSourceResolvesModelIntegration(t *testing.T) {
 	server := newSingleTemplateArchiveServer(t)
 	defer server.Close()
 
-	source := Source{
-		GitHubURL:    server.URL + "/archive.tar.gz",
-		CacheDir:     t.TempDir(),
-		ForceRefresh: true,
-	}
+	source := newGitHubTestSource(t, server, t.TempDir(), true)
 
 	definition, err := ResolveFromSource("hermes-agent", source)
 	if err != nil {
@@ -247,11 +232,7 @@ func TestGitHubSourceRejectsMismatchedSingleTemplateArchive(t *testing.T) {
 	server := newSingleTemplateArchiveServer(t)
 	defer server.Close()
 
-	source := Source{
-		GitHubURL:    server.URL + "/archive.tar.gz",
-		CacheDir:     t.TempDir(),
-		ForceRefresh: true,
-	}
+	source := newGitHubTestSource(t, server, t.TempDir(), true)
 
 	_, err := ResolveFromSource("openclaw", source)
 	if err == nil || !strings.Contains(err.Error(), `template "openclaw" not found`) {
@@ -277,11 +258,7 @@ func TestGitHubSourceListsTemplatesFromAgentsDirectory(t *testing.T) {
 	server := newTemplateArchiveServerAtPath(t, "agents")
 	defer server.Close()
 
-	source := Source{
-		GitHubURL:    server.URL + "/archive.tar.gz",
-		CacheDir:     t.TempDir(),
-		ForceRefresh: true,
-	}
+	source := newGitHubTestSource(t, server, t.TempDir(), true)
 
 	definitions, err := ListFromSource(source)
 	if err != nil {
@@ -301,11 +278,7 @@ func TestGitHubSourceResolvesTemplateFromAgentsDirectory(t *testing.T) {
 	server := newTemplateArchiveServerAtPath(t, "agents")
 	defer server.Close()
 
-	source := Source{
-		GitHubURL:    server.URL + "/archive.tar.gz",
-		CacheDir:     t.TempDir(),
-		ForceRefresh: true,
-	}
+	source := newGitHubTestSource(t, server, t.TempDir(), true)
 
 	definition, err := ResolveFromSource("hermes-agent", source)
 	if err != nil {
@@ -327,10 +300,7 @@ func TestGitHubSourceRefreshesExpiredCache(t *testing.T) {
 	}))
 	defer server.Close()
 
-	source := Source{
-		GitHubURL: server.URL + "/archive.tar.gz",
-		CacheDir:  t.TempDir(),
-	}
+	source := newGitHubTestSource(t, server, t.TempDir(), false)
 
 	if _, err := ListFromSource(source); err != nil {
 		t.Fatalf("ListFromSource() first error = %v", err)
@@ -358,27 +328,60 @@ func TestGitHubSourceRefreshesExpiredCache(t *testing.T) {
 	}
 }
 
-func TestGitHubSourceDoesNotSendTokenToRawArchiveURL(t *testing.T) {
+func TestGitHubSourceSendsTokenToGitHubArchiveAPI(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("Authorization"); got != "" {
-			t.Fatalf("Authorization header = %q, want empty for raw archive URL", got)
+		if got := r.Header.Get("Authorization"); got != "Bearer secret-token" {
+			t.Fatalf("Authorization header = %q, want GitHub bearer token", got)
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(makeArchive(t, testTemplateBaseDir(t), filepath.Base(testTemplateBaseDir(t))))
 	}))
 	defer server.Close()
 
-	source := Source{
-		GitHubURL:    server.URL + "/archive.tar.gz",
-		GitHubToken:  "secret-token",
-		CacheDir:     t.TempDir(),
-		ForceRefresh: true,
-	}
+	source := newGitHubTestSource(t, server, t.TempDir(), true)
+	source.GitHubToken = "secret-token"
 
 	if _, err := ListFromSource(source); err != nil {
 		t.Fatalf("ListFromSource() error = %v", err)
+	}
+}
+
+func TestParseGitHubTemplateURLRejectsRawArchiveURL(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseGitHubTemplateURL("https://example.com/archive.tar.gz")
+	if err == nil || !strings.Contains(err.Error(), "github template url must use github.com") {
+		t.Fatalf("parseGitHubTemplateURL() error = %v, want github.com requirement", err)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func newGitHubTestSource(t *testing.T, server *httptest.Server, cacheDir string, forceRefresh bool) Source {
+	t.Helper()
+	target, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+
+	return Source{
+		GitHubURL:    "https://github.com/sealos-apps/Agent-Hub-Template",
+		CacheDir:     cacheDir,
+		ForceRefresh: forceRefresh,
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				cloned := req.Clone(req.Context())
+				cloned.URL.Scheme = target.Scheme
+				cloned.URL.Host = target.Host
+				return http.DefaultTransport.RoundTrip(cloned)
+			}),
+		},
 	}
 }
 

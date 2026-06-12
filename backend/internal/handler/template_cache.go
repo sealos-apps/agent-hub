@@ -12,6 +12,8 @@ import (
 
 const templateCacheRefreshInterval = 5 * time.Minute
 
+var listAgentTemplatesFromSource = agenttemplate.ListFromSource
+
 func StartAgentTemplateCacheRefresh(ctx context.Context, cfg config.Config) {
 	source := templateSourceFromConfig(cfg)
 	if strings.TrimSpace(source.GitHubURL) == "" {
@@ -42,7 +44,7 @@ func refreshAgentTemplateCache(ctx context.Context, source agenttemplate.Source)
 	}
 
 	source.ForceRefresh = true
-	if _, err := agenttemplate.ListFromSource(source); err != nil {
+	if _, err := listAgentTemplatesFromSource(source); err != nil {
 		log.Printf("agent template cache refresh failed: githubURL=%s cacheDir=%s err=%v", source.GitHubURL, source.CacheDir, err)
 		return
 	}

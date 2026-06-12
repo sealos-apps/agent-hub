@@ -482,7 +482,8 @@ function WebTabPane({ isVisible, tab }: { isVisible: boolean; tab: WebTab }) {
       <iframe
         className="h-full w-full border-0 bg-white"
         key={`${tab.id}-${tab.refreshKey}`}
-        sandbox={tab.preview ? 'allow-forms allow-popups allow-scripts' : undefined}
+        referrerPolicy="strict-origin-when-cross-origin"
+        sandbox="allow-forms allow-popups allow-scripts"
         src={tab.url}
         tabIndex={isVisible ? undefined : -1}
         title={tab.title}

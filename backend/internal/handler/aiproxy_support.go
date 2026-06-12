@@ -8,8 +8,6 @@ import (
 	"github.com/nightwhite/Agent-Hub/internal/aiproxy"
 )
 
-const fallbackAIProxyBaseURL = "https://aiproxy-web.hzh.sealos.run"
-const fallbackAIProxyModelBaseURL = "https://aiproxy.hzh.sealos.run/v1"
 const agentHubAIProxyTokenDisplayName = "Agent-Hub"
 
 var sealosServiceHosts = []string{
@@ -29,7 +27,7 @@ func resolveAIProxyBaseURL(explicitBaseURL, clusterServer string) string {
 		return derived
 	}
 
-	return fallbackAIProxyBaseURL
+	return ""
 }
 
 func deriveAIProxyBaseURL(clusterServer string) string {
@@ -45,7 +43,7 @@ func resolveAIProxyModelBaseURL(explicitBaseURL, clusterServer string) string {
 		return normalizeAIProxyModelBaseURL(derived)
 	}
 
-	return normalizeAIProxyModelBaseURL(fallbackAIProxyModelBaseURL)
+	return ""
 }
 
 func deriveAIProxyModelBaseURL(clusterServer string) string {

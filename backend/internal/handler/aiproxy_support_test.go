@@ -24,17 +24,17 @@ func TestResolveAIProxyBaseURLRejectsUnknownSealosSubdomain(t *testing.T) {
 	t.Parallel()
 
 	got := resolveAIProxyBaseURL("", "https://evil.sealos.run:6443")
-	if got != fallbackAIProxyBaseURL {
-		t.Fatalf("resolveAIProxyBaseURL() = %q, want fallback %q", got, fallbackAIProxyBaseURL)
+	if got != "" {
+		t.Fatalf("resolveAIProxyBaseURL() = %q, want empty value", got)
 	}
 }
 
-func TestResolveAIProxyBaseURLFallsBackWhenClusterServerIsUnsupported(t *testing.T) {
+func TestResolveAIProxyBaseURLReturnsEmptyWhenClusterServerIsUnsupported(t *testing.T) {
 	t.Parallel()
 
 	got := resolveAIProxyBaseURL("", "https://127.0.0.1:6443")
-	if got != fallbackAIProxyBaseURL {
-		t.Fatalf("resolveAIProxyBaseURL() = %q, want fallback %q", got, fallbackAIProxyBaseURL)
+	if got != "" {
+		t.Fatalf("resolveAIProxyBaseURL() = %q, want empty value", got)
 	}
 }
 
@@ -49,8 +49,8 @@ func TestResolveAIProxyBaseURLRejectsSealosSuffixLookalikes(t *testing.T) {
 			t.Parallel()
 
 			got := resolveAIProxyBaseURL("", clusterServer)
-			if got != fallbackAIProxyBaseURL {
-				t.Fatalf("resolveAIProxyBaseURL(%q) = %q, want fallback %q", clusterServer, got, fallbackAIProxyBaseURL)
+			if got != "" {
+				t.Fatalf("resolveAIProxyBaseURL(%q) = %q, want empty value", clusterServer, got)
 			}
 		})
 	}
@@ -96,17 +96,17 @@ func TestResolveAIProxyModelBaseURLRejectsUnknownSealosSubdomain(t *testing.T) {
 	t.Parallel()
 
 	got := resolveAIProxyModelBaseURL("", "https://evil.sealos.io:6443")
-	if got != fallbackAIProxyModelBaseURL {
-		t.Fatalf("resolveAIProxyModelBaseURL() = %q, want fallback %q", got, fallbackAIProxyModelBaseURL)
+	if got != "" {
+		t.Fatalf("resolveAIProxyModelBaseURL() = %q, want empty value", got)
 	}
 }
 
-func TestResolveAIProxyModelBaseURLFallsBackWhenClusterServerIsUnsupported(t *testing.T) {
+func TestResolveAIProxyModelBaseURLReturnsEmptyWhenClusterServerIsUnsupported(t *testing.T) {
 	t.Parallel()
 
 	got := resolveAIProxyModelBaseURL("", "https://127.0.0.1:6443")
-	if got != fallbackAIProxyModelBaseURL {
-		t.Fatalf("resolveAIProxyModelBaseURL() = %q, want fallback %q", got, fallbackAIProxyModelBaseURL)
+	if got != "" {
+		t.Fatalf("resolveAIProxyModelBaseURL() = %q, want empty value", got)
 	}
 }
 
@@ -121,8 +121,8 @@ func TestResolveAIProxyModelBaseURLRejectsSealosSuffixLookalikes(t *testing.T) {
 			t.Parallel()
 
 			got := resolveAIProxyModelBaseURL("", clusterServer)
-			if got != fallbackAIProxyModelBaseURL {
-				t.Fatalf("resolveAIProxyModelBaseURL(%q) = %q, want fallback %q", clusterServer, got, fallbackAIProxyModelBaseURL)
+			if got != "" {
+				t.Fatalf("resolveAIProxyModelBaseURL(%q) = %q, want empty value", clusterServer, got)
 			}
 		})
 	}

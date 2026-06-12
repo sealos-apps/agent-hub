@@ -206,6 +206,23 @@ func resolveAgentAccessItem(
 		Modes:      append([]string(nil), item.Modes...),
 	}
 
+	if !isRuntimeAccessAllowed(spec) {
+		entry.Status = runtimeAccessStatus(spec)
+		entry.Reason = runtimeAccessReason(spec)
+		switch item.Key {
+		case "api", "web-ui":
+			entry.URL = joinAccessURL(spec.IngressDomain, item.Path)
+			entry.Auth = item.Auth
+		case "files":
+			entry.RootPath = firstNonEmpty(item.RootPath, spec.WorkingDir)
+		case "ssh", "ide":
+			entry.Host = strings.TrimSpace(cfg.SSHDomain)
+			entry.Port = spec.SSHPort
+			entry.UserName = firstNonEmpty(spec.User, templateDef.User)
+		}
+		return entry
+	}
+
 	switch item.Key {
 	case "api":
 		entry.Auth = item.Auth
@@ -469,6 +486,24 @@ func accessStatus(ready bool) string {
 		return "ready"
 	}
 	return "pending"
+}
+
+func isRuntimeAccessAllowed(spec agent.Agent) bool {
+	return (spec.Status == "" || spec.Status == agent.StatusRunning) && spec.Ready
+}
+
+func runtimeAccessStatus(spec agent.Agent) string {
+	if spec.Status == agent.StatusPaused {
+		return "paused"
+	}
+	return accessStatus(spec.Ready)
+}
+
+func runtimeAccessReason(spec agent.Agent) string {
+	if spec.Status == agent.StatusPaused {
+		return "agent_paused"
+	}
+	return bootstrapReason(spec)
 }
 
 func bootstrapReason(spec agent.Agent) string {

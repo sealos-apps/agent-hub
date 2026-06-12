@@ -1,5 +1,5 @@
 const DEFAULT_AIPROXY_MANAGER_BASE_URL =
-  import.meta.env.VITE_AGENTHUB_AIPROXY_MANAGER_BASE_URL || 'https://aiproxy-web.hzh.sealos.run'
+  import.meta.env.VITE_AGENTHUB_AIPROXY_MANAGER_BASE_URL || ''
 
 const SEALOS_SERVICE_HOSTS = [
   'usw.sealos.io',
@@ -23,7 +23,7 @@ const normalizeAIProxyModelBaseURL = (baseURL = '') => {
 }
 
 const DEFAULT_AIPROXY_MODEL_BASE_URL = normalizeAIProxyModelBaseURL(
-  import.meta.env.VITE_AGENTHUB_AIPROXY_MODEL_BASE_URL || 'https://aiproxy.hzh.sealos.run',
+  import.meta.env.VITE_AGENTHUB_AIPROXY_MODEL_BASE_URL || '',
 )
 
 const isAllowedSealosServiceHost = (host = '') => {

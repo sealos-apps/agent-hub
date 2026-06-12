@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"path"
 	"strconv"
@@ -30,7 +31,6 @@ import (
 )
 
 const (
-	fileRootDir             = "/"
 	wsReadLimit             = 2 << 20
 	wsWriteWait             = 10 * time.Second
 	wsPongWait              = 60 * time.Second
@@ -93,6 +93,7 @@ type session struct {
 	factory       *kube.Factory
 	clientset     *kubernetes.Clientset
 	pod           kube.PodRef
+	fileRoot      string
 
 	terminals   map[string]*terminalSession
 	logs        map[string]*logSession
@@ -334,6 +335,9 @@ func (s *session) authenticate(encodedAuthorization string) *appErr.AppError {
 	if kErr != nil {
 		return appErr.New(appErr.CodeKubernetesOperation, "failed to build kubernetes clientset")
 	}
+	if statusErr := s.ensureAgentRunning(factory, clientset); statusErr != nil {
+		return statusErr
+	}
 
 	podRef, resolveErr := kube.ResolveAgentPod(s.ctx, clientset, factory.Namespace(), s.agentName)
 	if resolveErr != nil {
@@ -345,8 +349,31 @@ func (s *session) authenticate(encodedAuthorization string) *appErr.AppError {
 	s.factory = factory
 	s.clientset = clientset
 	s.pod = podRef
+	s.fileRoot = ""
 	s.stateMu.Unlock()
 
+	return nil
+}
+
+func (s *session) ensureAgentRunning(factory *kube.Factory, _ kubernetes.Interface) *appErr.AppError {
+	dynamicClient, err := factory.Dynamic()
+	if err != nil {
+		return appErr.New(appErr.CodeKubernetesOperation, "failed to build kubernetes dynamic client")
+	}
+	devbox, devboxErr := kube.NewRepository(dynamicClient, factory.Namespace()).Get(s.ctx, s.agentName)
+	if devboxErr != nil {
+		return appErr.New(appErr.CodeNotFound, "agent not found")
+	}
+	view, viewErr := kube.DevboxToAgentView(devbox)
+	if viewErr != nil {
+		return appErr.New(appErr.CodeKubernetesOperation, viewErr.Error())
+	}
+	if view.Agent.Status != agent.StatusRunning {
+		return appErr.New(appErr.CodeInvalidAgentState, "agent is not running").WithDetails(map[string]any{
+			"status": string(view.Agent.Status),
+			"reason": runtimeAccessReason(view.Agent.Status),
+		})
+	}
 	return nil
 }
 
@@ -471,7 +498,7 @@ func (s *session) unsubscribeLogs(message dto.WSMessage) {
 }
 
 func (s *session) fileList(message dto.WSMessage) {
-	resolved, err := resolveFilePath(getTrimmedString(message.Data, "path"))
+	resolved, err := s.resolveFilePath(getTrimmedString(message.Data, "path"))
 	if err != nil {
 		s.sendError(message.RequestID, "invalid_path", err.Error())
 		return
@@ -493,7 +520,7 @@ func (s *session) fileList(message dto.WSMessage) {
 }
 
 func (s *session) fileSearch(message dto.WSMessage) {
-	resolved, err := resolveFilePath(getTrimmedString(message.Data, "path"))
+	resolved, err := s.resolveFilePath(getTrimmedString(message.Data, "path"))
 	if err != nil {
 		s.sendError(message.RequestID, "invalid_path", err.Error())
 		return
@@ -526,7 +553,7 @@ func (s *session) fileSearch(message dto.WSMessage) {
 }
 
 func (s *session) fileRead(message dto.WSMessage) {
-	resolved, err := resolveFilePath(getTrimmedString(message.Data, "path"))
+	resolved, err := s.resolveFilePath(getTrimmedString(message.Data, "path"))
 	if err != nil {
 		s.sendError(message.RequestID, "invalid_path", err.Error())
 		return
@@ -551,7 +578,7 @@ func (s *session) fileRead(message dto.WSMessage) {
 }
 
 func (s *session) fileDownload(message dto.WSMessage) {
-	resolved, err := resolveFilePath(getTrimmedString(message.Data, "path"))
+	resolved, err := s.resolveFilePath(getTrimmedString(message.Data, "path"))
 	if err != nil {
 		s.sendError(message.RequestID, "invalid_path", err.Error())
 		return
@@ -577,7 +604,7 @@ func (s *session) fileDownload(message dto.WSMessage) {
 }
 
 func (s *session) fileWrite(message dto.WSMessage) {
-	resolved, err := resolveFilePath(getTrimmedString(message.Data, "path"))
+	resolved, err := s.resolveFilePath(getTrimmedString(message.Data, "path"))
 	if err != nil {
 		s.sendError(message.RequestID, "invalid_path", err.Error())
 		return
@@ -597,7 +624,7 @@ func (s *session) fileWrite(message dto.WSMessage) {
 }
 
 func (s *session) fileDelete(message dto.WSMessage) {
-	resolved, err := resolveFilePath(getTrimmedString(message.Data, "path"))
+	resolved, err := s.resolveFilePath(getTrimmedString(message.Data, "path"))
 	if err != nil {
 		s.sendError(message.RequestID, "invalid_path", err.Error())
 		return
@@ -617,7 +644,7 @@ func (s *session) fileDelete(message dto.WSMessage) {
 }
 
 func (s *session) fileMkdir(message dto.WSMessage) {
-	resolved, err := resolveFilePath(getTrimmedString(message.Data, "path"))
+	resolved, err := s.resolveFilePath(getTrimmedString(message.Data, "path"))
 	if err != nil {
 		s.sendError(message.RequestID, "invalid_path", err.Error())
 		return
@@ -637,12 +664,12 @@ func (s *session) fileMkdir(message dto.WSMessage) {
 }
 
 func (s *session) fileRename(message dto.WSMessage) {
-	from, err := resolveFilePath(getTrimmedString(message.Data, "from"))
+	from, err := s.resolveFilePath(getTrimmedString(message.Data, "from"))
 	if err != nil {
 		s.sendError(message.RequestID, "invalid_path", err.Error())
 		return
 	}
-	to, err := resolveFilePath(getTrimmedString(message.Data, "to"))
+	to, err := s.resolveFilePath(getTrimmedString(message.Data, "to"))
 	if err != nil {
 		s.sendError(message.RequestID, "invalid_path", err.Error())
 		return
@@ -664,7 +691,7 @@ func (s *session) fileRename(message dto.WSMessage) {
 
 func (s *session) fileUploadBegin(message dto.WSMessage) {
 	id := sessionID(message)
-	resolved, err := resolveUploadFilePath(getRawString(message.Data, "path"))
+	resolved, err := s.resolveUploadFilePath(getRawString(message.Data, "path"))
 	if err != nil {
 		s.sendError(message.RequestID, "invalid_path", err.Error())
 		return
@@ -1112,7 +1139,15 @@ func (t *terminalSession) run(cwd string) {
 }
 
 func (t *terminalSession) resize(cols, rows int) {
-	size := remotecommand.TerminalSize{Width: uint16(cols), Height: uint16(rows)}
+	width, ok := terminalSizeDimension(cols)
+	if !ok {
+		return
+	}
+	height, ok := terminalSizeDimension(rows)
+	if !ok {
+		return
+	}
+	size := remotecommand.TerminalSize{Width: width, Height: height}
 	select {
 	case t.resizeChan <- size:
 		return
@@ -1128,6 +1163,13 @@ func (t *terminalSession) resize(cols, rows int) {
 	case t.resizeChan <- size:
 	default:
 	}
+}
+
+func terminalSizeDimension(value int) (uint16, bool) {
+	if value <= 0 || value > math.MaxUint16 {
+		return 0, false
+	}
+	return uint16(value), true
 }
 
 func (t *terminalSession) close() {
@@ -1356,10 +1398,10 @@ func splitCSV(raw string) []string {
 }
 
 func bootstrapAuthorization(c *gin.Context) string {
-	if headerValue := strings.TrimSpace(c.GetHeader(kube.DefaultAuthorizationHeader)); headerValue != "" {
-		return headerValue
+	if c == nil {
+		return ""
 	}
-	return strings.TrimSpace(c.Query(kube.WebSocketAuthorizationQueryParam))
+	return strings.TrimSpace(c.GetHeader(kube.DefaultAuthorizationHeader))
 }
 
 func sessionID(message dto.WSMessage) string {
@@ -1410,32 +1452,147 @@ func optionalInt64(v float64) *int64 {
 	return &result
 }
 
-func resolveFilePath(raw string) (string, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "." {
-		return fileRootDir, nil
+func (s *session) resolveFilePath(raw string) (string, error) {
+	root, err := s.ensureFileRoot()
+	if err != nil {
+		return "", err
 	}
-
-	cleaned := path.Clean(raw)
-	if path.IsAbs(cleaned) {
-		return cleaned, nil
-	}
-
-	resolved := path.Join(fileRootDir, cleaned)
-	return resolved, nil
+	return resolveFilePath(raw, root)
 }
 
-func resolveUploadFilePath(raw string) (string, error) {
-	if strings.TrimSpace(raw) == "" || strings.TrimSpace(raw) == "." {
-		return fileRootDir, nil
+func (s *session) resolveUploadFilePath(raw string) (string, error) {
+	root, err := s.ensureFileRoot()
+	if err != nil {
+		return "", err
+	}
+	return resolveUploadFilePath(raw, root)
+}
+
+func (s *session) ensureFileRoot() (string, error) {
+	s.stateMu.RLock()
+	root := s.fileRoot
+	s.stateMu.RUnlock()
+	if root != "" {
+		return root, nil
+	}
+
+	fileRoot, err := s.loadFileRoot()
+	if err != nil {
+		return "", err
+	}
+
+	s.stateMu.Lock()
+	if s.fileRoot == "" {
+		s.fileRoot = fileRoot
+	}
+	root = s.fileRoot
+	s.stateMu.Unlock()
+
+	return root, nil
+}
+
+func (s *session) loadFileRoot() (string, error) {
+	s.stateMu.RLock()
+	factory := s.factory
+	s.stateMu.RUnlock()
+	if factory == nil {
+		return "", fmt.Errorf("websocket session is not authenticated")
+	}
+
+	dynamicClient, dynamicErr := factory.Dynamic()
+	if dynamicErr != nil {
+		return "", fmt.Errorf("failed to build kubernetes dynamic client")
+	}
+	devbox, devboxErr := kube.NewRepository(dynamicClient, factory.Namespace()).Get(s.ctx, s.agentName)
+	if devboxErr != nil {
+		return "", fmt.Errorf("failed to load agent workspace")
+	}
+	view, viewErr := kube.DevboxToAgentView(devbox)
+	if viewErr != nil {
+		return "", fmt.Errorf("failed to load agent workspace")
+	}
+	fileRoot, fileRootErr := resolveFileRoot(view.Agent.WorkingDir)
+	if fileRootErr != nil {
+		return "", fmt.Errorf("agent file workspace root is unavailable")
+	}
+	return fileRoot, nil
+}
+
+func runtimeAccessReason(status agent.Status) string {
+	if status == agent.StatusPaused {
+		return "agent_paused"
+	}
+	return "bootstrap_not_ready"
+}
+
+func resolveFileRoot(raw string) (string, error) {
+	cleaned := path.Clean(strings.ReplaceAll(strings.TrimSpace(raw), "\\", "/"))
+	if cleaned == "." || cleaned == "" {
+		return "", fmt.Errorf("file workspace root is empty")
+	}
+	if !path.IsAbs(cleaned) {
+		return "", fmt.Errorf("file workspace root must be absolute")
+	}
+	if cleaned == "/" {
+		return "", fmt.Errorf("file workspace root cannot be filesystem root")
+	}
+	return cleaned, nil
+}
+
+func resolveFilePath(raw, root string) (string, error) {
+	fileRoot, err := resolveFileRoot(root)
+	if err != nil {
+		return "", err
+	}
+
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "." {
+		return fileRoot, nil
 	}
 
 	cleaned := path.Clean(strings.ReplaceAll(raw, "\\", "/"))
 	if path.IsAbs(cleaned) {
-		return cleaned, nil
+		if isWithinRoot(cleaned, fileRoot) {
+			return cleaned, nil
+		}
+		return "", fmt.Errorf("path escapes the file workspace root")
+	}
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", fmt.Errorf("path escapes the file workspace root")
 	}
 
-	resolved := path.Join(fileRootDir, cleaned)
+	resolved := path.Join(fileRoot, cleaned)
+	if !isWithinRoot(resolved, fileRoot) {
+		return "", fmt.Errorf("path escapes the file workspace root")
+	}
+	return resolved, nil
+}
+
+func resolveUploadFilePath(raw, root string) (string, error) {
+	fileRoot, err := resolveFileRoot(root)
+	if err != nil {
+		return "", err
+	}
+
+	if strings.TrimSpace(raw) == "" || strings.TrimSpace(raw) == "." {
+		return fileRoot, nil
+	}
+
+	cleaned := path.Clean(strings.ReplaceAll(raw, "\\", "/"))
+	if path.IsAbs(cleaned) {
+		if isWithinRoot(cleaned, fileRoot) {
+			return cleaned, nil
+		}
+		return "", fmt.Errorf("path escapes the file workspace root")
+	}
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", fmt.Errorf("path escapes the file workspace root")
+	}
+
+	resolved := path.Join(fileRoot, cleaned)
+	if !isWithinRoot(resolved, fileRoot) {
+		return "", fmt.Errorf("path escapes the file workspace root")
+	}
 	return resolved, nil
 }
 

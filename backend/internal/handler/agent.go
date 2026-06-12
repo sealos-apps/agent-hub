@@ -999,6 +999,9 @@ func ChatCompletions(c *gin.Context) {
 	if !found {
 		return
 	}
+	if !ensureAgentRunning(c, view.Agent) {
+		return
+	}
 
 	cfg := runtimeConfig(c)
 	templateDef, resolveErr := resolveTemplateDefinition(cfg, view.Agent.TemplateID)

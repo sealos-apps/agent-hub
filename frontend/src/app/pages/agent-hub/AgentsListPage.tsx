@@ -17,6 +17,7 @@ import type {
   AgentTemplateDefinition,
   ClusterInfo,
 } from '../../../domains/agents/types'
+import { translateAgentReason } from '../../../domains/agents/reasons'
 import { writeBlueprintSettingValue } from '../../../domains/agents/blueprintFields'
 import { createEmptyBlueprint } from '../../../domains/agents/templates'
 import { AgentCapabilityOverlays } from './components/AgentCapabilityOverlays'
@@ -685,6 +686,13 @@ export function AgentsListPage() {
   }
 
   const handleOpenTerminal = async (item: AgentListItem) => {
+    if (!item.terminalAvailable) {
+      controller.setMessage(
+        translateAgentReason(item.terminalDisabledReason, t) || t('agent.consoleUnavailable'),
+      )
+      return
+    }
+
     if (isMockAgentItem(item)) {
       navigate(`${AGENTHUB_CONSOLE_ROUTE}?agentName=${encodeURIComponent(item.name)}`)
       return
@@ -707,7 +715,7 @@ export function AgentsListPage() {
 
     if (!item.webUIAccess?.enabled || !item.webUIAccess.url) {
       controller.setMessage(
-        item.webUIAccess?.reason || t('agent.webUIUnavailableReason'),
+        translateAgentReason(item.webUIAccess?.reason || '', t) || t('agent.webUIUnavailableReason'),
       )
       return
     }

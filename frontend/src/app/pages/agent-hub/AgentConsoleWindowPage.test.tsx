@@ -209,6 +209,13 @@ function renderConsoleWindowPage() {
   )
 }
 
+async function openDesktopTerminalTab() {
+  await waitFor(() => expect(mockOpenFiles).toHaveBeenCalled())
+  const workspacePane = await screen.findByTestId('console-workspace-pane')
+  const addTerminalButton = within(workspacePane).getAllByRole('button', { name: '添加终端' })[0]
+  fireEvent.click(addTerminalButton)
+}
+
 describe('AgentConsoleWindowPage helpers', () => {
   beforeEach(() => {
     vi.mocked(createClusterContext).mockImplementation(() => {
@@ -306,9 +313,7 @@ describe('AgentConsoleWindowPage helpers', () => {
 
     renderConsoleWindowPage()
 
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /add terminal|添加终端/i }).length).toBeGreaterThan(0))
-
-    fireEvent.click(screen.getAllByRole('button', { name: /add terminal|添加终端/i })[0])
+    await openDesktopTerminalTab()
 
     await waitFor(() => expect(screen.getByTestId('agent-terminal-surface')).toBeInTheDocument())
 
@@ -1058,9 +1063,7 @@ describe('AgentConsoleWindowPage helpers', () => {
     renderConsoleWindowPage()
 
     await screen.findAllByText('Hermes Agent')
-    await waitFor(() => expect(mockOpenFiles).toHaveBeenCalled())
-    const addTerminalButtons = screen.getAllByRole('button', { name: '添加终端' })
-    fireEvent.click(addTerminalButtons[addTerminalButtons.length - 1])
+    await openDesktopTerminalTab()
     await screen.findByText('mock terminal workspace')
 
     const openPreviewButton = screen.getByRole('button', { name: 'open preview 3000' })
@@ -1102,8 +1105,7 @@ describe('AgentConsoleWindowPage helpers', () => {
     renderConsoleWindowPage()
 
     await screen.findAllByText('Hermes Agent')
-    const addTerminalButtons = screen.getAllByRole('button', { name: '添加终端' })
-    fireEvent.click(addTerminalButtons[addTerminalButtons.length - 1])
+    await openDesktopTerminalTab()
     await screen.findByText('mock terminal workspace')
 
     fireEvent.click(screen.getByRole('button', { name: 'open preview 3000' }))
@@ -1112,6 +1114,50 @@ describe('AgentConsoleWindowPage helpers', () => {
 
     await waitFor(() => expect(previewFrame.closest('div')).toHaveAttribute('aria-hidden', 'true'))
     expect(previewFrame).toHaveAttribute('tabindex', '-1')
+  })
+
+  it('sandboxes web tab iframes', async () => {
+    window.history.replaceState({}, '', '/console?agentName=ympp868f')
+    vi.mocked(createClusterContext).mockReturnValue(clusterContext)
+    vi.mocked(getClusterInfo).mockResolvedValue({
+      cluster: 'sealos',
+      namespace: 'ns-test',
+      kc: 'apiVersion: v1',
+      server: 'https://k8s.example.com',
+      operator: 'night',
+      updatedAt: '2026-05-22T00:00:00Z',
+    })
+    vi.mocked(listAgentTemplates).mockResolvedValue({
+      items: [template],
+      region: 'us',
+    })
+    vi.mocked(getAgentConsole).mockResolvedValue({
+      agent: agentContract,
+      workspaceRoot: '/workspace',
+      webSocketPath: '/api/v1/agents/ympp868f/ws',
+      services: [],
+    })
+    vi.mocked(createAgentPreview).mockResolvedValue({
+      id: 'p_3000',
+      port: 3000,
+      url: '/__preview/p_3000/',
+    })
+
+    renderConsoleWindowPage()
+
+    await screen.findAllByText('Hermes Agent')
+    await openDesktopTerminalTab()
+    await screen.findByText('mock terminal workspace')
+    fireEvent.click(screen.getByRole('button', { name: 'open preview 3000' }))
+
+    expect(await screen.findByTitle('预览 3000')).toHaveAttribute(
+      'sandbox',
+      'allow-forms allow-popups allow-scripts',
+    )
+    expect(screen.getByTitle('预览 3000')).toHaveAttribute(
+      'referrerpolicy',
+      'strict-origin-when-cross-origin',
+    )
   })
 
   it('keeps inactive terminal panes out of assistive navigation', async () => {
@@ -1139,12 +1185,11 @@ describe('AgentConsoleWindowPage helpers', () => {
     renderConsoleWindowPage()
 
     await screen.findAllByText('Hermes Agent')
-    const addTerminalButtons = screen.getAllByRole('button', { name: '添加终端' })
-    fireEvent.click(addTerminalButtons[addTerminalButtons.length - 1])
+    await openDesktopTerminalTab()
     const terminalPane = (await screen.findByText('mock terminal workspace')).closest('div')?.parentElement
     expect(terminalPane).not.toHaveAttribute('aria-hidden')
 
-    fireEvent.click(screen.getAllByRole('button', { name: '添加终端' }).at(-1)!)
+    await openDesktopTerminalTab()
     await screen.findByRole('button', { name: /终端 2/ })
 
     await waitFor(() => expect(terminalPane).toHaveAttribute('aria-hidden', 'true'))
@@ -1183,8 +1228,7 @@ describe('AgentConsoleWindowPage helpers', () => {
     renderConsoleWindowPage()
 
     await screen.findAllByText('Hermes Agent')
-    const addTerminalButtons = screen.getAllByRole('button', { name: '添加终端' })
-    fireEvent.click(addTerminalButtons[addTerminalButtons.length - 1])
+    await openDesktopTerminalTab()
     await screen.findByText('mock terminal workspace')
 
     const openPreviewButton = screen.getByRole('button', { name: 'open preview 3000' })
@@ -1240,8 +1284,7 @@ describe('AgentConsoleWindowPage helpers', () => {
     renderConsoleWindowPage()
 
     await screen.findAllByText('Hermes Agent')
-    const addTerminalButtons = screen.getAllByRole('button', { name: '添加终端' })
-    fireEvent.click(addTerminalButtons[addTerminalButtons.length - 1])
+    await openDesktopTerminalTab()
     await screen.findByText('mock terminal workspace')
 
     fireEvent.click(screen.getByRole('button', { name: 'open preview 3000' }))
@@ -1303,8 +1346,7 @@ describe('AgentConsoleWindowPage helpers', () => {
     renderConsoleWindowPage()
 
     await screen.findAllByText('Hermes Agent')
-    const addTerminalButtons = screen.getAllByRole('button', { name: '添加终端' })
-    fireEvent.click(addTerminalButtons[addTerminalButtons.length - 1])
+    await openDesktopTerminalTab()
     await screen.findByText('mock terminal workspace')
 
     fireEvent.click(screen.getByRole('button', { name: 'open preview 3000' }))

@@ -14,8 +14,8 @@ describe('AIProxy URL derivation', () => {
     expect(__agentHubAIProxyTest.isAllowedSealosServiceHost('evilsealos.io')).toBe(false)
     expect(__agentHubAIProxyTest.isAllowedSealosServiceHost('usw-1.sealos.io.evil.com')).toBe(false)
     expect(__agentHubAIProxyTest.isAllowedSealosServiceHost('evil.sealos.run')).toBe(false)
-    expect(deriveAIProxyManagerBaseURL('https://evilsealos.io:6443')).toBe('https://aiproxy-web.hzh.sealos.run')
-    expect(deriveAIProxyModelBaseURL('https://hzh.sealos.run.evil.com:6443')).toBe('https://aiproxy.hzh.sealos.run/v1')
+    expect(deriveAIProxyManagerBaseURL('https://evilsealos.io:6443')).toBe('')
+    expect(deriveAIProxyModelBaseURL('https://hzh.sealos.run.evil.com:6443')).toBe('')
   })
 
   it('allows known Sealos region service hosts', () => {

@@ -24,6 +24,8 @@ export function translateAgentReason(reason: string, t: TranslateFn) {
       return t('agent.reasonWorkspaceUnavailable')
     case 'bootstrap_not_ready':
       return t('agent.reasonBootstrapNotReady')
+    case 'agent_paused':
+      return t('agent.reasonAgentPaused')
     case 'config_error':
       return t('agent.reasonConfigError')
     case 'waiting_for_bootstrap':

@@ -682,6 +682,36 @@ func TestAgentConsoleRequiresAuthorization(t *testing.T) {
 	}
 }
 
+func TestAgentConsoleRejectsPausedAgent(t *testing.T) {
+	kubernetesAPI := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeFakeKubernetesAgentResponseWithState(t, w, r, "demo-agent.agent.usw-1.sealos.app", "Paused")
+	}))
+	defer kubernetesAPI.Close()
+
+	recorder := performRequest(
+		t,
+		http.MethodGet,
+		"/api/v1/agents/demo-agent/console",
+		"",
+		"",
+		map[string]string{
+			"Authorization": validEncodedKubeconfigWithServerAndCA(kubernetesAPI.URL, encodedCertificateAuthorityData(kubernetesAPI)),
+		},
+	)
+
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("GET /api/v1/agents/:agentName/console paused status = %d, want %d; body=%s", recorder.Code, http.StatusConflict, recorder.Body.String())
+	}
+
+	body := decodeEnvelope(t, recorder)
+	if body.Code != 40003 {
+		t.Fatalf("GET /api/v1/agents/:agentName/console paused code = %d, want 40003", body.Code)
+	}
+	if body.Error == nil || body.Error.Type != "invalid_agent_state" {
+		t.Fatalf("GET /api/v1/agents/:agentName/console paused error = %#v, want invalid_agent_state", body.Error)
+	}
+}
+
 func TestCreatePreviewRequiresAuthorization(t *testing.T) {
 	t.Parallel()
 
@@ -750,18 +780,33 @@ func TestAgentKeyReadbackEndpointIsDisabled(t *testing.T) {
 }
 
 func TestChatCompletionsRejectsOutOfSuffixIngressBeforeProxying(t *testing.T) {
-	t.Parallel()
-
 	upstreamCalls := 0
-	kubernetesAPI := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/chat/completions" {
-			upstreamCalls++
-			if got := r.Header.Get("Authorization"); got != "" {
-				t.Fatalf("upstream Authorization = %q, want empty because request must not be proxied", got)
-			}
-			w.WriteHeader(http.StatusOK)
-			return
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Hostname() != "metadata.google.internal" {
+			return originalTransport.RoundTrip(r)
 		}
+
+		upstreamCalls++
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Fatalf("upstream Authorization = %q, want empty because request must not be proxied", got)
+		}
+		if got := r.Header.Get("X-API-Key"); got != "" {
+			t.Fatalf("upstream X-API-Key = %q, want empty because request must not be proxied", got)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("{}")),
+			Request:    r,
+		}, nil
+	})
+	defer func() {
+		http.DefaultTransport = originalTransport
+	}()
+
+	kubernetesAPI := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeFakeKubernetesAgentResponse(t, w, r, "metadata.google.internal")
 	}))
 	defer kubernetesAPI.Close()
@@ -791,6 +836,12 @@ func TestChatCompletionsRejectsOutOfSuffixIngressBeforeProxying(t *testing.T) {
 	if upstreamCalls != 0 {
 		t.Fatalf("chat upstream calls = %d, want 0", upstreamCalls)
 	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
 }
 
 func TestWebSocketEndpointRequiresWebSocketUpgrade(t *testing.T) {
@@ -905,6 +956,11 @@ func encodedCertificateAuthorityData(server *httptest.Server) string {
 
 func writeFakeKubernetesAgentResponse(t *testing.T, w http.ResponseWriter, r *http.Request, ingressHost string) {
 	t.Helper()
+	writeFakeKubernetesAgentResponseWithState(t, w, r, ingressHost, "Running")
+}
+
+func writeFakeKubernetesAgentResponseWithState(t *testing.T, w http.ResponseWriter, r *http.Request, ingressHost, state string) {
+	t.Helper()
 	if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
 		t.Fatalf("kubernetes Authorization = %q, want bearer token from kubeconfig", got)
 	}
@@ -930,14 +986,14 @@ func writeFakeKubernetesAgentResponse(t *testing.T, w http.ResponseWriter, r *ht
 				}
 			},
 			"spec":{
-				"state":"Running",
+				"state":"` + state + `",
 				"config":{
 					"workingDir":"/workspace",
 					"user":"hermes",
 					"env":[{"name":"API_SERVER_KEY","value":"agent-api-secret"}]
 				}
 			},
-			"status":{"phase":"Running"}
+			"status":{"phase":"` + state + `"}
 		}`))
 	case "/apis/networking.k8s.io/v1/namespaces/ns-test/ingresses/demo-agent":
 		_, _ = w.Write([]byte(`{

@@ -42,6 +42,7 @@ import type { AgentDetailRouteState } from "./lib/navigation";
 import { AGENTHUB_CONSOLE_ROUTE, openAgentConsoleDesktopWindow } from "./lib/consoleWindow";
 import { cn } from "../../../lib/format";
 import { useI18n } from "../../../i18n";
+import { translateAgentReason } from "../../../domains/agents/reasons";
 
 const MOCK_AGENT_ID_PREFIX = "mock-agent-";
 const DETAIL_SCALE_BREAKPOINT = 1180;
@@ -476,6 +477,12 @@ export function AgentDetailPage() {
 
   const handleOpenTerminalWindow = async () => {
     if (!item) return;
+    if (!item.terminalAvailable) {
+      controller.setMessage(
+        translateAgentReason(item.terminalDisabledReason, t) || t('agent.consoleUnavailable'),
+      );
+      return;
+    }
 
     if (isMockAgentItem(item)) {
       navigate(`${AGENTHUB_CONSOLE_ROUTE}?agentName=${encodeURIComponent(item.name)}`);

@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
+	"github.com/nightwhite/Agent-Hub/internal/agent"
 	"github.com/nightwhite/Agent-Hub/internal/config"
 	k8sclient "github.com/nightwhite/Agent-Hub/internal/kube"
 	"github.com/nightwhite/Agent-Hub/internal/middleware"
@@ -84,6 +85,17 @@ func writeKubernetesError(c *gin.Context, err error, message string) {
 
 func writeValidationError(c *gin.Context, err *appErr.AppError) {
 	writeAppError(c, http.StatusUnprocessableEntity, err)
+}
+
+func ensureAgentRunning(c *gin.Context, spec agent.Agent) bool {
+	if spec.Status == agent.StatusRunning {
+		return true
+	}
+	writeAppError(c, http.StatusConflict, appErr.New(appErr.CodeInvalidAgentState, "agent is not running").WithDetails(map[string]any{
+		"status": string(spec.Status),
+		"reason": runtimeAccessReason(spec),
+	}))
+	return false
 }
 
 func isCanceledRequestError(err error) bool {

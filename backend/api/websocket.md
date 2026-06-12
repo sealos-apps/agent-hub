@@ -10,11 +10,10 @@ Authentication:
 - Preferred:
   - connect first
   - send `auth` as the first business message
-- Compatibility options:
+- Compatibility option:
   - `Authorization` request header
-  - `?authorization=<url-encoded-kubeconfig>`
 
-The dedicated terminal endpoint only accepts first-message authentication. It does not accept kubeconfig credentials in the URL.
+WebSocket endpoints do not accept kubeconfig credentials in the URL.
 
 `auth` message:
 

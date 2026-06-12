@@ -2,6 +2,7 @@ package kube
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -208,7 +209,7 @@ func sshPort(devbox *unstructured.Unstructured) int32 {
 	}
 
 	value, found, _ := unstructured.NestedInt64(devbox.Object, "status", "network", "nodePort")
-	if !found || value <= 0 {
+	if !found || value <= 0 || value > math.MaxInt32 {
 		return 0
 	}
 	return int32(value)

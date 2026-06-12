@@ -88,7 +88,6 @@ func buildManifestTemplateData(agentSpec agent.Agent, options BuildOptions) mani
 	ingressAnnotations["nginx.ingress.kubernetes.io/proxy-buffer-size"] = "64k"
 	ingressAnnotations["nginx.ingress.kubernetes.io/proxy-send-timeout"] = "300"
 	ingressAnnotations["nginx.ingress.kubernetes.io/proxy-read-timeout"] = "300"
-	ingressAnnotations["nginx.ingress.kubernetes.io/server-snippet"] = "client_header_buffer_size 64k;\nlarge_client_header_buffers 4 128k;"
 
 	ingressLabels := cloneStringMap(labels)
 	ingressLabels["cloud.sealos.io/app-deploy-manager"] = agentSpec.Name

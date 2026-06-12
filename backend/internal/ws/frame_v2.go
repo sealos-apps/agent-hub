@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/nightwhite/Agent-Hub/internal/dto"
@@ -81,6 +82,22 @@ func encodeWSBinaryMessage(message dto.WSMessage) ([]byte, error) {
 		return nil, fmt.Errorf("marshal frame meta: %w", err)
 	}
 	payloadBytes := []byte(payload)
+	requestIDLen, err := uint32FrameLength(requestIDBytes)
+	if err != nil {
+		return nil, err
+	}
+	sessionIDLen, err := uint32FrameLength(sessionIDBytes)
+	if err != nil {
+		return nil, err
+	}
+	metaLen, err := uint32FrameLength(metaBytes)
+	if err != nil {
+		return nil, err
+	}
+	payloadLen, err := uint32FrameLength(payloadBytes)
+	if err != nil {
+		return nil, err
+	}
 
 	flags := uint16(0)
 	if len(payloadBytes) > 0 {
@@ -92,10 +109,10 @@ func encodeWSBinaryMessage(message dto.WSMessage) ([]byte, error) {
 	frame[0] = wsBinaryV2Version
 	frame[1] = typeCode
 	binary.LittleEndian.PutUint16(frame[2:4], flags)
-	binary.LittleEndian.PutUint32(frame[4:8], uint32(len(requestIDBytes)))
-	binary.LittleEndian.PutUint32(frame[8:12], uint32(len(sessionIDBytes)))
-	binary.LittleEndian.PutUint32(frame[12:16], uint32(len(metaBytes)))
-	binary.LittleEndian.PutUint32(frame[16:20], uint32(len(payloadBytes)))
+	binary.LittleEndian.PutUint32(frame[4:8], requestIDLen)
+	binary.LittleEndian.PutUint32(frame[8:12], sessionIDLen)
+	binary.LittleEndian.PutUint32(frame[12:16], metaLen)
+	binary.LittleEndian.PutUint32(frame[16:20], payloadLen)
 
 	offset := wsBinaryV2HeaderSize
 	copy(frame[offset:], requestIDBytes)
@@ -107,6 +124,17 @@ func encodeWSBinaryMessage(message dto.WSMessage) ([]byte, error) {
 	copy(frame[offset:], payloadBytes)
 
 	return frame, nil
+}
+
+func uint32FrameLength(value []byte) (uint32, error) {
+	return uint32FrameLengthFromInt(int64(len(value)))
+}
+
+func uint32FrameLengthFromInt(length int64) (uint32, error) {
+	if length < 0 || length > math.MaxUint32 {
+		return 0, fmt.Errorf("frame section exceeds uint32 length")
+	}
+	return uint32(length), nil
 }
 
 func decodeWSBinaryMessage(frame []byte) (dto.WSMessage, error) {

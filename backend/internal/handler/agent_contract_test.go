@@ -179,6 +179,57 @@ func TestBuildAgentContractDisablesExternalIngressURLs(t *testing.T) {
 	}
 }
 
+func TestBuildAgentContractDisablesRuntimeAccessWhenPaused(t *testing.T) {
+	t.Parallel()
+
+	contract, contractErr := buildAgentContract(kube.AgentView{
+		Agent: agent.Agent{
+			Name:          "agent-test",
+			TemplateID:    "template-test",
+			Namespace:     "ns-test",
+			IngressDomain: "agent-test.agent.usw-1.sealos.app",
+			Ready:         true,
+			Status:        agent.StatusPaused,
+			WorkingDir:    "/workspace",
+		},
+	}, agenttemplate.Definition{
+		Access: []agenttemplate.AccessDefinition{
+			{Key: "api", Label: "API", Path: "/v1"},
+			{Key: "terminal", Label: "Terminal"},
+			{Key: "files", Label: "Files", RootPath: "/workspace"},
+			{Key: "web-ui", Label: "Web UI", Path: "/"},
+		},
+		Actions: []agenttemplate.ActionDefinition{
+			{Key: "open-chat", Label: "Chat"},
+			{Key: "open-terminal", Label: "Terminal"},
+			{Key: "open-files", Label: "Files"},
+		},
+	}, config.Config{IngressSuffix: "agent.usw-1.sealos.app"})
+	if contractErr != nil {
+		t.Fatalf("buildAgentContract() error = %v, want nil", contractErr)
+	}
+
+	for _, item := range contract.Access {
+		if item.Enabled {
+			t.Fatalf("contract access %s enabled = true, want false for paused agent", item.Key)
+		}
+		if item.Status != "paused" {
+			t.Fatalf("contract access %s status = %q, want paused", item.Key, item.Status)
+		}
+		if item.Reason != "agent_paused" {
+			t.Fatalf("contract access %s reason = %q, want agent_paused", item.Key, item.Reason)
+		}
+	}
+	for _, action := range contract.Actions {
+		if action.Enabled {
+			t.Fatalf("contract action %s enabled = true, want false for paused agent", action.Key)
+		}
+		if action.Reason != "agent_paused" {
+			t.Fatalf("contract action %s reason = %q, want agent_paused", action.Key, action.Reason)
+		}
+	}
+}
+
 func TestModelSlotsFromAnnotationsRejectsInvalidJSON(t *testing.T) {
 	t.Parallel()
 

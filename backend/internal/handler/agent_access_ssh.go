@@ -56,6 +56,9 @@ func GetAgentSSHAccess(c *gin.Context) {
 	if !found {
 		return
 	}
+	if !ensureAgentRunning(c, view.Agent) {
+		return
+	}
 
 	templateDef, resolveErr := resolveTemplateDefinition(cfg, view.Agent.TemplateID)
 	if resolveErr != nil {

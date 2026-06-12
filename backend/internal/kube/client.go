@@ -17,7 +17,6 @@ import (
 )
 
 const DefaultAuthorizationHeader = "Authorization"
-const WebSocketAuthorizationQueryParam = "authorization"
 
 type Factory struct {
 	restConfig    *rest.Config
