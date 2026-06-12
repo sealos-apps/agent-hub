@@ -183,6 +183,23 @@ helm template agenthub deploy/charts/agent-hub \
   --set ingress.host=<APP_HOST>
 ```
 
+### 大请求头配置
+
+当前 REST 请求仍会在 `Authorization` header 中携带 URL encoded kubeconfig，较大的 kubeconfig 可能超过默认 Ingress 请求头限制。
+
+标准做法是在目标集群的 ingress-nginx Controller 层配置请求头 buffer。只有确认目标 Controller 允许 `server-snippet` annotation 时，才在 Helm 中显式开启：
+
+```bash
+helm upgrade --install agenthub deploy/charts/agent-hub \
+  -n <NAMESPACE> \
+  --set fullnameOverride=<APP_NAME> \
+  --set image.tag=sha-<短 SHA> \
+  --set ingress.host=<APP_HOST> \
+  --set ingress.largeClientHeaderBuffers.enabled=true
+```
+
+默认 Helm Chart 不开启 `server-snippet`，避免在禁用 snippet annotation 的集群上部署失败。
+
 ### Rollout 检查
 
 ```bash
@@ -320,9 +337,6 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-buffer-size: 64k
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
-    nginx.ingress.kubernetes.io/server-snippet: |
-      client_header_buffer_size 64k;
-      large_client_header_buffers 4 128k;
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   rules:

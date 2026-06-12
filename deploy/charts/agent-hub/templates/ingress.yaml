@@ -11,6 +11,11 @@ metadata:
     {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
+    {{- if .Values.ingress.largeClientHeaderBuffers.enabled }}
+    nginx.ingress.kubernetes.io/server-snippet: |
+      client_header_buffer_size {{ .Values.ingress.largeClientHeaderBuffers.clientHeaderBufferSize }};
+      large_client_header_buffers {{ .Values.ingress.largeClientHeaderBuffers.count }} {{ .Values.ingress.largeClientHeaderBuffers.size }};
+    {{- end }}
 spec:
   rules:
     - host: {{ .Values.ingress.host | quote }}

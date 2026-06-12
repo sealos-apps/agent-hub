@@ -35,10 +35,12 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-buffer-size: 64k
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
-    nginx.ingress.kubernetes.io/server-snippet: |
-      client_header_buffer_size 64k;
-      large_client_header_buffers 4 128k;
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  largeClientHeaderBuffers:
+    enabled: false
+    clientHeaderBufferSize: 64k
+    count: 4
+    size: 128k
 
 resources:
   requests:
