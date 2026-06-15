@@ -6,6 +6,7 @@ COPY registry registry
 COPY charts charts
 COPY agent-hub-entrypoint.sh agent-hub-entrypoint.sh
 
+ENV agentHubImageRepository="ghcr.io/sealos-apps/agent-hub"
 ENV agentHubImageTag="latest"
 
 CMD ["bash agent-hub-entrypoint.sh"]

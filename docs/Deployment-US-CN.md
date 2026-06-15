@@ -206,21 +206,21 @@ deploy/agent-hub-entrypoint.sh
 
 `sealos run` 时 entrypoint 会自动读取 `sealos-system/sealos-config`，并注入 Agent Hub 域名、Agent 访问域名后缀、SSH 域名、证书、区域和 AIProxy 地址。它也会通过 Helm 注册 `agenthub` 和 `agenthub-console` 两个 App 资源。
 
-默认运行镜像 tag 是 `latest`，只用于让 `sealos build` 可以渲染 chart 并扫描镜像。生产发布集群镜像时，构建过程必须把 `deploy/Kubefile` 的 `agentHubImageTag` 和 `deploy/images/shim/images` 同步到同一个 GitHub Actions 产出的 `sha-<短 SHA>`。
+默认运行镜像 repository 是 `ghcr.io/sealos-apps/agent-hub`，默认 tag 是 `latest`，只用于让 `sealos build` 可以渲染 chart 并扫描镜像。生产发布集群镜像时，构建过程必须把 `deploy/Kubefile` 的 `agentHubImageRepository`、`agentHubImageTag`、`deploy/images/shim/images` 和 Helm chart 的 `image.repository` / `image.tag` 同步到同一个 GitHub Actions 产出的应用镜像。
 
-仓库中的 `.github/workflows/cluster-image.yml` 会在 `Docker Image` workflow 于 `main` 分支成功后自动构建并发布 `ghcr.io/sealos-apps/agent-hub-cluster:sha-<短 SHA>`，也支持手动指定运行镜像 tag 和集群镜像 tag。
+仓库中的 `.github/workflows/cluster-image.yml` 会在 `Docker Image` workflow 于 `main` 分支成功后自动构建并发布 `ghcr.io/<owner>/<repo>-cluster:sha-<短 SHA>`。应用镜像 repository 默认取当前仓库 `ghcr.io/<owner>/<repo>`，fork 或个人仓库构建时不会继续使用 `ghcr.io/sealos-apps/agent-hub`；手动触发时也可以指定运行镜像 repository、运行镜像 tag 和集群镜像 tag。
 
 构建示例：
 
 ```bash
 cd deploy
-sealos build -t ghcr.io/sealos-apps/agent-hub-cluster:sha-<短 SHA> .
+sealos build -t ghcr.io/<owner>/<repo>-cluster:sha-<短 SHA> .
 ```
 
 运行示例：
 
 ```bash
-sealos run ghcr.io/sealos-apps/agent-hub-cluster:sha-<短 SHA>
+sealos run ghcr.io/<owner>/<repo>-cluster:sha-<短 SHA>
 ```
 
 ### Rollout 检查

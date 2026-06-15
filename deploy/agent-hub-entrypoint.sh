@@ -78,6 +78,7 @@ SEALOS_DISABLE_HTTPS=${SEALOS_DISABLE_HTTPS:-"${disableHttps:-${CONFIG_DISABLE_H
 SEALOS_CERT_SECRET_NAME=${SEALOS_CERT_SECRET_NAME:-"${certSecretName:-${CONFIG_CERT_SECRET_NAME}}"}
 SEALOS_REGION_UID=${SEALOS_REGION_UID:-"${regionUID:-${CONFIG_REGION_UID}}"}
 
+AGENT_HUB_IMAGE_REPOSITORY=${AGENT_HUB_IMAGE_REPOSITORY:-"${agentHubImageRepository:-${imageRepository:-}}"}
 AGENT_HUB_IMAGE_TAG=${AGENT_HUB_IMAGE_TAG:-"${agentHubImageTag:-${imageTag:-}}"}
 AGENT_HUB_FULLNAME=${AGENT_HUB_FULLNAME:-"${fullnameOverride:-agent-hub}"}
 AGENT_HUB_HOST=${AGENT_HUB_HOST:-"${agentHubHost:-}"}
@@ -101,6 +102,7 @@ if [ -n "${SEALOS_CLOUD_DOMAIN}" ]; then
 fi
 
 add_set_string fullnameOverride "${AGENT_HUB_FULLNAME}"
+add_set_string image.repository "${AGENT_HUB_IMAGE_REPOSITORY}"
 add_set_string image.tag "${AGENT_HUB_IMAGE_TAG}"
 add_set_string ingress.host "${AGENT_HUB_HOST}"
 add_set_string ingress.tlsSecretName "${SEALOS_CERT_SECRET_NAME}"

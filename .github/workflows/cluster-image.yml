@@ -10,6 +10,10 @@ on:
       - main
   workflow_dispatch:
     inputs:
+      runtime_image_repository:
+        description: Runtime image repository to embed, defaults to ghcr.io/<owner>/<repo>.
+        required: false
+        type: string
       runtime_image_tag:
         description: Runtime image tag to embed, defaults to sha-<short SHA>.
         required: false
@@ -19,7 +23,7 @@ on:
         required: false
         type: string
       push_latest:
-        description: Also publish ghcr.io/<owner>/agent-hub-cluster:latest.
+        description: Also publish ghcr.io/<owner>/<repo>-cluster:latest.
         required: false
         type: boolean
         default: true
@@ -58,6 +62,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUNTIME_IMAGE_REPOSITORY_INPUT: ${{ github.event.inputs.runtime_image_repository }}
           RUNTIME_IMAGE_TAG_INPUT: ${{ github.event.inputs.runtime_image_tag }}
           CLUSTER_IMAGE_TAG_INPUT: ${{ github.event.inputs.cluster_image_tag }}
           PUSH_LATEST_INPUT: ${{ github.event.inputs.push_latest }}
@@ -70,11 +75,17 @@ jobs:
           fi
 
           short_sha="${source_sha:0:7}"
+          runtime_repository="${RUNTIME_IMAGE_REPOSITORY_INPUT:-${RUNTIME_IMAGE_NAME}}"
           runtime_tag="${RUNTIME_IMAGE_TAG_INPUT:-sha-${short_sha}}"
           cluster_tag="${CLUSTER_IMAGE_TAG_INPUT:-${runtime_tag}}"
           push_latest="${PUSH_LATEST_INPUT:-true}"
 
+          repository_pattern='^[A-Za-z0-9][A-Za-z0-9_.:-]*(/[A-Za-z0-9][A-Za-z0-9_.-]*)+$'
           tag_pattern='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'
+          if [[ ! "${runtime_repository}" =~ ${repository_pattern} ]]; then
+            echo "Invalid runtime image repository: ${runtime_repository}" >&2
+            exit 1
+          fi
           if [[ ! "${runtime_tag}" =~ ${tag_pattern} ]]; then
             echo "Invalid runtime image tag: ${runtime_tag}" >&2
             exit 1
@@ -87,9 +98,10 @@ jobs:
           {
             echo "source_sha=${source_sha}"
             echo "short_sha=${short_sha}"
+            echo "runtime_repository=${runtime_repository}"
             echo "runtime_tag=${runtime_tag}"
             echo "cluster_tag=${cluster_tag}"
-            echo "runtime_image=${RUNTIME_IMAGE_NAME}:${runtime_tag}"
+            echo "runtime_image=${runtime_repository}:${runtime_tag}"
             echo "cluster_image=${CLUSTER_IMAGE_NAME}:${cluster_tag}"
             echo "push_latest=${push_latest}"
           } >> "${GITHUB_OUTPUT}"
@@ -122,17 +134,22 @@ jobs:
       - name: Prepare cluster image sources
         working-directory: deploy
         env:
+          RUNTIME_REPOSITORY: ${{ steps.image.outputs.runtime_repository }}
           RUNTIME_IMAGE: ${{ steps.image.outputs.runtime_image }}
           RUNTIME_TAG: ${{ steps.image.outputs.runtime_tag }}
         run: |
           set -euo pipefail
 
           printf '%s\n' "${RUNTIME_IMAGE}" > images/shim/images
+          sed -i -E "s;^ENV agentHubImageRepository=\"[^\"]*\";ENV agentHubImageRepository=\"${RUNTIME_REPOSITORY}\";" Kubefile
           sed -i -E "s;^ENV agentHubImageTag=\"[^\"]*\";ENV agentHubImageTag=\"${RUNTIME_TAG}\";" Kubefile
+          sed -i -E "0,/^  repository: .*/s|^  repository: .*|  repository: \"${RUNTIME_REPOSITORY}\"|" charts/agent-hub/values.yaml
           sed -i -E "0,/^  tag: \"[^\"]*\"/s//  tag: \"${RUNTIME_TAG}\"/" charts/agent-hub/values.yaml
 
+          grep -F "ENV agentHubImageRepository=\"${RUNTIME_REPOSITORY}\"" Kubefile
           grep -F "ENV agentHubImageTag=\"${RUNTIME_TAG}\"" Kubefile
           grep -F "${RUNTIME_IMAGE}" images/shim/images
+          grep -F "  repository: \"${RUNTIME_REPOSITORY}\"" charts/agent-hub/values.yaml
           grep -F "  tag: \"${RUNTIME_TAG}\"" charts/agent-hub/values.yaml
 
       - name: Build cluster image
