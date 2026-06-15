@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"strings"
@@ -13,6 +14,9 @@ import (
 	"github.com/nightwhite/Agent-Hub/internal/dto"
 	"github.com/nightwhite/Agent-Hub/internal/kube"
 	appErr "github.com/nightwhite/Agent-Hub/pkg/errors"
+	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 )
 
 func TestGenerateSSHAccessTokenUsesOneHourTTL(t *testing.T) {
@@ -81,6 +85,10 @@ func TestValidateAgentIngressDomainRequiresConfiguredSuffix(t *testing.T) {
 	}{
 		"allows generated agent domain": {
 			host:   "demo-agent.agent.usw-1.sealos.app",
+			suffix: "agent.usw-1.sealos.app",
+		},
+		"allows generated hyphen-prefixed agent domain": {
+			host:   "lp0bmwmd-agent.usw-1.sealos.app",
 			suffix: "agent.usw-1.sealos.app",
 		},
 		"rejects lookalike suffix": {
@@ -231,7 +239,7 @@ func TestBuildAgentContractDisablesRuntimeAccessWhenPaused(t *testing.T) {
 	}
 }
 
-func TestBuildAgentContractEnablesWebUIWhenIngressIsReadyBeforeBootstrap(t *testing.T) {
+func TestBuildAgentContractDisablesWebUIBeforeBootstrapReady(t *testing.T) {
 	t.Parallel()
 
 	contract, contractErr := buildAgentContract(kube.AgentView{
@@ -265,14 +273,14 @@ func TestBuildAgentContractEnablesWebUIWhenIngressIsReadyBeforeBootstrap(t *test
 		accessByKey[item.Key] = item
 	}
 	webUI := accessByKey["web-ui"]
-	if !webUI.Enabled {
-		t.Fatalf("web-ui enabled = false, want true when ingress URL is available")
+	if webUI.Enabled {
+		t.Fatalf("web-ui enabled = true, want false before bootstrap is ready")
 	}
 	if webUI.URL != "https://agent-test.agent.usw-1.sealos.app/" {
 		t.Fatalf("web-ui URL = %q, want ingress URL", webUI.URL)
 	}
-	if webUI.Reason != "" {
-		t.Fatalf("web-ui reason = %q, want empty", webUI.Reason)
+	if webUI.Reason != "running_template_bootstrap" {
+		t.Fatalf("web-ui reason = %q, want running_template_bootstrap", webUI.Reason)
 	}
 	api := accessByKey["api"]
 	if api.Enabled {
@@ -289,11 +297,14 @@ func TestBuildAgentContractEnablesWebUIWhenIngressIsReadyBeforeBootstrap(t *test
 	if len(contract.Workspaces) != 1 {
 		t.Fatalf("workspaces len = %d, want 1", len(contract.Workspaces))
 	}
-	if !contract.Workspaces[0].Enabled {
-		t.Fatalf("web-ui workspace enabled = false, want true")
+	if contract.Workspaces[0].Enabled {
+		t.Fatalf("web-ui workspace enabled = true, want false before bootstrap is ready")
 	}
 	if contract.Workspaces[0].URL != webUI.URL {
 		t.Fatalf("web-ui workspace URL = %q, want %q", contract.Workspaces[0].URL, webUI.URL)
+	}
+	if contract.Workspaces[0].Reason != "running_template_bootstrap" {
+		t.Fatalf("web-ui workspace reason = %q, want running_template_bootstrap", contract.Workspaces[0].Reason)
 	}
 }
 
@@ -329,6 +340,117 @@ func TestBuildAgentContractDisablesWebUIWhenRuntimeIsDeleting(t *testing.T) {
 	}
 	if webUI.Status != "pending" {
 		t.Fatalf("web-ui status = %q, want pending", webUI.Status)
+	}
+}
+
+func TestListManagedIngressDomainsIncludesSealosAppManagerIngresses(t *testing.T) {
+	t.Parallel()
+
+	clientset := k8sfake.NewSimpleClientset(&networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "lp0bmwmd",
+			Namespace: "ns-test",
+			Labels: map[string]string{
+				"cloud.sealos.io/app-deploy-manager":        "lp0bmwmd",
+				"cloud.sealos.io/app-deploy-manager-domain": "lp0bmwmd.agent.usw-1.sealos.app",
+			},
+		},
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{
+				{Host: "lp0bmwmd.agent.usw-1.sealos.app"},
+			},
+		},
+	})
+
+	domains, err := listManagedIngressDomains(context.Background(), clientset, "ns-test")
+	if err != nil {
+		t.Fatalf("listManagedIngressDomains() error = %v, want nil", err)
+	}
+	if got := domains["lp0bmwmd"]; got != "lp0bmwmd.agent.usw-1.sealos.app" {
+		t.Fatalf("domains[lp0bmwmd] = %q, want ingress host", got)
+	}
+}
+
+func TestListManagedIngressDomainsUsesSealosAppManagerAsAgentName(t *testing.T) {
+	t.Parallel()
+
+	clientset := k8sfake.NewSimpleClientset(&networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ingress-test",
+			Namespace: "ns-test",
+			Labels: map[string]string{
+				"cloud.sealos.io/app-deploy-manager":        "lp0bmwmd",
+				"cloud.sealos.io/app-deploy-manager-domain": "random-domain.agent.usw-1.sealos.app",
+			},
+		},
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{
+				{Host: "random-domain.agent.usw-1.sealos.app"},
+			},
+		},
+	})
+
+	domains, err := listManagedIngressDomains(context.Background(), clientset, "ns-test")
+	if err != nil {
+		t.Fatalf("listManagedIngressDomains() error = %v, want nil", err)
+	}
+	if got := domains["lp0bmwmd"]; got != "random-domain.agent.usw-1.sealos.app" {
+		t.Fatalf("domains[lp0bmwmd] = %q, want ingress host for manager label", got)
+	}
+}
+
+func TestListManagedIngressDomainsKeepsLegacyManagedIngresses(t *testing.T) {
+	t.Parallel()
+
+	clientset := k8sfake.NewSimpleClientset(&networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "legacy-agent",
+			Namespace: "ns-test",
+			Labels: map[string]string{
+				"agent.sealos.io/name":       "legacy-agent",
+				"agent.sealos.io/managed-by": "agent-hub-backend",
+			},
+		},
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{
+				{Host: "legacy-agent.agent.usw-1.sealos.app"},
+			},
+		},
+	})
+
+	domains, err := listManagedIngressDomains(context.Background(), clientset, "ns-test")
+	if err != nil {
+		t.Fatalf("listManagedIngressDomains() error = %v, want nil", err)
+	}
+	if got := domains["legacy-agent"]; got != "legacy-agent.agent.usw-1.sealos.app" {
+		t.Fatalf("domains[legacy-agent] = %q, want legacy ingress host", got)
+	}
+}
+
+func TestListManagedIngressDomainsIgnoresIngressWithoutAgentMapping(t *testing.T) {
+	t.Parallel()
+
+	clientset := k8sfake.NewSimpleClientset(&networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "unrelated",
+			Namespace: "ns-test",
+			Labels: map[string]string{
+				"agent.sealos.io/managed-by": "agent-hub-backend",
+			},
+		},
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{
+				{Host: "unrelated.agent.usw-1.sealos.app"},
+			},
+		},
+	})
+
+	domains, err := listManagedIngressDomains(context.Background(), clientset, "ns-test")
+	if err != nil {
+		t.Fatalf("listManagedIngressDomains() error = %v, want nil", err)
+	}
+	if len(domains) != 0 {
+		t.Fatalf("domains len = %d, want 0 for ingress without agent mapping", len(domains))
 	}
 }
 

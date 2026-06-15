@@ -106,7 +106,7 @@ describe('mapBackendAgentsToListItems', () => {
     expect(item.webUIAccess?.reason).toBe('agent_paused')
   })
 
-  it('keeps web UI available while runtime bootstrap is still starting', () => {
+  it('keeps web UI unavailable while runtime bootstrap is still starting', () => {
     const template = createTemplateFixture()
     const contract: AgentContract = {
       core: {
@@ -121,12 +121,12 @@ describe('mapBackendAgentsToListItems', () => {
         bootstrapMessage: 'running_template_bootstrap',
       },
       workspaces: [
-        { key: 'web-ui', label: 'Web UI', enabled: true, url: 'https://demo.example.com/' },
+        { key: 'web-ui', label: 'Web UI', enabled: true, reason: 'running_template_bootstrap', url: 'https://demo.example.com/' },
       ],
       access: [
         { key: 'api', label: 'API', enabled: false, status: 'pending', reason: 'running_template_bootstrap', url: 'https://demo.example.com/v1' },
         { key: 'terminal', label: 'Terminal', enabled: false, status: 'pending', reason: 'running_template_bootstrap' },
-        { key: 'web-ui', label: 'Web UI', enabled: true, status: 'ready', url: 'https://demo.example.com/' },
+        { key: 'web-ui', label: 'Web UI', enabled: true, status: 'pending', reason: 'running_template_bootstrap', url: 'https://demo.example.com/' },
       ],
       runtime: {
         cpu: '1',
@@ -156,10 +156,12 @@ describe('mapBackendAgentsToListItems', () => {
     })
 
     expect(item.status).toBe('creating')
-    expect(item.webUIAvailable).toBe(true)
-    expect(item.webUIAccess?.enabled).toBe(true)
+    expect(item.webUIAvailable).toBe(false)
+    expect(item.webUIAccess?.enabled).toBe(false)
     expect(item.webUIAccess?.url).toBe('https://demo.example.com/')
-    expect(item.workspacesByKey['web-ui']?.enabled).toBe(true)
+    expect(item.webUIAccess?.reason).toBe('running_template_bootstrap')
+    expect(item.workspacesByKey['web-ui']?.enabled).toBe(false)
+    expect(item.workspacesByKey['web-ui']?.reason).toBe('running_template_bootstrap')
     expect(item.terminalAvailable).toBe(false)
     expect(item.terminalDisabledReason).toBe('running_template_bootstrap')
   })

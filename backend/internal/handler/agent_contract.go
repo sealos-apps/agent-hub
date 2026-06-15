@@ -206,10 +206,6 @@ func resolveAgentAccessItem(
 		Modes:      append([]string(nil), item.Modes...),
 	}
 
-	if item.Key == "web-ui" {
-		return resolveAgentWebUIAccessItem(spec, item, cfg, entry)
-	}
-
 	if !isRuntimeAccessAllowed(spec) {
 		entry.Status = runtimeAccessStatus(spec)
 		entry.Reason = runtimeAccessReason(spec)
@@ -228,7 +224,7 @@ func resolveAgentAccessItem(
 	}
 
 	switch item.Key {
-	case "api":
+	case "api", "web-ui":
 		entry.Auth = item.Auth
 		if domainErr := validateAgentIngressDomain(spec.IngressDomain, cfg.IngressSuffix); domainErr != nil {
 			entry.Reason = "ingress_domain_invalid"
@@ -299,32 +295,6 @@ func resolveAgentAccessItem(
 		entry.Reason = "unknown_entry_type"
 		return entry
 	}
-}
-
-func resolveAgentWebUIAccessItem(
-	spec agent.Agent,
-	item agenttemplate.AccessDefinition,
-	cfg config.Config,
-	entry dto.AgentAccessItem,
-) dto.AgentAccessItem {
-	if domainErr := validateAgentIngressDomain(spec.IngressDomain, cfg.IngressSuffix); domainErr != nil {
-		entry.Reason = "ingress_domain_invalid"
-		return entry
-	}
-	entry.URL = joinAccessURL(spec.IngressDomain, item.Path)
-	if entry.URL == "" {
-		entry.Reason = "web_ui_url_unavailable"
-		return entry
-	}
-	if !isWebUIRuntimeAccessAllowed(spec) {
-		entry.Status = runtimeAccessStatus(spec)
-		entry.Reason = runtimeAccessReason(spec)
-		return entry
-	}
-	entry.Enabled = true
-	entry.Status = "ready"
-	entry.Reason = ""
-	return entry
 }
 
 func buildAgentActions(spec agent.Agent, templateDef agenttemplate.Definition, accessItems []dto.AgentAccessItem) []dto.AgentActionItem {
@@ -504,10 +474,6 @@ func isRuntimeAccessAllowed(spec agent.Agent) bool {
 	return (spec.Status == "" || spec.Status == agent.StatusRunning) && spec.Ready
 }
 
-func isWebUIRuntimeAccessAllowed(spec agent.Agent) bool {
-	return spec.Status == "" || spec.Status == agent.StatusRunning || spec.Status == agent.StatusCreating || spec.Status == agent.StatusStarting
-}
-
 func runtimeAccessStatus(spec agent.Agent) string {
 	if spec.Status == agent.StatusPaused {
 		return "paused"
@@ -556,7 +522,7 @@ func validateAgentIngressDomain(host, ingressSuffix string) *appErr.AppError {
 	if ip := net.ParseIP(normalizedHost); ip != nil {
 		return appErr.New(appErr.CodeKubernetesOperation, "agent ingress domain is invalid")
 	}
-	if normalizedHost != normalizedSuffix && strings.HasSuffix(normalizedHost, "."+normalizedSuffix) {
+	if normalizedHost != normalizedSuffix && (strings.HasSuffix(normalizedHost, "."+normalizedSuffix) || strings.HasSuffix(normalizedHost, "-"+normalizedSuffix)) {
 		return nil
 	}
 	return appErr.New(appErr.CodeKubernetesOperation, "agent ingress domain does not match configured suffix").WithDetails(map[string]any{

@@ -49,6 +49,7 @@ describe('AgentActionsCell', () => {
   })
 
   it('shows OpenClaw action set with web ui but without chat', async () => {
+    const onWebUI = vi.fn()
     const item = createAgentItemFixture({
       templateId: 'openclaw',
       template: createTemplateFixture({ id: 'openclaw', name: 'OpenClaw', workingDir: '/app', user: 'openclaw' }),
@@ -74,7 +75,7 @@ describe('AgentActionsCell', () => {
         onFiles={noop}
         onTerminal={noop}
         onToggleState={noop}
-        onWebUI={noop}
+        onWebUI={onWebUI}
       />,
     )
 
@@ -83,7 +84,11 @@ describe('AgentActionsCell', () => {
     fireEvent.pointerDown(screen.getByTitle('更多操作'))
     const menu = await screen.findByRole('menu')
 
-    expect(within(menu).getByRole('menuitem', { name: 'Web UI' })).toBeInTheDocument()
+    const webUIItem = within(menu).getByRole('menuitem', { name: 'Web UI' })
+    expect(webUIItem).toBeInTheDocument()
+    expect(webUIItem).not.toHaveAttribute('data-disabled')
+    fireEvent.click(webUIItem)
+    expect(onWebUI).toHaveBeenCalledWith(item)
     expect(within(menu).queryByRole('menuitem', { name: '配置' })).not.toBeInTheDocument()
     expect(within(menu).queryByRole('menuitem', { name: '对话' })).not.toBeInTheDocument()
     expect(within(menu).queryByRole('menuitem', { name: '终端' })).not.toBeInTheDocument()

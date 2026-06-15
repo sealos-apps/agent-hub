@@ -1242,27 +1242,53 @@ func enrichIngressDomain(ctx context.Context, clientset kubernetes.Interface, vi
 }
 
 func listManagedIngressDomains(ctx context.Context, clientset kubernetes.Interface, namespace string) (map[string]string, error) {
-	ingresses, err := clientset.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{
+	managedIngresses, err := clientset.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: kube.ManagedListSelector(),
 	})
 	if err != nil {
 		return nil, err
 	}
+	sealosAppIngresses, err := clientset.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: "cloud.sealos.io/app-deploy-manager",
+	})
+	if err != nil {
+		return nil, err
+	}
 
-	domains := make(map[string]string, len(ingresses.Items))
-	for i := range ingresses.Items {
-		ing := ingresses.Items[i]
-		agentName := strings.TrimSpace(ing.GetLabels()["agent.sealos.io/name"])
+	domains := make(map[string]string, len(managedIngresses.Items)+len(sealosAppIngresses.Items))
+	addIngressDomain := func(ing networkingv1.Ingress) {
+		agentName := ingressAgentName(&ing)
 		if agentName == "" {
-			agentName = strings.TrimSpace(ing.GetName())
+			return
 		}
-		if agentName == "" {
-			continue
+		host := kube.IngressDomain(&ing)
+		if host == "" {
+			return
 		}
-		domains[agentName] = kube.IngressDomain(&ing)
+		domains[agentName] = host
+	}
+	for i := range managedIngresses.Items {
+		addIngressDomain(managedIngresses.Items[i])
+	}
+	for i := range sealosAppIngresses.Items {
+		addIngressDomain(sealosAppIngresses.Items[i])
 	}
 
 	return domains, nil
+}
+
+func ingressAgentName(ingress *networkingv1.Ingress) string {
+	if ingress == nil {
+		return ""
+	}
+	labels := ingress.GetLabels()
+	if agentName := strings.TrimSpace(labels["agent.sealos.io/name"]); agentName != "" {
+		return agentName
+	}
+	if agentName := strings.TrimSpace(labels["cloud.sealos.io/app-deploy-manager"]); agentName != "" {
+		return agentName
+	}
+	return ""
 }
 
 func listManagedLatestAgentPods(ctx context.Context, clientset kubernetes.Interface, namespace string) (map[string]*corev1.Pod, error) {

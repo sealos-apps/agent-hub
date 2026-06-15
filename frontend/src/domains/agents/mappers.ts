@@ -121,39 +121,12 @@ export const getWorkspaceItem = (
 const runtimeUnavailableReason = (status: AgentRuntimeStatus) =>
   status === "stopped" ? "agent_paused" : "";
 
-const isStartupStatus = (rawStatus = "") => {
-  const normalized = String(rawStatus || "").toLowerCase();
-  return normalized.includes("creating") || normalized.includes("starting");
-};
-
-const canKeepStartupWebUIAccess = (
-  item: Pick<AgentAccessItem, "enabled" | "key" | "url">,
-  status: AgentRuntimeStatus,
-  rawStatus: string,
-) =>
-  item.key === "web-ui" &&
-  status === "creating" &&
-  isStartupStatus(rawStatus) &&
-  Boolean(item.enabled && item.url);
-
-const canKeepStartupWebUIWorkspace = (
-  item: Pick<AgentWorkspaceItem, "enabled" | "key" | "url">,
-  status: AgentRuntimeStatus,
-  rawStatus: string,
-) =>
-  item.key === "web-ui" &&
-  status === "creating" &&
-  isStartupStatus(rawStatus) &&
-  Boolean(item.enabled && item.url);
-
 const blockRuntimeAccessWhenNotRunning = (
   item: AgentAccessItem,
   status: AgentRuntimeStatus,
-  rawStatus: string,
 ): AgentAccessItem => {
   if (
     status === "running" ||
-    canKeepStartupWebUIAccess(item, status, rawStatus) ||
     !["api", "terminal", "files", "web-ui", "ssh", "ide"].includes(item.key)
   ) {
     return item;
@@ -185,11 +158,9 @@ const blockRuntimeActionWhenNotRunning = (
 const blockRuntimeWorkspaceWhenNotRunning = (
   item: AgentWorkspaceItem,
   status: AgentRuntimeStatus,
-  rawStatus: string,
 ): AgentWorkspaceItem => {
   if (
     status === "running" ||
-    canKeepStartupWebUIWorkspace(item, status, rawStatus) ||
     !["chat", "terminal", "files", "web-ui"].includes(item.key)
   ) {
     return item;
@@ -274,13 +245,13 @@ const buildAgentListItem = (
 ): AgentListItem => {
   const status = mapRawStatusToRuntimeStatus(contract.core.status);
   const access = contract.access.map((item) =>
-    blockRuntimeAccessWhenNotRunning(item, status, contract.core.status),
+    blockRuntimeAccessWhenNotRunning(item, status),
   );
   const actions = contract.actions.map((item) =>
     blockRuntimeActionWhenNotRunning(item, status),
   );
   const workspaces = contract.workspaces.map((item) =>
-    blockRuntimeWorkspaceWhenNotRunning(item, status, contract.core.status),
+    blockRuntimeWorkspaceWhenNotRunning(item, status),
   );
   const accessByKey = indexAccessItems(access);
   const actionsByKey = indexActionItems(actions);
