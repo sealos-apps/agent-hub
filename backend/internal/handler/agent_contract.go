@@ -206,6 +206,10 @@ func resolveAgentAccessItem(
 		Modes:      append([]string(nil), item.Modes...),
 	}
 
+	if item.Key == "web-ui" {
+		return resolveAgentWebUIAccessItem(spec, item, cfg, entry)
+	}
+
 	if !isRuntimeAccessAllowed(spec) {
 		entry.Status = runtimeAccessStatus(spec)
 		entry.Reason = runtimeAccessReason(spec)
@@ -291,28 +295,36 @@ func resolveAgentAccessItem(
 		entry.Status = ssh.Status
 		entry.Reason = ssh.Reason
 		return entry
-	case "web-ui":
-		if domainErr := validateAgentIngressDomain(spec.IngressDomain, cfg.IngressSuffix); domainErr != nil {
-			entry.Reason = "ingress_domain_invalid"
-			return entry
-		}
-		entry.URL = joinAccessURL(spec.IngressDomain, item.Path)
-		if entry.URL == "" {
-			entry.Reason = "web_ui_url_unavailable"
-			return entry
-		}
-		entry.Enabled = spec.Ready
-		entry.Status = accessStatus(spec.Ready)
-		if spec.Ready {
-			entry.Reason = ""
-		} else {
-			entry.Reason = bootstrapReason(spec)
-		}
-		return entry
 	default:
 		entry.Reason = "unknown_entry_type"
 		return entry
 	}
+}
+
+func resolveAgentWebUIAccessItem(
+	spec agent.Agent,
+	item agenttemplate.AccessDefinition,
+	cfg config.Config,
+	entry dto.AgentAccessItem,
+) dto.AgentAccessItem {
+	if domainErr := validateAgentIngressDomain(spec.IngressDomain, cfg.IngressSuffix); domainErr != nil {
+		entry.Reason = "ingress_domain_invalid"
+		return entry
+	}
+	entry.URL = joinAccessURL(spec.IngressDomain, item.Path)
+	if entry.URL == "" {
+		entry.Reason = "web_ui_url_unavailable"
+		return entry
+	}
+	if !isWebUIRuntimeAccessAllowed(spec) {
+		entry.Status = runtimeAccessStatus(spec)
+		entry.Reason = runtimeAccessReason(spec)
+		return entry
+	}
+	entry.Enabled = true
+	entry.Status = "ready"
+	entry.Reason = ""
+	return entry
 }
 
 func buildAgentActions(spec agent.Agent, templateDef agenttemplate.Definition, accessItems []dto.AgentAccessItem) []dto.AgentActionItem {
@@ -490,6 +502,10 @@ func accessStatus(ready bool) string {
 
 func isRuntimeAccessAllowed(spec agent.Agent) bool {
 	return (spec.Status == "" || spec.Status == agent.StatusRunning) && spec.Ready
+}
+
+func isWebUIRuntimeAccessAllowed(spec agent.Agent) bool {
+	return spec.Status == "" || spec.Status == agent.StatusRunning || spec.Status == agent.StatusCreating || spec.Status == agent.StatusStarting
 }
 
 func runtimeAccessStatus(spec agent.Agent) string {

@@ -10,6 +10,7 @@ import (
 	"github.com/nightwhite/Agent-Hub/internal/agent"
 	"github.com/nightwhite/Agent-Hub/internal/agenttemplate"
 	"github.com/nightwhite/Agent-Hub/internal/config"
+	"github.com/nightwhite/Agent-Hub/internal/dto"
 	"github.com/nightwhite/Agent-Hub/internal/kube"
 	appErr "github.com/nightwhite/Agent-Hub/pkg/errors"
 )
@@ -227,6 +228,107 @@ func TestBuildAgentContractDisablesRuntimeAccessWhenPaused(t *testing.T) {
 		if action.Reason != "agent_paused" {
 			t.Fatalf("contract action %s reason = %q, want agent_paused", action.Key, action.Reason)
 		}
+	}
+}
+
+func TestBuildAgentContractEnablesWebUIWhenIngressIsReadyBeforeBootstrap(t *testing.T) {
+	t.Parallel()
+
+	contract, contractErr := buildAgentContract(kube.AgentView{
+		Agent: agent.Agent{
+			Name:             "agent-test",
+			TemplateID:       "template-test",
+			Namespace:        "ns-test",
+			IngressDomain:    "agent-test.agent.usw-1.sealos.app",
+			Ready:            false,
+			Status:           agent.StatusStarting,
+			BootstrapPhase:   kube.BootstrapPhaseRunning,
+			BootstrapMessage: "running_template_bootstrap",
+			WorkingDir:       "/workspace",
+		},
+	}, agenttemplate.Definition{
+		Access: []agenttemplate.AccessDefinition{
+			{Key: "api", Label: "API", Path: "/v1"},
+			{Key: "terminal", Label: "Terminal"},
+			{Key: "web-ui", Label: "Web UI", Path: "/"},
+		},
+		Workspaces: []agenttemplate.WorkspaceDefinition{
+			{Key: "web-ui", Label: "Web UI"},
+		},
+	}, config.Config{IngressSuffix: "agent.usw-1.sealos.app"})
+	if contractErr != nil {
+		t.Fatalf("buildAgentContract() error = %v, want nil", contractErr)
+	}
+
+	accessByKey := map[string]dto.AgentAccessItem{}
+	for _, item := range contract.Access {
+		accessByKey[item.Key] = item
+	}
+	webUI := accessByKey["web-ui"]
+	if !webUI.Enabled {
+		t.Fatalf("web-ui enabled = false, want true when ingress URL is available")
+	}
+	if webUI.URL != "https://agent-test.agent.usw-1.sealos.app/" {
+		t.Fatalf("web-ui URL = %q, want ingress URL", webUI.URL)
+	}
+	if webUI.Reason != "" {
+		t.Fatalf("web-ui reason = %q, want empty", webUI.Reason)
+	}
+	api := accessByKey["api"]
+	if api.Enabled {
+		t.Fatalf("api enabled = true, want false before bootstrap is ready")
+	}
+	if api.Reason != "running_template_bootstrap" {
+		t.Fatalf("api reason = %q, want running_template_bootstrap", api.Reason)
+	}
+	terminal := accessByKey["terminal"]
+	if terminal.Enabled {
+		t.Fatalf("terminal enabled = true, want false before bootstrap is ready")
+	}
+
+	if len(contract.Workspaces) != 1 {
+		t.Fatalf("workspaces len = %d, want 1", len(contract.Workspaces))
+	}
+	if !contract.Workspaces[0].Enabled {
+		t.Fatalf("web-ui workspace enabled = false, want true")
+	}
+	if contract.Workspaces[0].URL != webUI.URL {
+		t.Fatalf("web-ui workspace URL = %q, want %q", contract.Workspaces[0].URL, webUI.URL)
+	}
+}
+
+func TestBuildAgentContractDisablesWebUIWhenRuntimeIsDeleting(t *testing.T) {
+	t.Parallel()
+
+	contract, contractErr := buildAgentContract(kube.AgentView{
+		Agent: agent.Agent{
+			Name:          "agent-test",
+			TemplateID:    "template-test",
+			Namespace:     "ns-test",
+			IngressDomain: "agent-test.agent.usw-1.sealos.app",
+			Ready:         false,
+			Status:        agent.StatusDeleting,
+		},
+	}, agenttemplate.Definition{
+		Access: []agenttemplate.AccessDefinition{
+			{Key: "web-ui", Label: "Web UI", Path: "/"},
+		},
+	}, config.Config{IngressSuffix: "agent.usw-1.sealos.app"})
+	if contractErr != nil {
+		t.Fatalf("buildAgentContract() error = %v, want nil", contractErr)
+	}
+	if len(contract.Access) != 1 {
+		t.Fatalf("access len = %d, want 1", len(contract.Access))
+	}
+	webUI := contract.Access[0]
+	if webUI.Enabled {
+		t.Fatalf("web-ui enabled = true, want false when runtime is deleting")
+	}
+	if webUI.URL != "https://agent-test.agent.usw-1.sealos.app/" {
+		t.Fatalf("web-ui URL = %q, want ingress URL retained", webUI.URL)
+	}
+	if webUI.Status != "pending" {
+		t.Fatalf("web-ui status = %q, want pending", webUI.Status)
 	}
 }
 
