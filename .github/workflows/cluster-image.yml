@@ -1,0 +1,171 @@
+name: Cluster Image
+
+on:
+  workflow_run:
+    workflows:
+      - Docker Image
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      runtime_image_tag:
+        description: Runtime image tag to embed, defaults to sha-<short SHA>.
+        required: false
+        type: string
+      cluster_image_tag:
+        description: Cluster image tag to publish, defaults to runtime_image_tag.
+        required: false
+        type: string
+      push_latest:
+        description: Also publish ghcr.io/<owner>/agent-hub-cluster:latest.
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: cluster-image-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
+  cancel-in-progress: false
+
+env:
+  RUNTIME_IMAGE_NAME: ghcr.io/${{ github.repository }}
+  CLUSTER_IMAGE_NAME: ghcr.io/${{ github.repository }}-cluster
+  SEALOS_VERSION: v5.1.2-rc5
+
+jobs:
+  build:
+    name: Build amd64 cluster image
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Resolve image tags
+        id: image
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUNTIME_IMAGE_TAG_INPUT: ${{ github.event.inputs.runtime_image_tag }}
+          CLUSTER_IMAGE_TAG_INPUT: ${{ github.event.inputs.cluster_image_tag }}
+          PUSH_LATEST_INPUT: ${{ github.event.inputs.push_latest }}
+        run: |
+          set -euo pipefail
+
+          source_sha="${GITHUB_SHA}"
+          if [[ "${EVENT_NAME}" == "workflow_run" ]]; then
+            source_sha="${WORKFLOW_RUN_SHA}"
+          fi
+
+          short_sha="${source_sha:0:7}"
+          runtime_tag="${RUNTIME_IMAGE_TAG_INPUT:-sha-${short_sha}}"
+          cluster_tag="${CLUSTER_IMAGE_TAG_INPUT:-${runtime_tag}}"
+          push_latest="${PUSH_LATEST_INPUT:-true}"
+
+          tag_pattern='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'
+          if [[ ! "${runtime_tag}" =~ ${tag_pattern} ]]; then
+            echo "Invalid runtime image tag: ${runtime_tag}" >&2
+            exit 1
+          fi
+          if [[ ! "${cluster_tag}" =~ ${tag_pattern} ]]; then
+            echo "Invalid cluster image tag: ${cluster_tag}" >&2
+            exit 1
+          fi
+
+          {
+            echo "source_sha=${source_sha}"
+            echo "short_sha=${short_sha}"
+            echo "runtime_tag=${runtime_tag}"
+            echo "cluster_tag=${cluster_tag}"
+            echo "runtime_image=${RUNTIME_IMAGE_NAME}:${runtime_tag}"
+            echo "cluster_image=${CLUSTER_IMAGE_NAME}:${cluster_tag}"
+            echo "push_latest=${push_latest}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify runtime image exists
+        env:
+          RUNTIME_IMAGE: ${{ steps.image.outputs.runtime_image }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect "${RUNTIME_IMAGE}"
+
+      - name: Install sealos
+        run: |
+          set -euo pipefail
+          version="${SEALOS_VERSION#v}"
+          curl --fail --location --retry 5 --retry-delay 3 \
+            --output /tmp/sealos.tar.gz \
+            "https://github.com/labring/sealos/releases/download/${SEALOS_VERSION}/sealos_${version}_linux_amd64.tar.gz"
+          tar -zxf /tmp/sealos.tar.gz -C /tmp sealos
+          sudo install -m 0755 /tmp/sealos /usr/local/bin/sealos
+          sealos version
+
+      - name: Prepare cluster image sources
+        working-directory: deploy
+        env:
+          RUNTIME_IMAGE: ${{ steps.image.outputs.runtime_image }}
+          RUNTIME_TAG: ${{ steps.image.outputs.runtime_tag }}
+        run: |
+          set -euo pipefail
+
+          printf '%s\n' "${RUNTIME_IMAGE}" > images/shim/images
+          sed -i -E "s;^ENV agentHubImageTag=\"[^\"]*\";ENV agentHubImageTag=\"${RUNTIME_TAG}\";" Kubefile
+          sed -i -E "0,/^  tag: \"[^\"]*\"/s//  tag: \"${RUNTIME_TAG}\"/" charts/agent-hub/values.yaml
+
+          grep -F "ENV agentHubImageTag=\"${RUNTIME_TAG}\"" Kubefile
+          grep -F "${RUNTIME_IMAGE}" images/shim/images
+          grep -F "  tag: \"${RUNTIME_TAG}\"" charts/agent-hub/values.yaml
+
+      - name: Build cluster image
+        working-directory: deploy
+        env:
+          CLUSTER_IMAGE: ${{ steps.image.outputs.cluster_image }}
+          SOURCE_SHA: ${{ steps.image.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          sudo rm -rf registry
+          sudo sealos build --pull=always --platform linux/amd64 \
+            -t "${CLUSTER_IMAGE}" \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.description=Agent Hub Sealos cluster image" \
+            --label "org.opencontainers.image.revision=${SOURCE_SHA}" \
+            -f Kubefile
+
+      - name: Push cluster image
+        env:
+          CLUSTER_IMAGE: ${{ steps.image.outputs.cluster_image }}
+          CLUSTER_IMAGE_NAME: ${{ env.CLUSTER_IMAGE_NAME }}
+          CLUSTER_TAG: ${{ steps.image.outputs.cluster_tag }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUSH_LATEST: ${{ steps.image.outputs.push_latest }}
+        run: |
+          set -euo pipefail
+          sudo sealos login -u "${GITHUB_ACTOR}" -p "${GHCR_TOKEN}" ghcr.io
+          sudo sealos push "${CLUSTER_IMAGE}"
+
+          if [[ "${PUSH_LATEST}" == "true" && "${CLUSTER_TAG}" != "latest" ]]; then
+            latest_image="${CLUSTER_IMAGE_NAME}:latest"
+            sudo sealos tag "${CLUSTER_IMAGE}" "${latest_image}"
+            sudo sealos push "${latest_image}"
+          fi
+
+          sudo sealos images
