@@ -27,7 +27,13 @@ type testErrorBody struct {
 	Details map[string]any `json:"details"`
 }
 
-func TestHealthzReturnsStandardEnvelope(t *testing.T) {
+type testHealthzBody struct {
+	Checks  map[string]string `json:"checks"`
+	Service string            `json:"service"`
+	Status  string            `json:"status"`
+}
+
+func TestHealthzReturnsStandardProbeResponse(t *testing.T) {
 	t.Parallel()
 
 	recorder := performRequest(t, http.MethodGet, "/healthz", "", "", map[string]string{
@@ -38,22 +44,22 @@ func TestHealthzReturnsStandardEnvelope(t *testing.T) {
 		t.Fatalf("GET /healthz status = %d, want %d", recorder.Code, http.StatusOK)
 	}
 
-	body := decodeEnvelope(t, recorder)
-	if body.Code != 0 {
-		t.Fatalf("GET /healthz code = %d, want 0", body.Code)
+	body := decodeHealthz(t, recorder)
+	if body.Service != "agent-hub" {
+		t.Fatalf("GET /healthz service = %q, want agent-hub", body.Service)
 	}
-	if body.Message != "ok" {
-		t.Fatalf("GET /healthz message = %q, want ok", body.Message)
+	if body.Status != "ok" {
+		t.Fatalf("GET /healthz status = %q, want ok", body.Status)
 	}
-	if body.RequestID != "req-healthz" {
-		t.Fatalf("GET /healthz requestId = %q, want req-healthz", body.RequestID)
+	if cacheControl := recorder.Header().Get("Cache-Control"); cacheControl != "no-store" {
+		t.Fatalf("GET /healthz Cache-Control = %q, want no-store", cacheControl)
 	}
-	if status := body.Data["status"]; status != "ok" {
-		t.Fatalf("GET /healthz data.status = %#v, want ok", status)
+	if requestID := recorder.Header().Get("X-Request-Id"); requestID != "req-healthz" {
+		t.Fatalf("GET /healthz X-Request-Id = %q, want req-healthz", requestID)
 	}
 }
 
-func TestReadyzReturnsStandardEnvelope(t *testing.T) {
+func TestReadyzReturnsHealthzCompatibleProbeResponse(t *testing.T) {
 	t.Parallel()
 
 	recorder := performRequest(t, http.MethodGet, "/readyz", "", "", nil)
@@ -61,19 +67,45 @@ func TestReadyzReturnsStandardEnvelope(t *testing.T) {
 		t.Fatalf("GET /readyz status = %d, want %d", recorder.Code, http.StatusOK)
 	}
 
-	body := decodeEnvelope(t, recorder)
-	if body.Code != 0 || body.Message != "ok" {
-		t.Fatalf("GET /readyz envelope = %#v, want code=0 message=ok", body)
+	body := decodeHealthz(t, recorder)
+	if body.Service != "agent-hub" {
+		t.Fatalf("GET /readyz service = %q, want agent-hub", body.Service)
 	}
-	if status := body.Data["status"]; status != "ready" {
-		t.Fatalf("GET /readyz data.status = %#v, want ready", status)
+	if body.Status != "ok" {
+		t.Fatalf("GET /readyz status = %q, want ok", body.Status)
 	}
-	checks, ok := body.Data["checks"].(map[string]any)
-	if !ok {
-		t.Fatalf("GET /readyz data.checks = %#v, want checks map", body.Data["checks"])
+	if cacheControl := recorder.Header().Get("Cache-Control"); cacheControl != "no-store" {
+		t.Fatalf("GET /readyz Cache-Control = %q, want no-store", cacheControl)
 	}
-	if checks["kubernetes"] != "request_scoped" {
-		t.Fatalf("GET /readyz data.checks.kubernetes = %#v, want request_scoped", checks["kubernetes"])
+}
+
+func TestProbeRoutesReturnServiceUnavailableWhenStaticConfigIsMissing(t *testing.T) {
+	t.Parallel()
+
+	for _, path := range []string{"/healthz", "/readyz"} {
+		path := path
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			recorder := performRequestWithConfig(t, config.Config{}, http.MethodGet, path, "", "", nil)
+			if recorder.Code != http.StatusServiceUnavailable {
+				t.Fatalf("GET %s status = %d, want %d", path, recorder.Code, http.StatusServiceUnavailable)
+			}
+
+			body := decodeHealthz(t, recorder)
+			if body.Service != "agent-hub" {
+				t.Fatalf("GET %s service = %q, want agent-hub", path, body.Service)
+			}
+			if body.Status != "not_ready" {
+				t.Fatalf("GET %s status = %q, want not_ready", path, body.Status)
+			}
+			if body.Checks["port"] != "missing" {
+				t.Fatalf("GET %s checks.port = %q, want missing", path, body.Checks["port"])
+			}
+			if cacheControl := recorder.Header().Get("Cache-Control"); cacheControl != "no-store" {
+				t.Fatalf("GET %s Cache-Control = %q, want no-store", path, cacheControl)
+			}
+		})
 	}
 }
 
@@ -750,12 +782,9 @@ func TestInvalidRequestIDHeaderIsRegenerated(t *testing.T) {
 		"X-Request-Id": "bad id with spaces",
 	})
 
-	body := decodeEnvelope(t, recorder)
-	if body.RequestID == "bad id with spaces" {
-		t.Fatal("invalid X-Request-Id should be replaced")
-	}
-	if header := recorder.Header().Get("X-Request-Id"); header != body.RequestID {
-		t.Fatalf("response X-Request-Id = %q, want %q", header, body.RequestID)
+	_ = decodeHealthz(t, recorder)
+	if header := recorder.Header().Get("X-Request-Id"); header == "" || header == "bad id with spaces" {
+		t.Fatalf("response X-Request-Id = %q, want regenerated safe value", header)
 	}
 }
 
@@ -910,6 +939,16 @@ func decodeEnvelope(t *testing.T, recorder *httptest.ResponseRecorder) testEnvel
 		t.Fatalf("decode response: %v", err)
 	}
 	return envelope
+}
+
+func decodeHealthz(t *testing.T, recorder *httptest.ResponseRecorder) testHealthzBody {
+	t.Helper()
+
+	var body testHealthzBody
+	if err := jsonNewDecoder(recorder.Body.String(), &body); err != nil {
+		t.Fatalf("decode healthz response: %v", err)
+	}
+	return body
 }
 
 func validEncodedKubeconfig() string {

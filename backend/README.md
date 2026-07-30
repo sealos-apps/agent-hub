@@ -67,8 +67,11 @@
 - `GET /api/v1/system/config`
 
 它们只用于存活和就绪探针，不参与业务鉴权。
-- `healthz` 仅表示进程存活
-- `readyz` 当前只检查静态运行配置是否完整，不验证请求级 Kubernetes 可用性
+- `healthz` 是 Kubernetes probe 的标准入口
+- `readyz` 是兼容别名，返回与 `healthz` 相同的轻量健康结果
+- 成功响应包含 `Cache-Control: no-store` 和 `{"service":"agent-hub","status":"ok"}`
+- 静态关键配置缺失时返回 HTTP `503`、`status=not_ready` 和 `checks`
+- 探针不依赖业务接口、请求级 kubeconfig 或目标 Kubernetes 调用
 
 ## WebSocket contract
 
@@ -202,7 +205,7 @@ regionModelTypes:
 
 ```bash
 curl http://127.0.0.1:8888/healthz
-curl http://127.0.0.1:8888/readyz
+curl http://127.0.0.1:8888/readyz # compatibility alias
 ```
 
 ## Current endpoint status
@@ -336,19 +339,31 @@ http://127.0.0.1:8888
 #### `GET /healthz`
 
 说明：
-- 存活检查
+- Kubernetes probe 标准入口
 - 不需要 Authorization
+- 响应头包含 `Cache-Control: no-store`
 
-响应示例：
+成功响应示例：
 
 ```json
 {
-  "code": 0,
-  "message": "ok",
-  "requestId": "xxx",
-  "data": {
-    "status": "ok"
-  }
+  "service": "agent-hub",
+  "status": "ok"
+}
+```
+
+未就绪响应示例：
+
+```json
+{
+  "checks": {
+    "port": "missing",
+    "ingressSuffix": "ok",
+    "apiServerImage": "ok",
+    "kubernetes": "request_scoped"
+  },
+  "service": "agent-hub",
+  "status": "not_ready"
 }
 ```
 
@@ -357,25 +372,16 @@ http://127.0.0.1:8888
 #### `GET /readyz`
 
 说明：
-- 就绪检查
+- 兼容健康检查别名
 - 不需要 Authorization
+- 响应头包含 `Cache-Control: no-store`
 
 响应示例：
 
 ```json
 {
-  "code": 0,
-  "message": "ok",
-  "requestId": "xxx",
-  "data": {
-    "status": "ready",
-    "checks": {
-      "port": "ok",
-      "ingressSuffix": "ok",
-      "apiServerImage": "ok",
-      "kubernetes": "request_scoped"
-    }
-  }
+  "service": "agent-hub",
+  "status": "ok"
 }
 ```
 
@@ -869,6 +875,6 @@ curl -s -X DELETE \
 - Devbox / Service / Ingress 都要求与 `agentName` 同名
 - 删除和详情读取使用相同的资源关联方式
 
-5. `readyz` 当前只表示静态配置 ready
+5. `readyz` 当前是 `healthz` 的兼容健康检查别名
 - 不验证请求级 kubeconfig 的可用性
 - 不等价于“目标 Kubernetes 集群可操作”

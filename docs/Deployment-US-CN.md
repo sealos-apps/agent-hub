@@ -50,8 +50,8 @@ agenthub-fxeji0zb
 | Container Port | `8999` |
 | Service Port | `8999` |
 | 环境变量 `PORT` | `8999` |
-| Healthz | `/healthz` |
-| Readyz | `/readyz` |
+| Health probe | `/healthz` |
+| Compatibility alias | `/readyz` |
 
 `Container Port`、`Service Port` 和 `PORT` 必须保持一致。当前线上标准端口是 `8999`，镜像默认端口是 `8888`，所以上线时必须显式设置 `PORT=8999`。
 
@@ -59,7 +59,7 @@ agenthub-fxeji0zb
 
 ```bash
 curl -fsS https://<APP_HOST>/healthz
-curl -fsS https://<APP_HOST>/readyz
+curl -fsS https://<APP_HOST>/readyz # compatibility alias
 ```
 
 ## 4. 环境变量
@@ -317,7 +317,7 @@ spec:
             failureThreshold: 24
           readinessProbe:
             httpGet:
-              path: /readyz
+              path: /healthz
               port: http
             periodSeconds: 10
             failureThreshold: 3
@@ -467,4 +467,4 @@ deploy/manifests/agenthub-console-app.yaml.tmpl
 - [ ] `INGRESS_SUFFIX` 和 `SSH_DOMAIN` 与目标集群一致。
 - [ ] AIProxy 管理地址和模型地址与目标集群一致。
 - [ ] `agenthub` 和 `agenthub-console` 两个 App 资源都已注册。
-- [ ] `/healthz` 和 `/readyz` 返回成功。
+- [ ] `/healthz` 返回成功；`/readyz` 作为兼容别名返回同样结果。

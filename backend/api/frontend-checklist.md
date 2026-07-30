@@ -48,9 +48,11 @@ PY
 - `GET /readyz`
 
 说明：
-- `healthz` 只看进程是否活着
-- `readyz` 只看静态配置是否完整
-- `readyz` 不代表目标 Kubernetes 一定可操作
+- `healthz` 是 Kubernetes probe 的标准入口
+- `readyz` 是兼容别名，返回与 `healthz` 相同的轻量健康结果
+- 成功响应包含 `Cache-Control: no-store` 和 `{"service":"agent-hub","status":"ok"}`
+- 静态关键配置缺失时返回 HTTP `503`、`status=not_ready` 和 `checks`
+- 探针不依赖业务接口、请求级 kubeconfig 或目标 Kubernetes 调用
 
 ## 4. 当前可联调的 REST API
 

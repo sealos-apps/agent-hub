@@ -6,38 +6,56 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	appErr "github.com/nightwhite/Agent-Hub/pkg/errors"
+	"github.com/nightwhite/Agent-Hub/internal/config"
 )
 
+const healthzServiceName = "agent-hub"
+
 func Health(c *gin.Context) {
-	writeSuccess(c, http.StatusOK, gin.H{"status": "ok"})
+	writeHealthz(c)
 }
 
 func Ready(c *gin.Context) {
-	cfg := runtimeConfig(c)
-	checks := map[string]string{
-		"port":           readinessCheck(cfg.Port),
-		"ingressSuffix":  readinessCheck(cfg.IngressSuffix),
-		"apiServerImage": readinessCheck(cfg.APIServerImage),
-		"kubernetes":     "request_scoped",
+	writeHealthz(c)
+}
+
+func writeHealthz(c *gin.Context) {
+	if checks, ok := healthChecks(runtimeConfig(c)); !ok {
+		c.Header("Cache-Control", "no-store")
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"checks":  checks,
+			"service": healthzServiceName,
+			"status":  "not_ready",
+		})
+		return
 	}
 
-	for _, status := range checks {
-		if status != "ok" && status != "request_scoped" {
-			writeAppError(c, http.StatusServiceUnavailable, appErr.New(appErr.CodeNotImplemented, "service is not ready").WithDetails(map[string]any{
-				"checks": checks,
-			}))
-			return
-		}
-	}
-
-	writeSuccess(c, http.StatusOK, gin.H{
-		"status": "ready",
-		"checks": checks,
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, gin.H{
+		"service": healthzServiceName,
+		"status":  "ok",
 	})
 }
 
-func readinessCheck(value string) string {
+func healthChecks(cfg config.Config) (map[string]string, bool) {
+	checks := map[string]string{
+		"port":           healthCheck(cfg.Port),
+		"ingressSuffix":  healthCheck(cfg.IngressSuffix),
+		"apiServerImage": healthCheck(cfg.APIServerImage),
+		"kubernetes":     "request_scoped",
+	}
+
+	ready := true
+	for _, status := range checks {
+		if status != "ok" && status != "request_scoped" {
+			ready = false
+			break
+		}
+	}
+	return checks, ready
+}
+
+func healthCheck(value string) string {
 	if strings.TrimSpace(value) == "" {
 		return "missing"
 	}

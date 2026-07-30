@@ -235,7 +235,7 @@ Health checks:
 
 ```bash
 curl -fsS https://<agent-hub-host>/healthz
-curl -fsS https://<agent-hub-host>/readyz
+curl -fsS https://<agent-hub-host>/readyz # compatibility alias
 ```
 
 ## Troubleshooting

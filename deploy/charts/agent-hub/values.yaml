@@ -79,7 +79,7 @@ probes:
     periodSeconds: 5
     failureThreshold: 24
   readiness:
-    path: /readyz
+    path: /healthz
     periodSeconds: 10
     failureThreshold: 3
   liveness:

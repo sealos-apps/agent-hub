@@ -9,16 +9,116 @@ servers:
 paths:
   /healthz:
     get:
-      summary: Liveness check
+      summary: Health probe
       responses:
         '200':
           description: ok
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - service
+                  - status
+                properties:
+                  service:
+                    type: string
+                    example: agent-hub
+                  status:
+                    type: string
+                    example: ok
+        '503':
+          description: not ready
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - service
+                  - status
+                  - checks
+                properties:
+                  service:
+                    type: string
+                    example: agent-hub
+                  status:
+                    type: string
+                    example: not_ready
+                  checks:
+                    type: object
+                    additionalProperties:
+                      type: string
+                    example:
+                      port: missing
+                      ingressSuffix: ok
+                      apiServerImage: ok
+                      kubernetes: request_scoped
   /readyz:
     get:
-      summary: Readiness check
+      summary: Health probe compatibility alias
       responses:
         '200':
-          description: ready
+          description: ok
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - service
+                  - status
+                properties:
+                  service:
+                    type: string
+                    example: agent-hub
+                  status:
+                    type: string
+                    example: ok
+        '503':
+          description: not ready
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - service
+                  - status
+                  - checks
+                properties:
+                  service:
+                    type: string
+                    example: agent-hub
+                  status:
+                    type: string
+                    example: not_ready
+                  checks:
+                    type: object
+                    additionalProperties:
+                      type: string
+                    example:
+                      port: missing
+                      ingressSuffix: ok
+                      apiServerImage: ok
+                      kubernetes: request_scoped
   /api/v1/agents:
     get:
       summary: List agents

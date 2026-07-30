@@ -26,7 +26,7 @@ Health checks:
 
 ```bash
 curl http://127.0.0.1:8888/healthz
-curl http://127.0.0.1:8888/readyz
+curl http://127.0.0.1:8888/readyz # compatibility alias
 ```
 
 The backend reads `backend/.env` in local development when present. `REGION` must be set; `us` is the usual local value.

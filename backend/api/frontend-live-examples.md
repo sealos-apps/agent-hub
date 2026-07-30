@@ -27,8 +27,12 @@ curl -sS -w '\nHTTP %{http_code}\n' \
 
 响应：
 
+```http
+Cache-Control: no-store
+```
+
 ```json
-{"code":0,"message":"ok","requestId":"1377bdbb-cb92-456c-957c-e6cee603c620","data":{"status":"ok"}}
+{"service":"agent-hub","status":"ok"}
 ```
 
 HTTP：
@@ -48,8 +52,12 @@ curl -sS -w '\nHTTP %{http_code}\n' \
 
 响应：
 
+```http
+Cache-Control: no-store
+```
+
 ```json
-{"code":0,"message":"ok","requestId":"d6225a29-7408-498d-84fb-b110958e2df1","data":{"checks":{"apiServerImage":"ok","ingressSuffix":"ok","kubernetes":"request_scoped","port":"ok"},"status":"ready"}}
+{"service":"agent-hub","status":"ok"}
 ```
 
 HTTP：

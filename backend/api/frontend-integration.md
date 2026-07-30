@@ -32,12 +32,15 @@ http://127.0.0.1:8888
 
 ```bash
 curl http://127.0.0.1:8888/healthz
-curl http://127.0.0.1:8888/readyz
+curl http://127.0.0.1:8888/readyz # compatibility alias
 ```
 
 说明：
-- `healthz` 仅表示进程存活
-- `readyz` 当前只检查静态运行配置是否完整，不验证请求级 Kubernetes 可用性
+- `healthz` 是 Kubernetes probe 的标准入口
+- `readyz` 是兼容别名，返回与 `healthz` 相同的轻量健康结果
+- 成功响应包含 `Cache-Control: no-store` 和 `{"service":"agent-hub","status":"ok"}`
+- 静态关键配置缺失时返回 HTTP `503`、`status=not_ready` 和 `checks`
+- 探针不依赖业务接口、请求级 kubeconfig 或目标 Kubernetes 调用
 
 ## 2. Authorization 头
 
@@ -99,22 +102,35 @@ WebSocket 当前也可联调：
 
 ## 4. 统一响应格式
 
-### `GET /readyz` 当前返回形状
+### `GET /healthz` / `GET /readyz` 当前返回形状
+
+响应头包含：
+
+```http
+Cache-Control: no-store
+```
+
+成功响应：
 
 ```json
 {
-  "code": 0,
-  "message": "ok",
-  "requestId": "xxx",
-  "data": {
-    "status": "ready",
-    "checks": {
-      "port": "ok",
-      "ingressSuffix": "ok",
-      "apiServerImage": "ok",
-      "kubernetes": "request_scoped"
-    }
-  }
+  "service": "agent-hub",
+  "status": "ok"
+}
+```
+
+未就绪响应：
+
+```json
+{
+  "checks": {
+    "port": "missing",
+    "ingressSuffix": "ok",
+    "apiServerImage": "ok",
+    "kubernetes": "request_scoped"
+  },
+  "service": "agent-hub",
+  "status": "not_ready"
 }
 ```
 
@@ -337,7 +353,7 @@ curl -s -X DELETE \
 这套基础 REST API 已经用本地 `~/.kube/config` 在真实集群上验证通过：
 
 - 健康检查
-- readyz 静态配置检查
+- readyz 兼容健康检查别名
 - 列表
 - 创建
 - 详情
